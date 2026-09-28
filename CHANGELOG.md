@@ -1,3 +1,16 @@
+## [1.0.1199] - 2026-09-28
+
+- Fixed Note editor text selection so Android highlights stay tightly aligned to the selected glyphs instead of stretching through blank line space.
+- Restored enough compact line leading for selection drag handles to sit cleanly between adjacent lines.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1199+243`.
+
+## [1.0.1198] - 2026-09-28
+
+- Made the Note editor match the compact mobile reference more closely: reduced title/body typography, tightened line height and margins, and increased usable writing space.
+- Restored the separate calendar button on phone layouts, reduced date/time/tag controls, and made the top action row more compact.
+- Removed the oversized tonal background from the three-dot menu trigger while keeping the same Note menu actions.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1198+242`.
+
 ## [1.0.1197] - 2026-09-28
 
 - Note list cards now show only the note title and metadata; note body/content previews are no longer rendered on the Note screen.

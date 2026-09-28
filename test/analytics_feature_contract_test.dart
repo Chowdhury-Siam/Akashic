@@ -49,7 +49,7 @@ void main() {
     expect(analytics, isNot(contains("const SectionHeader('Current account snapshot')")));
 
     expect(pubspec, contains('pdf: ^3.13.0'));
-    expect(pubspec, contains('version: 1.0.1195+239'));
+    expect(pubspec, contains('version: 1.0.1199+243'));
     expect(analytics, contains("title: 'Cloud'"));
     expect(analytics, contains("title: const Text('Automatic report upload'"));
     expect(analytics, contains('settings.fileFormat'));

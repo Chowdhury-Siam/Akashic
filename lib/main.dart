@@ -14170,9 +14170,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 520;
-    final sidePadding = compact ? 28.0 : 38.0;
-    final circleSize = compact ? 48.0 : 58.0;
-    final chipHeight = compact ? 46.0 : 58.0;
+    // Keep the editor intentionally dense so the writing surface matches the
+    // compact phone reference and fits substantially more note content.
+    final sidePadding = compact ? 16.0 : 24.0;
+    final circleSize = compact ? 40.0 : 44.0;
+    final metaControlSize = compact ? 34.0 : 38.0;
+    final chipHeight = metaControlSize;
+    final titleFontSize = compact ? 28.0 : 30.0;
+    final bodyFontSize = compact ? 18.0 : 19.0;
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
     return PopScope<Object?>(
       canPop: false,
@@ -14190,7 +14195,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
         child: Column(
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(compact ? 12 : 14, compact ? 10 : 12, compact ? 12 : 14, compact ? 18 : 18),
+              padding: EdgeInsets.fromLTRB(compact ? 16 : 20, compact ? 10 : 12, compact ? 16 : 20, compact ? 12 : 14),
               child: Row(
                 children: [
                   _NoteCircleButton(
@@ -14199,14 +14204,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                     size: circleSize,
                     onPressed: _closeEditor,
                   ),
-                  SizedBox(width: compact ? 8 : 10),
+                  SizedBox(width: compact ? 6 : 8),
                   _NoteCircleButton(
                     tooltip: 'Insert emoji',
                     icon: Icons.emoji_emotions_outlined,
                     size: circleSize,
                     onPressed: _pickEmoji,
                   ),
-                  SizedBox(width: compact ? 8 : 10),
+                  SizedBox(width: compact ? 6 : 8),
                   _NoteCircleButton(
                     tooltip: 'Add checklist item',
                     icon: Icons.add_circle_outline_rounded,
@@ -14217,8 +14222,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                   const Spacer(),
                   PopupMenuButton<String>(
                     tooltip: 'More',
-                    icon: const Icon(Icons.more_vert_rounded),
                     position: PopupMenuPosition.under,
+                    child: SizedBox.square(
+                      dimension: circleSize,
+                      child: Center(
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          size: compact ? 22 : 24,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                     offset: const Offset(0, 8),
                     constraints: const BoxConstraints.tightFor(width: 188),
                     color: scheme.surfaceContainerHighest,
@@ -14252,29 +14266,37 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
               ),
             ),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              padding: EdgeInsets.fromLTRB(sidePadding, compact ? 8 : 10, sidePadding, 0),
               child: TextField(
                 contextMenuBuilder: koinlyTextFieldContextMenu,
                 controller: title,
                 textCapitalization: TextCapitalization.sentences,
-                style: theme.textTheme.displaySmall?.copyWith(
+                style: theme.textTheme.headlineMedium?.copyWith(
                   color: scheme.onSurface,
-                  fontWeight: FontWeight.w900,
-                  fontSize: compact ? 34 : null,
+                  fontWeight: FontWeight.w800,
+                  fontSize: titleFontSize,
+                  height: 1.15,
                 ),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
                   filled: false,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                   hintText: 'Add title',
                   counterText: '',
                 ),
+                // Keep selection geometry tight to the actual glyphs. On Android,
+                // a selection ending at a line boundary can otherwise paint through
+                // the remaining horizontal space in an expanded multiline editor.
+                selectionHeightStyle: ui.BoxHeightStyle.tight,
+                selectionWidthStyle: ui.BoxWidthStyle.tight,
                 maxLength: 100,
               ),
             ),
             Padding(
-              padding: EdgeInsets.fromLTRB(sidePadding, compact ? 10 : 14, sidePadding, compact ? 22 : 26),
+              padding: EdgeInsets.fromLTRB(sidePadding, compact ? 14 : 16, sidePadding, compact ? 20 : 22),
               child: Row(
                 children: [
                   Expanded(
@@ -14282,10 +14304,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          if (!compact) ...[
-                            _NoteMetaChip(icon: Icons.calendar_month_rounded, tooltip: 'Choose date', onTap: _pickNoteDate, height: chipHeight),
-                            const SizedBox(width: 6),
-                          ],
+                          _NoteMetaChip(
+                            icon: Icons.calendar_month_rounded,
+                            tooltip: 'Choose date',
+                            onTap: _pickNoteDate,
+                            height: chipHeight,
+                            compact: true,
+                          ),
+                          SizedBox(width: compact ? 4 : 6),
                           _NoteMetaChip(label: DateFormat('EEE, MMM d, yyyy').format(noteDate), tooltip: 'Choose date', onTap: _pickNoteDate, height: chipHeight, compact: compact),
                           SizedBox(width: compact ? 5 : 6),
                           _NoteMetaChip(label: DateFormat('h:mm a').format(noteDate), tooltip: 'Choose time', onTap: _pickNoteTime, height: chipHeight, compact: compact),
@@ -14293,12 +14319,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                       ),
                     ),
                   ),
-                  SizedBox(width: compact ? 8 : 12),
+                  SizedBox(width: compact ? 8 : 10),
                   _NoteCircleButton(
                     tooltip: bookmarked ? 'Remove bookmark' : 'Bookmark',
                     icon: bookmarked ? Icons.bookmark_rounded : Icons.sell_outlined,
                     selected: bookmarked,
-                    size: circleSize,
+                    size: metaControlSize,
                     onPressed: _toggleBookmark,
                   ),
                 ],
@@ -14318,17 +14344,24 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                   minLines: null,
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
-                  style: theme.textTheme.headlineSmall?.copyWith(
+                  style: theme.textTheme.bodyLarge?.copyWith(
                     color: scheme.onSurface.withOpacity(.78),
-                    height: 1.55,
+                    // Leave enough vertical leading for Android selection handles
+                    // without giving up the compact 18 px writing size.
+                    height: 1.45,
                     fontWeight: FontWeight.w500,
-                    fontSize: compact ? 24 : null,
+                    fontSize: bodyFontSize,
                   ),
+                  textAlignVertical: TextAlignVertical.top,
+                  selectionHeightStyle: ui.BoxHeightStyle.tight,
+                  selectionWidthStyle: ui.BoxWidthStyle.tight,
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     filled: false,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                     hintText: "What's on your mind?",
                   ),
                 ),
@@ -14386,13 +14419,13 @@ class _NoteMetaChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final chip = Material(
       color: scheme.surfaceContainerHighest.withOpacity(.8),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(compact ? 14 : 16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         child: Container(
           height: height,
-          padding: EdgeInsets.symmetric(horizontal: label == null ? (compact ? 14 : 18) : (compact ? 14 : 20)),
+          padding: EdgeInsets.symmetric(horizontal: label == null ? (compact ? 9 : 12) : (compact ? 11 : 14)),
           alignment: Alignment.center,
           child: icon == null
               ? Text(
@@ -14401,11 +14434,11 @@ class _NoteMetaChip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: scheme.onSurface.withOpacity(.82),
-                        fontWeight: FontWeight.w900,
-                        fontSize: compact ? 15 : null,
+                        fontWeight: FontWeight.w800,
+                        fontSize: compact ? 14 : 15,
                       ),
                 )
-              : Icon(icon, size: compact ? 20 : null, color: scheme.onSurface.withOpacity(.74)),
+              : Icon(icon, size: compact ? 18 : 20, color: scheme.onSurface.withOpacity(.74)),
         ),
       ),
     );
@@ -14468,7 +14501,9 @@ class _NoteCircleButton extends StatelessWidget {
           backgroundColor: selected ? kSleekAccent.withOpacity(.18) : null,
           foregroundColor: selected ? kSleekAccent : null,
           fixedSize: Size.square(size),
-          iconSize: size <= 48 ? 24 : null,
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          iconSize: size <= 44 ? 21 : 24,
           shape: const CircleBorder(),
         ),
       ),
