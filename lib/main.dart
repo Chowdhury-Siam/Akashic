@@ -13700,7 +13700,6 @@ class NoteTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppController>();
-    final body = NoteRichTextController.plainTextFromStored(note.body).trim();
     final title = note.title.trim().isEmpty ? 'Untitled note' : note.title.trim();
     final card = ExpressiveCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
@@ -13760,18 +13759,6 @@ class NoteTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
-                if (body.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -19650,7 +19637,7 @@ class _BatteryOptimizationSettingsTileState extends State<BatteryOptimizationSet
     try {
       final opened = await AndroidBackgroundPermissionService.openBatteryOptimizationSettings();
       if (!opened && mounted) {
-        showSnack(context, 'Could not open Android battery optimization settings.');
+        showSnack(context, 'Could not open the Android battery optimization permission.');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -19662,7 +19649,7 @@ class _BatteryOptimizationSettingsTileState extends State<BatteryOptimizationSet
     final granted = _granted == true;
     final subtitle = switch (_granted) {
       true => 'Permission granted',
-      false => 'Disabled • Tap to open Android battery settings',
+      false => 'Permission not granted',
       null => 'Checking permission…',
     };
     return SettingsTile(

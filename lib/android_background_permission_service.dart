@@ -35,7 +35,8 @@ class AndroidBackgroundPermissionService {
     }
   }
 
-  /// Opens Android's battery-optimization list directly.
+  /// Requests Koinly's Android battery-optimization exemption directly.
+  /// Android/OEM builds show the system app-specific background-run prompt.
   static Future<bool> openBatteryOptimizationSettings() async {
     if (!isSupported) return false;
     try {

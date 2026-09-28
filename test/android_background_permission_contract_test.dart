@@ -14,10 +14,12 @@ void main() {
     expect(app, contains("'Permission granted'"));
     expect(app, contains('AndroidBackgroundPermissionService.openBatteryOptimizationSettings()'));
     expect(service, contains("MethodChannel('com.koinly.siam/background_permissions')"));
-    expect(service, isNot(contains('requestIgnoreBatteryOptimizations')));
+    expect(activity, contains('Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
+    expect(activity, contains('Uri.parse("package:$packageName")'));
     expect(activity, contains('Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS'));
+    expect(activity, contains('isIgnoringBatteryOptimizations()'));
     expect(activity, contains('PowerManager'));
-    expect(manifest, isNot(contains('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')));
+    expect(manifest, contains('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
     expect(manifest, contains('android.permission.SCHEDULE_EXACT_ALARM'));
   });
 

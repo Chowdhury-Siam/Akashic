@@ -1,3 +1,9 @@
+## [1.0.1197] - 2026-09-28
+
+- Note list cards now show only the note title and metadata; note body/content previews are no longer rendered on the Note screen.
+- Note search still indexes both titles and note content, so hiding the preview does not reduce search capability.
+- Bumped synchronized app/Worker release metadata to `1.0.1197+241`.
+
 ## [1.0.1195] - 2026-09-28
 
 - Notes now save automatically while the user types or changes note metadata; the Note editor no longer requires a manual Save action.
