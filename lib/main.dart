@@ -817,6 +817,70 @@ class KoinlyDatabase {
     await (await db).delete('notes', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Persists an editor autosave and its cloud outbox row atomically. If the
+  /// process is backgrounded or terminated immediately after this transaction,
+  /// the local note and the pending cloud mutation cannot get out of sync.
+  Future<void> upsertAutosavedNote(KoinlyNote note) async {
+    final database = await db;
+    final row = note.toMap();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await database.transaction((txn) async {
+      await txn.insert('notes', row, conflictAlgorithm: sql.ConflictAlgorithm.replace);
+      final versions = await txn.query(
+        'sync_entity_versions',
+        columns: ['version'],
+        where: 'entity_type = ? AND entity_id = ?',
+        whereArgs: ['notes', note.id],
+        limit: 1,
+      );
+      final baseVersion = versions.isEmpty ? 0 : (versions.first['version'] as num? ?? 0).toInt();
+      await txn.delete(
+        'sync_outbox',
+        where: 'entity_type = ? AND entity_id = ?',
+        whereArgs: ['notes', note.id],
+      );
+      await txn.insert('sync_outbox', {
+        'id': _uuid.v4(),
+        'entity_type': 'notes',
+        'entity_id': note.id,
+        'operation': 'upsert',
+        'payload_json': jsonEncode(row),
+        'base_version': baseVersion,
+        'created_at': now,
+      });
+    });
+  }
+
+  Future<void> deleteAutosavedNote(String id) async {
+    final database = await db;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await database.transaction((txn) async {
+      final versions = await txn.query(
+        'sync_entity_versions',
+        columns: ['version'],
+        where: 'entity_type = ? AND entity_id = ?',
+        whereArgs: ['notes', id],
+        limit: 1,
+      );
+      final baseVersion = versions.isEmpty ? 0 : (versions.first['version'] as num? ?? 0).toInt();
+      await txn.delete('notes', where: 'id = ?', whereArgs: [id]);
+      await txn.delete(
+        'sync_outbox',
+        where: 'entity_type = ? AND entity_id = ?',
+        whereArgs: ['notes', id],
+      );
+      await txn.insert('sync_outbox', {
+        'id': _uuid.v4(),
+        'entity_type': 'notes',
+        'entity_id': id,
+        'operation': 'delete',
+        'payload_json': null,
+        'base_version': baseVersion,
+        'created_at': now,
+      });
+    });
+  }
+
   Future<List<RecurringSubscription>> subscriptions() async {
     final maps = await (await db).query(
       'subscriptions',
@@ -1488,6 +1552,10 @@ class KoinlyDatabase {
 
 enum AutoBackupFrequency { daily, weekly, monthly }
 
+class _CloudSyncCancelledForAccountTransition implements Exception {
+  const _CloudSyncCancelledForAccountTransition();
+}
+
 class _FullCloudSnapshot {
   const _FullCloudSnapshot({
     required this.changes,
@@ -2046,6 +2114,8 @@ class AppController extends ChangeNotifier {
   String? cloudSyncErrorCode;
   DateTime? cloudSyncLastAt;
   bool _syncInProgress = false;
+  Completer<void>? _activeCloudSyncCompletion;
+  int _cloudSyncCancellationSerial = 0;
   Timer? _cloudSyncDebounce;
   Timer? _cloudSyncRetryTimer;
   Timer? _cloudSyncAutoPullTimer;
@@ -2080,6 +2150,7 @@ class AppController extends ChangeNotifier {
   String activeSyncAccountProfileId = '';
   String syncStatus = 'Offline';
   bool syncAuthBusy = false;
+  bool _syncAccountTransitionInProgress = false;
   bool workerAutoUpdateBusy = false;
   String workerAutoUpdateStatus = '';
   String? workerAutoUpdateError;
@@ -2089,6 +2160,7 @@ class AppController extends ChangeNotifier {
   bool automaticUpdatePopupEnabled = true;
 
   bool get cloudSyncOperationBusy => _syncInProgress || cloudSyncBusy || syncAuthBusy;
+  int get cloudSyncCancellationSerial => _cloudSyncCancellationSerial;
   bool updateDownloadBusy = false;
   String updateStatusMessage = 'Not checked yet.';
   DateTime? updateLastCheckedAt;
@@ -4306,61 +4378,110 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> logoutSyncAccount({bool keepLocalData = true}) async {
-    syncAuthBusy = true;
-    notifyListeners();
-    try {
-      if (syncAccessToken.isNotEmpty && syncRefreshToken.isNotEmpty && cloudSyncApiBaseUrl.isNotEmpty) {
-        // The Worker logout endpoint revokes only this refresh token. It never
-        // deletes the user's cloud rows, so either local sign-out choice keeps
-        // the server-side account data safe.
-        await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).logout(accessToken: syncAccessToken, refreshToken: syncRefreshToken);
-      }
-    } catch (_) {
-      // Local logout should still complete even if the Worker is offline.
+  void _throwIfCloudSyncCancelled(int cancellationSerial) {
+    if (cancellationSerial != _cloudSyncCancellationSerial) {
+      throw const _CloudSyncCancelledForAccountTransition();
     }
+  }
 
-    await secureCredentials.clearAccountTokens();
-    if (activeSyncAccountProfileId.isNotEmpty) {
-      await syncProfiles.deleteAccountTokens(activeSyncAccountProfileId);
-      savedSyncAccounts = savedSyncAccounts.where((account) => account.id != activeSyncAccountProfileId).toList();
-      await syncProfiles.writeAccounts(savedSyncAccounts);
-    }
-    activeSyncAccountProfileId = '';
-    await syncProfiles.writeActiveAccountId('');
-    syncAccessToken = '';
-    syncRefreshToken = '';
-    syncAccountUsername = '';
-    cloudSyncEnabled = false;
-    newSyncAccountAwaitingSetupChoice = false;
-    syncStatus = 'Offline';
-    cloudSyncLastAt = null;
-    cloudSyncError = null;
-    cloudSyncErrorCode = null;
-    await prefs.setString('syncAccountUsername', '');
-    await prefs.setBool('cloudSyncEnabled', false);
-    await prefs.setBool('newSyncAccountAwaitingSetupChoice', false);
-    await prefs.setString('cloudSyncLastAt', '');
-
-    // Stop every sync path before optional local deletion. This is important:
-    // choosing "No, clear local data" must never upload delete operations to
-    // the Worker. The cloud copy remains untouched and can be restored later.
-    _stopCloudAutoPull();
+  Future<void> _cancelActiveCloudSyncForAccountTransition() async {
+    final hadActiveSync = _syncInProgress || cloudSyncBusy;
+    _cloudSyncCancellationSerial += 1;
     _cloudSyncDebounce?.cancel();
     _cloudSyncRetryTimer?.cancel();
-    await _setCloudSyncPending(false);
+    _cloudRealtimePullPending = false;
+    if (!hadActiveSync) return;
 
-    if (!keepLocalData) {
-      await _clearSignedOutCloudAccountLocalData();
+    KoinlySyncApi.cancelPendingRequests();
+
+    // Wait for any local database work already in progress to reach a safe
+    // boundary before replacing or clearing account data. Closing the HTTP
+    // client makes network-bound restores exit immediately; the completion
+    // guard prevents two accounts from mutating the same local database at
+    // the same time.
+    while (_syncInProgress || cloudSyncBusy) {
+      final completion = _activeCloudSyncCompletion;
+      if (completion == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        continue;
+      }
+      try {
+        await completion.future.timeout(const Duration(seconds: 30));
+      } on TimeoutException {
+        // A database write cannot be safely interrupted. Keep waiting rather
+        // than allowing an account transition to race it.
+      }
     }
 
-    // Entity versions/cursors belong to one authenticated backend/account.
-    // Never carry them into another self-hosted account. When local finance
-    // data is kept, it can be merged/adopted again after the next login.
-    await database.resetLocalSyncTracking();
-    await database.writeSyncState('serverCursor', '0');
-    syncAuthBusy = false;
+    _cloudSyncRetryTimer?.cancel();
+    _cloudRealtimePullPending = false;
+  }
+
+  Future<void> logoutSyncAccount({bool keepLocalData = true}) async {
+    if (syncAuthBusy) throw StateError('An account change is already in progress.');
+    syncAuthBusy = true;
+    _syncAccountTransitionInProgress = true;
     notifyListeners();
+    try {
+      await _cancelActiveCloudSyncForAccountTransition();
+      try {
+        if (syncAccessToken.isNotEmpty && syncRefreshToken.isNotEmpty && cloudSyncApiBaseUrl.isNotEmpty) {
+          // The Worker logout endpoint revokes only this refresh token. It never
+          // deletes the user's cloud rows, so either local sign-out choice keeps
+          // the server-side account data safe.
+          await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).logout(
+            accessToken: syncAccessToken,
+            refreshToken: syncRefreshToken,
+          );
+        }
+      } catch (_) {
+        // Local logout should still complete even if the Worker is offline.
+      }
+
+      await secureCredentials.clearAccountTokens();
+      if (activeSyncAccountProfileId.isNotEmpty) {
+        await syncProfiles.deleteAccountTokens(activeSyncAccountProfileId);
+        savedSyncAccounts = savedSyncAccounts.where((account) => account.id != activeSyncAccountProfileId).toList();
+        await syncProfiles.writeAccounts(savedSyncAccounts);
+      }
+      activeSyncAccountProfileId = '';
+      await syncProfiles.writeActiveAccountId('');
+      syncAccessToken = '';
+      syncRefreshToken = '';
+      syncAccountUsername = '';
+      cloudSyncEnabled = false;
+      newSyncAccountAwaitingSetupChoice = false;
+      syncStatus = 'Offline';
+      cloudSyncLastAt = null;
+      cloudSyncError = null;
+      cloudSyncErrorCode = null;
+      await prefs.setString('syncAccountUsername', '');
+      await prefs.setBool('cloudSyncEnabled', false);
+      await prefs.setBool('newSyncAccountAwaitingSetupChoice', false);
+      await prefs.setString('cloudSyncLastAt', '');
+
+      // Stop every sync path before optional local deletion. This is important:
+      // choosing "No, clear local data" must never upload delete operations to
+      // the Worker. The cloud copy remains untouched and can be restored later.
+      _stopCloudAutoPull();
+      _cloudSyncDebounce?.cancel();
+      _cloudSyncRetryTimer?.cancel();
+      await _setCloudSyncPending(false);
+
+      if (!keepLocalData) {
+        await _clearSignedOutCloudAccountLocalData();
+      }
+
+      // Entity versions/cursors belong to one authenticated backend/account.
+      // Never carry them into another self-hosted account. When local finance
+      // data is kept, it can be merged/adopted again after the next login.
+      await database.resetLocalSyncTracking();
+      await database.writeSyncState('serverCursor', '0');
+    } finally {
+      _syncAccountTransitionInProgress = false;
+      syncAuthBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _clearSignedOutCloudAccountLocalData() async {
@@ -4390,6 +4511,19 @@ class AppController extends ChangeNotifier {
     // this cannot be interpreted as a cloud deletion request.
     await _clearLocalProfileMedia(clearRemoteTracking: true);
     await reload(queueSync: false);
+  }
+
+  Future<void> removeSavedSyncAccount(String profileId) async {
+    if (profileId.trim().isEmpty) return;
+    if (profileId == activeSyncAccountProfileId) {
+      throw StateError('Sign out of the current account before removing it.');
+    }
+    final exists = savedSyncAccounts.any((account) => account.id == profileId);
+    if (!exists) return;
+    await syncProfiles.deleteAccountTokens(profileId);
+    savedSyncAccounts = savedSyncAccounts.where((account) => account.id != profileId).toList();
+    await syncProfiles.writeAccounts(savedSyncAccounts);
+    notifyListeners();
   }
 
   Future<void> _saveSyncSession(SyncAuthSession session) async {
@@ -4439,7 +4573,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> switchToSavedSyncAccount(String profileId) async {
-    if (_syncInProgress || cloudSyncBusy || syncAuthBusy) throw StateError('Wait for the current sync to finish first.');
+    if (syncAuthBusy) throw StateError('An account change is already in progress.');
     SavedSyncAccount? target;
     for (final account in savedSyncAccounts) {
       if (account.id == profileId) {
@@ -4453,11 +4587,13 @@ class AppController extends ChangeNotifier {
     if (tokens.refreshToken.trim().isEmpty) throw StateError('Sign in to this account again before switching.');
     final api = KoinlySyncApi(baseUrl: selected.workerUrl);
     syncAuthBusy = true;
+    _syncAccountTransitionInProgress = true;
     cloudSyncError = null;
     cloudSyncErrorCode = null;
     syncStatus = 'Preparing account switch...';
     notifyListeners();
     try {
+      await _cancelActiveCloudSyncForAccountTransition();
       final session = await api.refresh(refreshToken: tokens.refreshToken, deviceId: syncDeviceId, username: selected.username);
       await syncProfiles.writeAccountTokens(selected.id, SavedSyncAccountTokens(accessToken: session.accessToken, refreshToken: session.refreshToken));
       final snapshot = await _downloadFullCloudSnapshot(api: api, accessToken: session.accessToken);
@@ -4468,6 +4604,7 @@ class AppController extends ChangeNotifier {
       syncStatus = 'Switch failed';
       rethrow;
     } finally {
+      _syncAccountTransitionInProgress = false;
       syncAuthBusy = false;
       notifyListeners();
     }
@@ -4495,18 +4632,20 @@ class AppController extends ChangeNotifier {
     required String password,
     required bool register,
   }) async {
-    if (_syncInProgress || cloudSyncBusy || syncAuthBusy) throw StateError('Wait for the current sync to finish first.');
+    if (syncAuthBusy) throw StateError('An account change is already in progress.');
     final normalizedWorkerUrl = CloudSyncService.validateApiBaseUrl(workerUrl);
     final normalizedUsername = username.trim().toLowerCase();
     final usernameError = _syncUsernameValidationError(normalizedUsername);
     if (usernameError != null) throw StateError(usernameError);
     final api = KoinlySyncApi(baseUrl: normalizedWorkerUrl);
     syncAuthBusy = true;
+    _syncAccountTransitionInProgress = true;
     cloudSyncError = null;
     cloudSyncErrorCode = null;
     syncStatus = register ? 'Creating target account...' : 'Signing in to target account...';
     notifyListeners();
     try {
+      await _cancelActiveCloudSyncForAccountTransition();
       await api.validateBackend();
       final session = register
           ? await api.register(
@@ -4551,6 +4690,7 @@ class AppController extends ChangeNotifier {
       syncStatus = 'Switch failed';
       rethrow;
     } finally {
+      _syncAccountTransitionInProgress = false;
       syncAuthBusy = false;
       notifyListeners();
     }
@@ -4678,6 +4818,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> performMultiDeviceSync({bool silent = false, bool pushLocalChanges = true, bool pullFullCloudCopy = false}) async {
+    if (_syncAccountTransitionInProgress) return;
     if (!_hasConfiguredSyncTarget()) {
       if (!silent) {
         syncStatus = 'Sign in to sync first.';
@@ -4695,6 +4836,9 @@ class AppController extends ChangeNotifier {
     final pendingBeforeSync = cloudSyncPending;
     final errorBeforeSync = cloudSyncError;
     final errorCodeBeforeSync = cloudSyncErrorCode;
+    final cancellationSerial = _cloudSyncCancellationSerial;
+    final syncCompletion = Completer<void>();
+    _activeCloudSyncCompletion = syncCompletion;
     _syncInProgress = true;
     cloudSyncBusy = !silent;
     if (!silent) {
@@ -4710,6 +4854,7 @@ class AppController extends ChangeNotifier {
         await database.enqueueLegacyNotesForCloudSync(
           '${cloudSyncApiBaseUrl.trim().toLowerCase()}|${syncAccountUsername.trim().toLowerCase()}',
         );
+        _throwIfCloudSyncCancelled(cancellationSerial);
         if (!silent) {
           syncStatus = 'Uploading local changes...';
           notifyListeners();
@@ -4722,6 +4867,7 @@ class AppController extends ChangeNotifier {
           final operations = pending.map(_operationFromOutboxRow).toList();
           final operationsById = {for (final operation in operations) operation['operationId']?.toString() ?? '': operation};
           final response = await api.push(accessToken: syncAccessToken, operations: operations);
+          _throwIfCloudSyncCancelled(cancellationSerial);
           final accepted = (response['accepted'] as List? ?? const []).cast<Map>();
           final acceptedIds = <String>[];
           final versions = <String, int>{};
@@ -4773,6 +4919,7 @@ class AppController extends ChangeNotifier {
       }
       while (hasMore) {
         final response = await api.pull(accessToken: syncAccessToken, cursor: cursor, limit: 100);
+        _throwIfCloudSyncCancelled(cancellationSerial);
         final changes = (response['changes'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
         remoteChanges.addAll(changes);
         cursor = (response['cursor'] as num? ?? cursor).toInt();
@@ -4802,17 +4949,21 @@ class AppController extends ChangeNotifier {
             notifyListeners();
           }
           await requireSafetyBackup('Before cloud data merge');
+          _throwIfCloudSyncCancelled(cancellationSerial);
         }
         if (!silent) {
           syncStatus = 'Merging cloud data...';
           notifyListeners();
         }
+        _throwIfCloudSyncCancelled(cancellationSerial);
         preservedNewerLocal = await database.applyRemoteChanges(mergedRemoteChanges, mergeRemotePreferences);
+        _throwIfCloudSyncCancelled(cancellationSerial);
       }
       // Rebase any upload conflicts even if the server returned no additional
       // change rows in this pull. This prevents a newer local edit from being
       // dropped simply because the conflicting server version was already at
       // the cursor boundary.
+      _throwIfCloudSyncCancelled(cancellationSerial);
       final rebased = await _reapplyNewerConflictedLocalChanges(
         conflictedLocalOperations,
         remotelyDeletedNoteIds: remotelyDeletedNoteIds,
@@ -4842,40 +4993,63 @@ class AppController extends ChangeNotifier {
       // Profile media is transferred through its own chunked database API so
       // files up to 50 MB do not bloat finance sync operations or the realtime
       // change log. This pass also picks up media changed on another device.
+      _throwIfCloudSyncCancelled(cancellationSerial);
       await _syncProfileMediaCloudState(api: api);
+      _throwIfCloudSyncCancelled(cancellationSerial);
     } catch (error) {
-      Object failure = error;
-      var text = _cleanSyncError(failure);
-      if (text.toLowerCase().contains('expired') || text.toLowerCase().contains('access token')) {
-        try {
-          await _refreshSyncSession();
-          _syncInProgress = false;
-          cloudSyncBusy = false;
-          await performMultiDeviceSync(silent: silent, pushLocalChanges: pushLocalChanges, pullFullCloudCopy: pullFullCloudCopy);
-          return;
-        } catch (refreshError) {
-          // Do not let a failed token refresh escape an unawaited background
-          // retry. Record the real failure so the Account & sync screen and
-          // diagnostics explain why the outbox is still pending.
-          failure = refreshError;
-          text = _cleanSyncError(refreshError);
+      final cancelledForAccountTransition =
+          error is _CloudSyncCancelledForAccountTransition || cancellationSerial != _cloudSyncCancellationSerial;
+      if (cancelledForAccountTransition) {
+        cloudSyncError = null;
+        cloudSyncErrorCode = null;
+        syncStatus = 'Sync cancelled';
+      } else {
+        Object failure = error;
+        var text = _cleanSyncError(failure);
+        if (text.toLowerCase().contains('expired') || text.toLowerCase().contains('access token')) {
+          try {
+            await _refreshSyncSession();
+            _throwIfCloudSyncCancelled(cancellationSerial);
+            _syncInProgress = false;
+            cloudSyncBusy = false;
+            await performMultiDeviceSync(silent: silent, pushLocalChanges: pushLocalChanges, pullFullCloudCopy: pullFullCloudCopy);
+            return;
+          } catch (refreshError) {
+            if (cancellationSerial != _cloudSyncCancellationSerial) {
+              cloudSyncError = null;
+              cloudSyncErrorCode = null;
+              syncStatus = 'Sync cancelled';
+              return;
+            }
+            // Do not let a failed token refresh escape an unawaited background
+            // retry. Record the real failure so the Account & sync screen and
+            // diagnostics explain why the outbox is still pending.
+            failure = refreshError;
+            text = _cleanSyncError(refreshError);
+          }
         }
+        await _setCloudSyncPending(true);
+        _schedulePendingSyncRetry();
+        cloudSyncError = text;
+        cloudSyncErrorCode = failure is CloudSyncException ? failure.code : null;
+        syncStatus = 'Sync error';
       }
-      await _setCloudSyncPending(true);
-      _schedulePendingSyncRetry();
-      cloudSyncError = text;
-      cloudSyncErrorCode = failure is CloudSyncException ? failure.code : null;
-      syncStatus = 'Sync error';
     } finally {
       _syncInProgress = false;
       cloudSyncBusy = false;
+      if (identical(_activeCloudSyncCompletion, syncCompletion)) {
+        _activeCloudSyncCompletion = null;
+      }
+      if (!syncCompletion.isCompleted) syncCompletion.complete();
       final syncProblemChanged = pendingBeforeSync != cloudSyncPending ||
           errorBeforeSync != cloudSyncError ||
           errorCodeBeforeSync != cloudSyncErrorCode;
       if (!silent || syncProblemChanged) {
         notifyListeners();
       }
-      if (_cloudRealtimePullPending && _hasConfiguredSyncTarget()) {
+      if (cancellationSerial == _cloudSyncCancellationSerial &&
+          _cloudRealtimePullPending &&
+          _hasConfiguredSyncTarget()) {
         _cloudRealtimePullPending = false;
         scheduleMicrotask(() => unawaited(syncCloudChangesIfIdle(force: true)));
       }
@@ -5225,6 +5399,18 @@ class AppController extends ChangeNotifier {
     _schedulePendingSyncRetry();
     _cloudSyncDebounce?.cancel();
     _cloudSyncDebounce = Timer(_cloudSyncPushDebounce, () {
+      unawaited(syncToCloud(silent: true));
+    });
+  }
+
+  void queueNoteAutosaveCloudSync() {
+    if (!_hasConfiguredSyncTarget()) return;
+    if (newSyncAccountAwaitingSetupChoice) return;
+    _startCloudAutoPull();
+    unawaited(_setCloudSyncPending(true));
+    _schedulePendingSyncRetry();
+    _cloudSyncDebounce?.cancel();
+    _cloudSyncDebounce = Timer(const Duration(milliseconds: 450), () {
       unawaited(syncToCloud(silent: true));
     });
   }
@@ -6277,6 +6463,33 @@ class AppController extends ChangeNotifier {
     await database.enqueueTableRow('notes', note.id);
     await reload(queueSync: true);
   }
+
+  /// Fast path used by the full-screen Note editor. It persists every edit to
+  /// SQLite immediately without reloading every finance table on each
+  /// keystroke. The note row and cloud outbox mutation are committed atomically.
+  Future<void> autosaveNote(KoinlyNote note) async {
+    await database.upsertAutosavedNote(note);
+
+    final existingIndex = notes.indexWhere((item) => item.id == note.id);
+    if (existingIndex >= 0) {
+      notes[existingIndex] = note;
+    } else {
+      notes.add(note);
+    }
+    notes.sort((a, b) {
+      final updated = b.updatedOn.compareTo(a.updatedOn);
+      return updated != 0 ? updated : b.createdOn.compareTo(a.createdOn);
+    });
+    queueNoteAutosaveCloudSync();
+  }
+
+  Future<void> deleteAutosavedNote(String id) async {
+    await database.deleteAutosavedNote(id);
+    notes.removeWhere((note) => note.id == id);
+    queueNoteAutosaveCloudSync();
+  }
+
+  void publishAutosavedNotes() => notifyListeners();
 
   Future<void> toggleNoteBookmark(KoinlyNote note) async {
     await saveNote(note.copyWith(bookmarked: !note.bookmarked, updatedOn: DateTime.now()));
@@ -13631,7 +13844,7 @@ class NoteEditorScreen extends StatefulWidget {
   State<NoteEditorScreen> createState() => _NoteEditorScreenState();
 }
 
-class _NoteEditorScreenState extends State<NoteEditorScreen> {
+class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBindingObserver {
   final title = TextEditingController();
   late final NoteRichTextController body;
   final bodyFocus = FocusNode();
@@ -13642,26 +13855,186 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   bool draft = false;
   bool toolsOpen = false;
   late DateTime noteDate;
+  late final String _noteId;
+  AppController? _appController;
+  Future<void>? _autosaveFuture;
+  KoinlyNote? _queuedAutosaveNote;
+  String? _queuedAutosaveSignature;
+  bool _queuedAutosaveDelete = false;
+  bool _noteMayExistLocally = false;
+  Object? _autosaveError;
+  bool _closing = false;
+  bool _deleting = false;
+  String? _lastPersistedSignature;
 
   @override
   void initState() {
     super.initState();
+    _noteId = widget.note?.id ?? _uuid.v4();
     title.text = widget.note?.title ?? '';
     body = NoteRichTextController.fromStored(widget.note?.body ?? '');
     bookmarked = widget.note?.bookmarked ?? false;
     draft = widget.note?.draft ?? false;
     noteDate = widget.note?.createdOn ?? DateTime.now();
+    _noteMayExistLocally = widget.note != null;
     _undo.add(body.toStoredBody());
     body.addListener(_recordBodyHistory);
+    title.addListener(_queueAutosaveFromEditor);
+    _lastPersistedSignature = _currentAutosaveSignature();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appController ??= context.read<AppController>();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushAutosave());
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    title.removeListener(_queueAutosaveFromEditor);
     body.removeListener(_recordBodyHistory);
+    // Text/body changes are queued immediately, so any already-captured write
+    // remains safe to finish even while this route is being disposed.
+    if (!_deleting) _ensureAutosaveRunning();
     title.dispose();
     body.dispose();
     bodyFocus.dispose();
     super.dispose();
+  }
+
+  bool get _isBlankNewNote =>
+      widget.note == null && title.text.trim().isEmpty && body.text.trim().isEmpty;
+
+  String _currentAutosaveSignature() => jsonEncode(<Object?>[
+        title.text.trim().isEmpty ? 'Untitled note' : title.text.trim(),
+        body.toStoredBody(),
+        bookmarked,
+        draft,
+        noteDate.millisecondsSinceEpoch,
+      ]);
+
+  KoinlyNote _currentAutosaveNote() {
+    final noteTitle = title.text.trim();
+    return KoinlyNote(
+      id: _noteId,
+      title: noteTitle.isEmpty ? 'Untitled note' : noteTitle,
+      body: body.toStoredBody(),
+      bookmarked: bookmarked,
+      draft: draft,
+      createdOn: noteDate,
+      updatedOn: DateTime.now(),
+    );
+  }
+
+  void _queueAutosaveFromEditor() {
+    if (_deleting || _appController == null) return;
+    final signature = _currentAutosaveSignature();
+    if (_queuedAutosaveSignature == null && signature == _lastPersistedSignature) return;
+
+    _autosaveError = null;
+    _queuedAutosaveSignature = signature;
+    if (_isBlankNewNote) {
+      if (!_noteMayExistLocally) {
+        _queuedAutosaveNote = null;
+        _queuedAutosaveDelete = false;
+        _queuedAutosaveSignature = null;
+        _lastPersistedSignature = signature;
+        return;
+      }
+      _queuedAutosaveNote = null;
+      _queuedAutosaveDelete = true;
+    } else {
+      _noteMayExistLocally = true;
+      _queuedAutosaveNote = _currentAutosaveNote();
+      _queuedAutosaveDelete = false;
+    }
+    _ensureAutosaveRunning();
+  }
+
+  void _ensureAutosaveRunning() {
+    if (_autosaveFuture != null || _queuedAutosaveSignature == null || _appController == null) return;
+    final future = _drainAutosaveQueue();
+    _autosaveFuture = future;
+    unawaited(future.whenComplete(() {
+      if (identical(_autosaveFuture, future)) _autosaveFuture = null;
+      if (_queuedAutosaveSignature != null && _autosaveError == null) {
+        _ensureAutosaveRunning();
+      }
+    }));
+  }
+
+  Future<void> _drainAutosaveQueue() async {
+    final state = _appController;
+    if (state == null) return;
+    while (_queuedAutosaveSignature != null) {
+      final signature = _queuedAutosaveSignature!;
+      final note = _queuedAutosaveNote;
+      final shouldDelete = _queuedAutosaveDelete;
+      _queuedAutosaveSignature = null;
+      _queuedAutosaveNote = null;
+      _queuedAutosaveDelete = false;
+      try {
+        if (shouldDelete) {
+          await state.deleteAutosavedNote(_noteId);
+          _noteMayExistLocally = false;
+        } else if (note != null) {
+          await state.autosaveNote(note);
+          _noteMayExistLocally = true;
+        }
+        _lastPersistedSignature = signature;
+      } catch (error, stackTrace) {
+        _autosaveError = error;
+        debugPrint('Note autosave failed: $error\n$stackTrace');
+        if (_queuedAutosaveSignature == null) {
+          _queuedAutosaveSignature = signature;
+          _queuedAutosaveNote = note;
+          _queuedAutosaveDelete = shouldDelete;
+        }
+        return;
+      }
+    }
+  }
+
+  Future<bool> _flushAutosave() async {
+    if (_deleting) return true;
+    _queueAutosaveFromEditor();
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (_queuedAutosaveSignature == null && _autosaveFuture == null) return true;
+      if (_autosaveFuture == null) {
+        _autosaveError = null;
+        _ensureAutosaveRunning();
+      }
+      final active = _autosaveFuture;
+      if (active != null) await active;
+      if (_queuedAutosaveSignature == null && _autosaveError == null) return true;
+    }
+    return _queuedAutosaveSignature == null && _autosaveError == null;
+  }
+
+  Future<void> _closeEditor() async {
+    if (_closing || _deleting) return;
+    _closing = true;
+    final saved = await _flushAutosave();
+    if (!mounted) return;
+    if (!saved) {
+      _closing = false;
+      showSnack(context, 'Could not save the latest note changes. Please try again.');
+      return;
+    }
+    _appController?.publishAutosavedNotes();
+    Navigator.pop(context);
   }
 
   void _recordBodyHistory() {
@@ -13670,6 +14043,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       _undo.add(snapshot);
       _redo.clear();
       if (_undo.length > 60) _undo.removeAt(0);
+      _queueAutosaveFromEditor();
     }
   }
 
@@ -13677,6 +14051,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     body.removeListener(_recordBodyHistory);
     body.restoreStored(value);
     body.addListener(_recordBodyHistory);
+    _queueAutosaveFromEditor();
     setState(() {});
   }
 
@@ -13739,6 +14114,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     setState(() {
       noteDate = DateTime(picked.year, picked.month, picked.day, noteDate.hour, noteDate.minute);
     });
+    _queueAutosaveFromEditor();
   }
 
   Future<void> _pickNoteTime() async {
@@ -13747,6 +14123,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     setState(() {
       noteDate = DateTime(noteDate.year, noteDate.month, noteDate.day, picked.hour, picked.minute);
     });
+    _queueAutosaveFromEditor();
   }
 
   Future<void> _pickEmoji() async {
@@ -13775,35 +14152,29 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   void _toggleBookmark() {
     setState(() => bookmarked = !bookmarked);
+    _queueAutosaveFromEditor();
     showSnack(context, bookmarked ? 'Note bookmarked.' : 'Bookmark removed.');
   }
 
-  Future<void> _save() async {
-    final state = context.read<AppController>();
-    final noteTitle = title.text.trim();
-    final noteBodyText = body.text.trim();
-    final noteBody = body.toStoredBody();
-    if (noteTitle.isEmpty && noteBodyText.isEmpty) {
-      return showSnack(context, 'Write a title or note.');
-    }
-    final now = DateTime.now();
-    final note = KoinlyNote(
-      id: widget.note?.id ?? _uuid.v4(),
-      title: noteTitle.isEmpty ? 'Untitled note' : noteTitle,
-      body: noteBody,
-      bookmarked: bookmarked,
-      draft: draft,
-      createdOn: noteDate,
-      updatedOn: now,
-    );
-    await state.saveNote(note);
-    if (mounted) Navigator.pop(context);
+  void _toggleDraft() {
+    setState(() => draft = !draft);
+    _queueAutosaveFromEditor();
   }
 
   Future<void> _delete() async {
     final note = widget.note;
-    if (note == null) return;
-    await context.read<AppController>().deleteNote(note.id);
+    if (note == null || _deleting) return;
+    _deleting = true;
+    _queuedAutosaveSignature = null;
+    _queuedAutosaveNote = null;
+    _queuedAutosaveDelete = false;
+    final active = _autosaveFuture;
+    if (active != null) await active;
+    _queuedAutosaveSignature = null;
+    _queuedAutosaveNote = null;
+    _queuedAutosaveDelete = false;
+    _autosaveError = null;
+    await (_appController ?? context.read<AppController>()).deleteNote(note.id);
     if (mounted) Navigator.pop(context);
   }
 
@@ -13815,8 +14186,19 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     final sidePadding = compact ? 28.0 : 38.0;
     final circleSize = compact ? 48.0 : 58.0;
     final chipHeight = compact ? 46.0 : 58.0;
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (keyboardVisible) {
+          FocusManager.instance.primaryFocus?.unfocus();
+          return;
+        }
+        unawaited(_closeEditor());
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
@@ -13828,7 +14210,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     tooltip: 'Close',
                     icon: Icons.close_rounded,
                     size: circleSize,
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _closeEditor,
                   ),
                   SizedBox(width: compact ? 8 : 10),
                   _NoteCircleButton(
@@ -13856,14 +14238,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     clipBehavior: Clip.antiAlias,
                     onSelected: (value) {
-                      if (value == 'save') _save();
                       if (value == 'delete') _delete();
                       if (value == 'title') title.selection = TextSelection(baseOffset: 0, extentOffset: title.text.length);
                       if (value == 'bookmark') _toggleBookmark();
-                      if (value == 'draft') setState(() => draft = !draft);
+                      if (value == 'draft') _toggleDraft();
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'save', height: 44, padding: EdgeInsets.zero, child: _NoteMenuItem(icon: Icons.save_rounded, label: 'Save')),
                       PopupMenuItem(
                         value: 'bookmark',
                         height: 44,
@@ -13990,6 +14370,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 ),
               ),
           ],
+        ),
         ),
       ),
     );
@@ -20289,6 +20670,15 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
   }
 }
 
+enum _SyncAccountSheetActionType { switchAccount, addAccount, removeAccount }
+
+class _SyncAccountSheetAction {
+  const _SyncAccountSheetAction(this.type, [this.account]);
+
+  final _SyncAccountSheetActionType type;
+  final SavedSyncAccount? account;
+}
+
 class MultiDeviceSyncScreen extends StatefulWidget {
   const MultiDeviceSyncScreen({
     super.key,
@@ -20503,8 +20893,9 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
     );
     if (confirmed != true) return;
     final state = context.read<AppController>();
+    final cancellationSerial = state.cloudSyncCancellationSerial;
     await state.syncFromCloud();
-    if (!mounted) return;
+    if (!mounted || cancellationSerial != state.cloudSyncCancellationSerial) return;
     showSnack(context, state.cloudSyncError == null ? 'Cloud data merged with this device.' : state.cloudSyncError!);
   }
 
@@ -20514,8 +20905,9 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
       showSnack(context, 'Sync is already running. Please wait a moment.');
       return;
     }
+    final cancellationSerial = state.cloudSyncCancellationSerial;
     await state.syncToCloud(force: true);
-    if (!mounted) return;
+    if (!mounted || cancellationSerial != state.cloudSyncCancellationSerial) return;
     const successMessage = 'Local and cloud changes merged successfully.';
     showSnack(context, state.cloudSyncError == null ? successMessage : state.cloudSyncError!);
   }
@@ -20523,7 +20915,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
   Future<void> _openAccountSwitcher() async {
     final state = context.read<AppController>();
     final accounts = [...state.savedSyncAccounts]..sort((a, b) => b.lastUsedAt.compareTo(a.lastUsedAt));
-    final selected = await showModalBottomSheet<Object>(
+    final action = await showModalBottomSheet<_SyncAccountSheetAction>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -20543,24 +20935,54 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                 leading: Icon(account.id == state.activeSyncAccountProfileId ? Icons.check_circle_rounded : Icons.account_circle_rounded),
                 title: Text(account.username),
                 subtitle: Text(CloudSyncService.normalizeApiBaseUrl(account.workerUrl).replaceFirst('https://', '')),
-                trailing: account.id == state.activeSyncAccountProfileId ? const Text('Current') : null,
-                onTap: account.id == state.activeSyncAccountProfileId ? null : () => Navigator.pop(sheetContext, account),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (account.id == state.activeSyncAccountProfileId) ...[
+                      const Text('Current'),
+                      const SizedBox(width: 4),
+                    ],
+                    IconButton(
+                      tooltip: 'Delete saved account',
+                      onPressed: () => Navigator.pop(
+                        sheetContext,
+                        _SyncAccountSheetAction(_SyncAccountSheetActionType.removeAccount, account),
+                      ),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                  ],
+                ),
+                onTap: account.id == state.activeSyncAccountProfileId
+                    ? null
+                    : () => Navigator.pop(
+                          sheetContext,
+                          _SyncAccountSheetAction(_SyncAccountSheetActionType.switchAccount, account),
+                        ),
               ),
             ListTile(
               leading: const Icon(Icons.person_add_alt_rounded),
               title: const Text('Add another account'),
-              onTap: () => Navigator.pop(sheetContext, 'add'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                const _SyncAccountSheetAction(_SyncAccountSheetActionType.addAccount),
+              ),
             ),
           ],
         ),
       ),
     );
-    if (!mounted || selected == null) return;
-    if (selected == 'add') {
+    if (!mounted || action == null) return;
+    if (action.type == _SyncAccountSheetActionType.addAccount) {
       await _showAddAccountDialog();
       return;
     }
-    final account = selected as SavedSyncAccount;
+    final account = action.account;
+    if (account == null) return;
+    if (action.type == _SyncAccountSheetActionType.removeAccount) {
+      await _confirmRemoveSavedAccount(account);
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -20581,6 +21003,44 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
       _usernameController.text = state.syncAccountUsername;
       _workerUrlController.text = state.selfHostedSyncApiBaseUrl;
       showSnack(context, 'Switched to ${state.syncAccountUsername}.');
+    } catch (error) {
+      if (mounted) showSnack(context, error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _confirmRemoveSavedAccount(SavedSyncAccount account) async {
+    final state = context.read<AppController>();
+    final isCurrent = account.id == state.activeSyncAccountProfileId;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete ${account.username} from this device?'),
+        content: Text(
+          isCurrent
+              ? 'This account is currently signed in. Removing it signs out on this device and removes its saved login. Local finance data stays on this device. The account and its cloud data are not deleted.'
+              : 'This removes the saved account and its login from this device only. The account and its data in the cloud are not deleted, and you can add it again later.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete from device'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      if (isCurrent) {
+        await state.logoutSyncAccount(keepLocalData: true);
+        if (!mounted) return;
+        _usernameController.clear();
+        _passwordController.clear();
+        setState(() => _workerCardExpanded = true);
+      } else {
+        await state.removeSavedSyncAccount(account.id);
+      }
+      if (mounted) showSnack(context, '${account.username} removed from this device. Cloud data remains safe.');
     } catch (error) {
       if (mounted) showSnack(context, error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', ''));
     }
@@ -20768,6 +21228,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
     final state = context.watch<AppController>();
     final signedIn = state.cloudSyncEnabled && state.syncAccountUsername.isNotEmpty;
     final busy = state.cloudSyncOperationBusy || _endpointBusy || state.workerAutoUpdateBusy;
+    final accountActionBusy = state.syncAuthBusy || _endpointBusy || state.workerAutoUpdateBusy;
     const uploadButtonLabel = 'Upload local changes';
     final backendConfigured = _isWorkerActive(state);
     return PageScaffold(
@@ -20982,13 +21443,13 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: busy ? null : _openAccountSwitcher,
+                    onPressed: accountActionBusy ? null : _openAccountSwitcher,
                     icon: const Icon(Icons.swap_horiz_rounded),
                     label: const Text('Switch account'),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: busy ? null : _confirmSignOut,
+                    onPressed: accountActionBusy ? null : _confirmSignOut,
                     icon: const Icon(Icons.logout_rounded),
                     label: const Text('Sign out'),
                   ),

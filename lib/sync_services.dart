@@ -144,6 +144,11 @@ class KoinlySyncApi {
     staleClient.close();
   }
 
+  /// Cancels in-flight sync HTTP requests and immediately replaces the shared
+  /// client. Account transitions use this so a long cloud restore cannot keep
+  /// the user trapped on the current account.
+  static void cancelPendingRequests() => _resetHttpClient();
+
   final String baseUrl;
 
   Uri _uri(String path, [Map<String, String>? query]) => Uri.parse('${CloudSyncService.normalizeApiBaseUrl(baseUrl)}$path').replace(queryParameters: query);

@@ -1,3 +1,17 @@
+## [1.0.1195] - 2026-09-28
+
+- Notes now save automatically while the user types or changes note metadata; the Note editor no longer requires a manual Save action.
+- Added immediate local persistence with a coalesced cloud-sync outbox update so rapid edits keep the newest note state without reloading every finance table on each keystroke.
+- Note edits are flushed when leaving the editor and when the app becomes inactive, paused, hidden, or detached, reducing the chance of losing the latest text when the app is closed or backgrounded.
+- Added stable IDs for newly created notes, safe blank-new-note cleanup, and autosave/delete race protection.
+- Bumped synchronized app/Worker release metadata to `1.0.1195+239`.
+
+## [1.0.1194] - 2026-09-28
+
+- Added per-account removal controls to the Account & sync account switcher. Removing a saved account clears only its local saved login; cloud account data remains untouched.
+- Account switching and sign-out are now available while Restore cloud copy is running. Koinly cancels the active network sync, waits for any in-flight local database write to reach a safe boundary, then performs the account transition.
+- Bumped synchronized app/Worker release metadata to `1.0.1194+238`.
+
 ## [1.0.1193] - 2026-09-25
 
 - Fixed Notes not appearing on other devices signed into the same self-hosted sync account: notes now participate in incremental upload, remote pull, and realtime update notifications.

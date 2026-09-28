@@ -49,4 +49,23 @@ void main() {
     expect(mainSource, contains('store.read(workerUrl: currentUrl)'));
     expect(mainSource, contains('clear(workerUrl: cloudSyncApiBaseUrl)'));
   });
+
+  test('account switcher can remove saved users and account actions stay available during restore', () {
+    final mainSource = File('lib/main.dart').readAsStringSync();
+    final syncSource = File('lib/sync_services.dart').readAsStringSync();
+
+    expect(mainSource, contains('Future<void> removeSavedSyncAccount(String profileId)'));
+    expect(mainSource, contains("tooltip: 'Delete saved account'"));
+    expect(mainSource, contains('Icons.delete_outline_rounded'));
+    expect(mainSource, contains('The account and its data in the cloud are not deleted'));
+    expect(mainSource, contains('Cloud data remains safe.'));
+
+    expect(mainSource, contains('final accountActionBusy = state.syncAuthBusy || _endpointBusy || state.workerAutoUpdateBusy;'));
+    expect(mainSource, contains('onPressed: accountActionBusy ? null : _openAccountSwitcher'));
+    expect(mainSource, contains('onPressed: accountActionBusy ? null : _confirmSignOut'));
+    expect(mainSource, contains('Future<void> _cancelActiveCloudSyncForAccountTransition()'));
+    expect(mainSource, contains('KoinlySyncApi.cancelPendingRequests();'));
+    expect(mainSource, contains('_throwIfCloudSyncCancelled(cancellationSerial);'));
+    expect(syncSource, contains('static void cancelPendingRequests() => _resetHttpClient();'));
+  });
 }
