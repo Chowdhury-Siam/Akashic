@@ -8,9 +8,12 @@ void main() {
 
     expect(source, contains('class _InlineRangeCalendar'));
     expect(source, contains('class _InlineRangeCalendarDay'));
-    expect(source, contains('final drawLeft = inRange && !start'));
-    expect(source, contains('final drawRight = inRange && !end'));
-    expect(source, contains('color: kSleekAccent.withOpacity(.92)'));
+    expect(source, contains('final roundRangeLeft = inRange && (start || rowColumn == 0)'));
+    expect(source, contains('final roundRangeRight = inRange && (end || rowColumn == 6)'));
+    expect(source, contains('if (inRange)'));
+    expect(source, contains('color: kSleekAccent.withOpacity(.14)'));
+    expect(source, contains('BorderRadius.horizontal('));
+    expect(source, isNot(contains('height: 4,')));
     expect(source, contains('border: endpoint && !active ? Border.all(color: kSleekAccent, width: 2) : null'));
     expect(source, contains('_InlineRangeCalendar('));
     expect(source, isNot(contains('child: CalendarDatePicker(')));

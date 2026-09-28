@@ -1,3 +1,15 @@
+## [1.0.1203] - 2026-09-28
+
+- Fixed bookmarked Notes losing their pinned position after another note was edited or autosaved.
+- Note ordering now always prioritizes bookmarked notes, then sorts within each group by most recently updated/created. The same ordering is enforced for database reloads, live autosave updates, and filtered Note-list results.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1203+247`.
+
+## [1.0.1202] - 2026-09-28
+
+- Reworked the inline transaction/custom date-range selection highlight so the selected span uses a soft continuous filled band instead of thin segmented underscore-like connector lines.
+- Rounded the range band cleanly at the start/end dates and at week-row boundaries while keeping the existing endpoint circles and date-selection behavior.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1202+246`.
+
 ## [1.0.1201] - 2026-09-28
 
 - Fixed the Add transaction dialog getting stuck on the three-dot saving loader after the local transaction had already been written.

@@ -800,7 +800,7 @@ class KoinlyDatabase {
   Future<List<KoinlyNote>> notes() async {
     final maps = await (await db).query(
       'notes',
-      orderBy: 'updated_on DESC, created_on DESC',
+      orderBy: 'bookmarked DESC, updated_on DESC, created_on DESC',
     );
     return maps.map(KoinlyNote.fromMap).toList();
   }
@@ -6476,10 +6476,7 @@ class AppController extends ChangeNotifier {
     } else {
       notes.add(note);
     }
-    notes.sort((a, b) {
-      final updated = b.updatedOn.compareTo(a.updatedOn);
-      return updated != 0 ? updated : b.createdOn.compareTo(a.createdOn);
-    });
+    notes.sort(_compareNotesForList);
     queueNoteAutosaveCloudSync();
   }
 
@@ -9321,24 +9318,27 @@ class _InlineRangeCalendarDay extends StatelessWidget {
     final endpoint = start || end;
     final active = isActive(value);
     final inRange = isInRange(value);
-    final drawLeft = inRange && !start && rowColumn != 0;
-    final drawRight = inRange && !end && rowColumn != 6;
+    final roundRangeLeft = inRange && (start || rowColumn == 0);
+    final roundRangeRight = inRange && (end || rowColumn == 6);
 
     final child = SizedBox(
       height: 44,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          if (drawLeft || drawRight)
+          if (inRange)
             Positioned(
-              left: drawLeft ? 0 : 22,
-              right: drawRight ? 0 : 22,
-              top: 20,
-              height: 4,
+              left: -0.5,
+              right: -0.5,
+              top: 6,
+              bottom: 6,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: kSleekAccent.withOpacity(.92),
-                  borderRadius: BorderRadius.circular(99),
+                  color: kSleekAccent.withOpacity(.14),
+                  borderRadius: BorderRadius.horizontal(
+                    left: roundRangeLeft ? const Radius.circular(18) : Radius.zero,
+                    right: roundRangeRight ? const Radius.circular(18) : Radius.zero,
+                  ),
                 ),
               ),
             ),
@@ -13603,6 +13603,12 @@ class NoteRichTextController extends TextEditingController {
 }
 // -----------------------------------------------------------------------------
 
+int _compareNotesForList(KoinlyNote a, KoinlyNote b) {
+  if (a.bookmarked != b.bookmarked) return a.bookmarked ? -1 : 1;
+  final updated = b.updatedOn.compareTo(a.updatedOn);
+  return updated != 0 ? updated : b.createdOn.compareTo(a.createdOn);
+}
+
 class NoteScreen extends StatefulWidget {
   const NoteScreen({super.key});
 
@@ -13627,7 +13633,8 @@ class _NoteScreenState extends State<NoteScreen> {
     var items = state.notes.where((note) {
       if (query.isEmpty) return true;
       return '${note.title} ${NoteRichTextController.plainTextFromStored(note.body)}'.toLowerCase().contains(query);
-    }).toList();
+    }).toList()
+      ..sort(_compareNotesForList);
     final recent = items.take(2).toList();
     final more = items.skip(2).toList();
     return PageScaffold(
