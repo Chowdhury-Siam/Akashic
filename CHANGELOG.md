@@ -1,3 +1,17 @@
+## [1.0.1201] - 2026-09-28
+
+- Fixed the Add transaction dialog getting stuck on the three-dot saving loader after the local transaction had already been written.
+- The root cause was the submit Future waiting for a full application reload, including unrelated category repair, starter-account cleanup, notes/subscriptions/budgets, and loan repository reads; background database work could delay that entire chain.
+- Transaction add/edit/delete now refresh only accounts and transactions after the local database mutation, then queue cloud sync separately without awaiting any network request.
+- Reduced sync-outbox work for ordinary transaction mutations by queuing only the accounts whose balances were actually touched (with a defensive full-account fallback if prior state is unavailable).
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1201+245`.
+
+## [1.0.1200] - 2026-09-28
+
+- Removed the Note editor's `Select title` action from the three-dot menu.
+- Kept normal title text selection available through the platform text-selection controls.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1200+244`.
+
 ## [1.0.1199] - 2026-09-28
 
 - Fixed Note editor text selection so Android highlights stay tightly aligned to the selected glyphs instead of stretching through blank line space.

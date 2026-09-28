@@ -6553,25 +6553,69 @@ class AppController extends ChangeNotifier {
     await reload(queueSync: true);
   }
 
+  /// Refreshes only the state a normal transaction mutation can change.
+  ///
+  /// TransactionEditor keeps its submit button in a busy state until these
+  /// methods complete. The old path called [reload], which also ran category
+  /// repair, starter-account cleanup, note/subscription/budget reloads and loan
+  /// repository queries. Those unrelated tasks could queue behind background
+  /// sync/database work and leave the transaction button showing the three-dot
+  /// loader long after the local transaction itself had already been committed.
+  Future<void> _refreshTransactionProjection({bool queueSync = false}) async {
+    accounts = await database.accounts();
+    transactions = await database.transactions();
+    _rebuildLookupCaches();
+    notifyListeners();
+    if (queueSync) queueCloudSync();
+  }
+
+  Future<void> _enqueueTouchedTransactionAccounts(Iterable<String?> accountIds) async {
+    final seen = <String>{};
+    for (final rawId in accountIds) {
+      final accountId = rawId?.trim() ?? '';
+      if (accountId.isEmpty || !seen.add(accountId)) continue;
+      await database.enqueueTableRow('accounts', accountId);
+    }
+  }
+
   Future<void> addTransaction(MoneyTransaction tx) async {
+    // Persist locally first. Cloud upload is only queued after the local row,
+    // balance mutation and sync-outbox entries are ready; no network request is
+    // awaited by the transaction dialog.
     await database.addTransaction(tx);
     await database.enqueueTableRow('transactions', tx.id);
-    await database.enqueueRowsForTable('accounts');
-    await reload(queueSync: true);
+    await _enqueueTouchedTransactionAccounts([tx.fromAccountId, tx.toAccountId]);
+    await _refreshTransactionProjection(queueSync: true);
   }
 
   Future<void> updateTransaction(MoneyTransaction tx) async {
+    final previous = transactions.where((item) => item.id == tx.id).firstOrNull;
     await database.updateTransaction(tx);
     await database.enqueueTableRow('transactions', tx.id);
-    await database.enqueueRowsForTable('accounts');
-    await reload(queueSync: true);
+    if (previous == null) {
+      // Defensive fallback for an externally refreshed/stale controller.
+      await database.enqueueRowsForTable('accounts');
+    } else {
+      await _enqueueTouchedTransactionAccounts([
+        previous.fromAccountId,
+        previous.toAccountId,
+        tx.fromAccountId,
+        tx.toAccountId,
+      ]);
+    }
+    await _refreshTransactionProjection(queueSync: true);
   }
 
   Future<void> deleteTransaction(String id) async {
+    final previous = transactions.where((item) => item.id == id).firstOrNull;
     await database.enqueueDelete('transactions', id);
     await database.deleteTransaction(id);
-    await database.enqueueRowsForTable('accounts');
-    await reload(queueSync: true);
+    if (previous == null) {
+      await database.enqueueRowsForTable('accounts');
+    } else {
+      await _enqueueTouchedTransactionAccounts([previous.fromAccountId, previous.toAccountId]);
+    }
+    await _refreshTransactionProjection(queueSync: true);
   }
 
   Future<void> saveBudget(Budget budget) async {
@@ -14240,7 +14284,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                     clipBehavior: Clip.antiAlias,
                     onSelected: (value) {
                       if (value == 'delete') _delete();
-                      if (value == 'title') title.selection = TextSelection(baseOffset: 0, extentOffset: title.text.length);
                       if (value == 'bookmark') _toggleBookmark();
                       if (value == 'draft') _toggleDraft();
                     },
@@ -14257,7 +14300,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                         padding: EdgeInsets.zero,
                         child: _NoteMenuItem(icon: draft ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, label: draft ? 'Draft' : 'Mark draft'),
                       ),
-                      const PopupMenuItem(value: 'title', height: 44, padding: EdgeInsets.zero, child: _NoteMenuItem(icon: Icons.title_rounded, label: 'Select title')),
                       if (widget.note != null) const PopupMenuDivider(height: 8),
                       if (widget.note != null) const PopupMenuItem(value: 'delete', height: 44, padding: EdgeInsets.zero, child: _NoteMenuItem(icon: Icons.delete_outline_rounded, label: 'Delete')),
                     ],
