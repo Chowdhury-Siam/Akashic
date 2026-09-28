@@ -502,6 +502,9 @@ class KoinlyScrollBehavior extends MaterialScrollBehavior {
       context.findAncestorStateOfType<EditableTextState>() != null ||
       context.findAncestorWidgetOfExactType<EditableText>() != null;
 
+  bool _insideTimePickerDialog(BuildContext context) =>
+      context.findAncestorWidgetOfExactType<TimePickerDialog>() != null;
+
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
     // TextField/EditableText owns a private Scrollable for caret visibility.
@@ -510,6 +513,14 @@ class KoinlyScrollBehavior extends MaterialScrollBehavior {
     // the desktop "text sliding/disappearing" bug. Keep editing scrollables
     // clamped and only scrollable when their content actually overflows.
     if (_insideEditableText(context)) return const ClampingScrollPhysics();
+
+    // Flutter's TimePickerDialog contains internal scrollables for constrained
+    // layouts/accessibility. Koinly's global AlwaysScrollable physics made the
+    // otherwise fixed clock surface drag/bounce even when all of its content
+    // already fit. Keep the clock popup fixed; hour/minute selection still uses
+    // the dial's own tap/drag gestures and the AM/PM controls normally.
+    if (_insideTimePickerDialog(context)) return const NeverScrollableScrollPhysics();
+
     if (kIsDesktopApp) return const KoinlyDesktopScrollPhysics(parent: AlwaysScrollableScrollPhysics());
     return const KoinlyMobileScrollPhysics(parent: AlwaysScrollableScrollPhysics());
   }
@@ -523,7 +534,7 @@ class KoinlyScrollBehavior extends MaterialScrollBehavior {
   Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
     // EditableText's internal Scrollable must stay pixel-stable while selecting
     // text. The decorative desktop edge spring is only for page/list scrolling.
-    if (_insideEditableText(context)) return child;
+    if (_insideEditableText(context) || _insideTimePickerDialog(context)) return child;
 
     // Keep the actual desktop scroll offset fully native. A lightweight visual
     // edge spring is layered on top so mouse-wheel input also feels elastic at

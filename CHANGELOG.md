@@ -1,3 +1,9 @@
+## [1.0.1204] - 2026-09-28
+
+- Fixed the Material time-picker clock popup inheriting Koinly's app-wide always-scrollable/elastic physics, which let the otherwise fixed clock surface move or bounce.
+- Time-picker dialogs now use non-scrollable physics and skip desktop elastic-scroll decoration while preserving normal hour/minute dial interaction and AM/PM controls.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1204+248`.
+
 ## [1.0.1203] - 2026-09-28
 
 - Fixed bookmarked Notes losing their pinned position after another note was edited or autosaved.
