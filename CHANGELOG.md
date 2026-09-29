@@ -1,8 +1,23 @@
-## [1.0.1205] - 2026-09-29
+## [1.0.1208] - 2026-09-29
 
-- Changed Koinly's project license from Apache License 2.0 to the GNU General Public License v3.0 (GPL-3.0).
-- Updated the README license badge/section and the in-app license subtitle to reflect GPL v3 while preserving third-party dependency license notices.
-- Bumped synchronized app/Android/Worker release metadata to `1.0.1205+249`.
+- Added the same global show/hide-amount eye control used on the Home balance card to the Transaction title, Loans Portfolio header, Categories breakdown header, and Analysis cash-flow header.
+- The visibility state remains shared across the app, so toggling the eye from any of these screens immediately hides or reveals monetary values everywhere that uses Koinly amount formatting.
+- Preserved the project-wide GNU GPL v3.0 license metadata and notices while carrying forward the desktop updater and floating-action-button changes.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1208+252`.
+
+## [1.0.1207] - 2026-09-29
+
+- Removed the top-right add button from the Loans screen and moved loan creation to a bottom-right floating action button, matching the Transaction section style.
+- Removed the top-right add button from Manage categories and added a bottom-right floating action button for creating categories.
+- Extended PageScaffold with reusable floating action button support for pages that need Transaction-style bottom actions.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1207+251`.
+
+## [1.0.1206] - 2026-09-29
+
+- Added in-app Linux and macOS updater flows so desktop users can download and open the correct release package directly from the update dialog instead of being sent only to the GitHub release page.
+- Linux now prefers the matching AppImage when available, falls back to the portable archive, and remembers a pending downloaded package for quick reopen.
+- macOS now downloads the installer package in-app, reopens pending downloaded installers, and keeps desktop update cleanup/version tracking aligned with Windows and Android.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1206+250`.
 
 ## [1.0.1204] - 2026-09-28
 

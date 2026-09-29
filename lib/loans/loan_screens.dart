@@ -101,12 +101,24 @@ class _LoansScreenState extends State<LoansScreen> {
           onPressed: () => showLoanPreferencesSheet(context),
           icon: const Icon(Icons.tune_rounded),
         ),
-        IconButton(
-          tooltip: 'New loan',
-          onPressed: () => showLoanEditorSheet(context, defaultDirection: filter == _LoanFilter.pay ? LoanDirection.borrowed : LoanDirection.lent),
-          icon: const Icon(Icons.add_rounded),
-        ),
       ],
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom: AppBreakpoints.isExpanded(context) ? 12 : 84,
+        ),
+        child: MotionTouchFeedback(
+          scale: .958,
+          child: FloatingActionButton.extended(
+            heroTag: 'loansAddFab',
+            onPressed: () => showLoanEditorSheet(
+              context,
+              defaultDirection: filter == _LoanFilter.pay ? LoanDirection.borrowed : LoanDirection.lent,
+            ),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('New loan'),
+          ),
+        ),
+      ),
       child: ResponsiveListContent(
         itemCount: items.length,
         header: [
@@ -192,7 +204,10 @@ class _LoanSummaryHero extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Portfolio', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900))),
+              Text('Portfolio', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(width: 7),
+              const AmountVisibilityToggle(size: 17, padding: EdgeInsets.all(3)),
+              const Spacer(),
               if (summary.overdueCount > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

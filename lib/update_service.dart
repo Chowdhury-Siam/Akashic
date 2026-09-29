@@ -343,6 +343,28 @@ class ReleaseAssetMatcher {
     return _windowsInstallerRank(best.name) >= 50 ? null : best;
   }
 
+  static ReleaseAsset? preferredLinuxInstaller(GithubRelease release) {
+    final candidates = release.assets.where((asset) {
+      final name = asset.name.toLowerCase();
+      return name.contains('linux') && (name.endsWith('.appimage') || name.endsWith('.tar.gz'));
+    }).toList();
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => _linuxInstallerRank(a.name).compareTo(_linuxInstallerRank(b.name)));
+    final best = candidates.first;
+    return _linuxInstallerRank(best.name) >= 80 ? null : best;
+  }
+
+  static ReleaseAsset? preferredMacOsInstaller(GithubRelease release) {
+    final candidates = release.assets.where((asset) {
+      final name = asset.name.toLowerCase();
+      return name.contains('macos') && (name.endsWith('.dmg') || name.endsWith('.zip'));
+    }).toList();
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => _macOsInstallerRank(a.name).compareTo(_macOsInstallerRank(b.name)));
+    final best = candidates.first;
+    return _macOsInstallerRank(best.name) >= 80 ? null : best;
+  }
+
   static bool isTrustedReleaseAssetUrl(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
@@ -353,6 +375,35 @@ class ReleaseAssetMatcher {
 
   static bool _matchesAny(String name, List<String> needles) => needles.any(name.contains);
 
+  static String _currentDesktopArchitecture() {
+    final raw = Platform.version.toLowerCase();
+    if (_matchesAny(raw, const ['arm64', 'aarch64'])) return 'arm64';
+    if (_matchesAny(raw, const ['x86_64', 'x64', 'amd64'])) return 'x64';
+    if (_matchesAny(raw, const ['armv7', 'arm32', 'armeabi'])) return 'arm32';
+    return 'unknown';
+  }
+
+  static int _desktopArchPenalty(String name) {
+    if (name.contains('universal')) return -2;
+    final current = _currentDesktopArchitecture();
+    switch (current) {
+      case 'x64':
+        if (_matchesAny(name, const ['x86_64', 'x86-64', 'x64', 'amd64'])) return 0;
+        if (_matchesAny(name, const ['arm64', 'aarch64', 'arm32', 'armv7', 'armeabi'])) return 40;
+        return 6;
+      case 'arm64':
+        if (_matchesAny(name, const ['arm64', 'aarch64'])) return 0;
+        if (_matchesAny(name, const ['x86_64', 'x86-64', 'x64', 'amd64', 'arm32', 'armv7', 'armeabi'])) return 40;
+        return 6;
+      case 'arm32':
+        if (_matchesAny(name, const ['arm32', 'armv7', 'armeabi'])) return 0;
+        if (_matchesAny(name, const ['x86_64', 'x86-64', 'x64', 'amd64', 'arm64', 'aarch64'])) return 40;
+        return 6;
+      default:
+        return 10;
+    }
+  }
+
   static int _windowsInstallerRank(String name) {
     final lower = name.toLowerCase();
     if (!lower.endsWith('.exe')) return 100;
@@ -360,6 +411,36 @@ class ReleaseAssetMatcher {
     if (lower.contains('installer')) return 1;
     if (lower.contains('install')) return 2;
     return 50;
+  }
+
+  static int _linuxInstallerRank(String name) {
+    final lower = name.toLowerCase();
+    var score = 0;
+    if (lower.endsWith('.appimage')) {
+      score += 0;
+    } else if (lower.endsWith('.tar.gz')) {
+      score += 12;
+    } else {
+      score += 80;
+    }
+    score += _desktopArchPenalty(lower);
+    if (!lower.contains('linux')) score += 25;
+    return score;
+  }
+
+  static int _macOsInstallerRank(String name) {
+    final lower = name.toLowerCase();
+    var score = 0;
+    if (lower.endsWith('.dmg')) {
+      score += 0;
+    } else if (lower.endsWith('.zip')) {
+      score += 8;
+    } else {
+      score += 80;
+    }
+    score += _desktopArchPenalty(lower);
+    if (!lower.contains('macos')) score += 25;
+    return score;
   }
 }
 
@@ -515,17 +596,44 @@ class UpdateDownloadStore {
     return File(p.join(dir.path, name));
   }
 
+  static Future<File> desktopReleaseAssetFile({
+    required GithubRelease release,
+    required ReleaseAsset asset,
+    required String fallbackName,
+  }) async {
+    final dir = await updatesDirectory();
+    final version = safeFileName(release.displayVersion);
+    final assetName = safeFileName(asset.name.isEmpty ? fallbackName : asset.name);
+    final name = assetName.contains(version) ? assetName : 'Koinly-v$version-$assetName';
+    return File(p.join(dir.path, name));
+  }
 
   static Future<File> windowsInstallerFile({
     required GithubRelease release,
     required ReleaseAsset asset,
-  }) async {
-    final dir = await updatesDirectory();
-    final version = safeFileName(release.displayVersion);
-    final assetName = safeFileName(asset.name.isEmpty ? 'Koinly-Setup.exe' : asset.name);
-    final name = assetName.contains(version) ? assetName : 'Koinly-v$version-$assetName';
-    return File(p.join(dir.path, name));
-  }
+  }) => desktopReleaseAssetFile(
+    release: release,
+    asset: asset,
+    fallbackName: 'Koinly-Setup.exe',
+  );
+
+  static Future<File> linuxReleaseFile({
+    required GithubRelease release,
+    required ReleaseAsset asset,
+  }) => desktopReleaseAssetFile(
+    release: release,
+    asset: asset,
+    fallbackName: 'Koinly.AppImage',
+  );
+
+  static Future<File> macOsReleaseFile({
+    required GithubRelease release,
+    required ReleaseAsset asset,
+  }) => desktopReleaseAssetFile(
+    release: release,
+    asset: asset,
+    fallbackName: 'Koinly.dmg',
+  );
 
   static Future<void> cleanupPartialFiles({Directory? directory}) async {
     final dir = directory ?? await updatesDirectory();
@@ -543,34 +651,65 @@ class UpdateDownloadStore {
     required String keepVersion,
     Directory? directory,
   }) async {
-    final dir = directory ?? await updatesDirectory();
-    if (!await dir.exists()) return;
-    final keep = safeFileName(keepVersion);
-    await for (final entity in dir.list()) {
-      if (entity is File && (entity.path.endsWith('.apk') || entity.path.endsWith('.part')) && !p.basename(entity.path).contains(keep)) {
-        try {
-          await entity.delete();
-        } catch (_) {}
-      }
-    }
+    await _cleanupStaleReleaseAssets(
+      keepVersion: keepVersion,
+      directory: directory,
+      extensions: const ['.apk', '.part'],
+    );
   }
 
   static Future<void> cleanupStaleWindowsUpdates({
     required String keepVersion,
     Directory? directory,
   }) async {
+    await _cleanupStaleReleaseAssets(
+      keepVersion: keepVersion,
+      directory: directory,
+      extensions: const ['.exe', '.part'],
+    );
+  }
+
+  static Future<void> cleanupStaleLinuxUpdates({
+    required String keepVersion,
+    Directory? directory,
+  }) async {
+    await _cleanupStaleReleaseAssets(
+      keepVersion: keepVersion,
+      directory: directory,
+      extensions: const ['.appimage', '.tar.gz', '.part'],
+    );
+  }
+
+  static Future<void> cleanupStaleMacOsUpdates({
+    required String keepVersion,
+    Directory? directory,
+  }) async {
+    await _cleanupStaleReleaseAssets(
+      keepVersion: keepVersion,
+      directory: directory,
+      extensions: const ['.dmg', '.zip', '.part'],
+    );
+  }
+
+  static Future<void> _cleanupStaleReleaseAssets({
+    required String keepVersion,
+    required List<String> extensions,
+    Directory? directory,
+  }) async {
     final dir = directory ?? await updatesDirectory();
     if (!await dir.exists()) return;
     final keep = safeFileName(keepVersion);
     await for (final entity in dir.list()) {
-      if (entity is File && (entity.path.toLowerCase().endsWith('.exe') || entity.path.endsWith('.part')) && !p.basename(entity.path).contains(keep)) {
-        try {
-          await entity.delete();
-        } catch (_) {}
-      }
+      if (entity is! File) continue;
+      final baseName = p.basename(entity.path);
+      final lowerPath = entity.path.toLowerCase();
+      final matches = extensions.any((extension) => lowerPath.endsWith(extension.toLowerCase()));
+      if (!matches || baseName.contains(keep)) continue;
+      try {
+        await entity.delete();
+      } catch (_) {}
     }
   }
-
 }
 
 class WindowsUpdateInstaller {
@@ -584,6 +723,71 @@ class WindowsUpdateInstaller {
       await Process.start(
         file.path,
         const <String>[],
+        mode: ProcessStartMode.detached,
+        runInShell: false,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+class LinuxUpdateInstaller {
+  const LinuxUpdateInstaller._();
+
+  static Future<bool> install(String path) async {
+    if (!Platform.isLinux) return false;
+    final file = File(path);
+    if (!await file.exists()) return false;
+    final lower = file.path.toLowerCase();
+
+    if (lower.endsWith('.appimage')) {
+      try {
+        await Process.run('chmod', ['+x', file.path]);
+      } catch (_) {}
+      try {
+        await Process.start(
+          file.path,
+          const <String>[],
+          mode: ProcessStartMode.detached,
+          runInShell: false,
+        );
+        return true;
+      } catch (_) {
+        // Fall back to the desktop opener below.
+      }
+    }
+
+    for (final command in const <List<String>>[
+      ['xdg-open'],
+      ['gio', 'open'],
+    ]) {
+      try {
+        await Process.start(
+          command.first,
+          [...command.skip(1), file.path],
+          mode: ProcessStartMode.detached,
+          runInShell: false,
+        );
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+}
+
+class MacOsUpdateInstaller {
+  const MacOsUpdateInstaller._();
+
+  static Future<bool> install(String path) async {
+    if (!Platform.isMacOS) return false;
+    final file = File(path);
+    if (!await file.exists()) return false;
+    try {
+      await Process.start(
+        'open',
+        [file.path],
         mode: ProcessStartMode.detached,
         runInShell: false,
       );

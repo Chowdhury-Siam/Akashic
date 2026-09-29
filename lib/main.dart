@@ -2172,6 +2172,10 @@ class AppController extends ChangeNotifier {
   UpdateAssetKind? pendingAndroidUpdateKind;
   String pendingWindowsUpdatePath = '';
   String pendingWindowsUpdateVersion = '';
+  String pendingLinuxUpdatePath = '';
+  String pendingLinuxUpdateVersion = '';
+  String pendingMacOsUpdatePath = '';
+  String pendingMacOsUpdateVersion = '';
   String lastSafetyBackupPath = '';
   DateTime? lastSafetyBackupAt;
   bool autoBackupEnabled = false;
@@ -2584,6 +2588,20 @@ class AppController extends ChangeNotifier {
       await _clearPendingWindowsUpdate(deleteFile: true);
     } else if (pendingWindowsUpdatePath.isNotEmpty && !await File(pendingWindowsUpdatePath).exists()) {
       await _clearPendingWindowsUpdate();
+    }
+    pendingLinuxUpdatePath = await prefs.getString('pendingLinuxUpdatePath', '');
+    pendingLinuxUpdateVersion = await prefs.getString('pendingLinuxUpdateVersion', '');
+    if (pendingLinuxUpdatePath.isNotEmpty && _isPendingLinuxUpdateAlreadyInstalled()) {
+      await _clearPendingLinuxUpdate(deleteFile: true);
+    } else if (pendingLinuxUpdatePath.isNotEmpty && !await File(pendingLinuxUpdatePath).exists()) {
+      await _clearPendingLinuxUpdate();
+    }
+    pendingMacOsUpdatePath = await prefs.getString('pendingMacOsUpdatePath', '');
+    pendingMacOsUpdateVersion = await prefs.getString('pendingMacOsUpdateVersion', '');
+    if (pendingMacOsUpdatePath.isNotEmpty && _isPendingMacOsUpdateAlreadyInstalled()) {
+      await _clearPendingMacOsUpdate(deleteFile: true);
+    } else if (pendingMacOsUpdatePath.isNotEmpty && !await File(pendingMacOsUpdatePath).exists()) {
+      await _clearPendingMacOsUpdate();
     }
     lastSafetyBackupPath = await prefs.getString('lastSafetyBackupPath', '');
     final safetyAtRaw = await prefs.getString('lastSafetyBackupAt', '');
@@ -3103,6 +3121,9 @@ class AppController extends ChangeNotifier {
       ..writeln('- Automatic update pop-ups: ${automaticUpdatePopupEnabled ? 'on' : 'off'}')
       ..writeln('- Latest release: ${latestGithubRelease?.displayVersion ?? 'not checked'}')
       ..writeln('- Pending Android APK: ${pendingAndroidUpdatePath.isNotEmpty ? pendingAndroidUpdateVersion : 'none'}')
+      ..writeln('- Pending Windows installer: ${pendingWindowsUpdatePath.isNotEmpty ? pendingWindowsUpdateVersion : 'none'}')
+      ..writeln('- Pending Linux package: ${pendingLinuxUpdatePath.isNotEmpty ? pendingLinuxUpdateVersion : 'none'}')
+      ..writeln('- Pending macOS package: ${pendingMacOsUpdatePath.isNotEmpty ? pendingMacOsUpdateVersion : 'none'}')
       ..writeln('')
       ..writeln('Health findings');
     if (report.items.isEmpty) {
@@ -3260,6 +3281,8 @@ class AppController extends ChangeNotifier {
   bool get hasAvailableUpdate => updateCheckOutcome == UpdateCheckOutcome.updateAvailable && latestGithubRelease != null;
   bool get hasPendingAndroidUpdate => pendingAndroidUpdatePath.isNotEmpty && pendingAndroidUpdateVersion.isNotEmpty && !_isPendingAndroidUpdateAlreadyInstalled();
   bool get hasPendingWindowsUpdate => pendingWindowsUpdatePath.isNotEmpty && pendingWindowsUpdateVersion.isNotEmpty && !_isPendingWindowsUpdateAlreadyInstalled();
+  bool get hasPendingLinuxUpdate => pendingLinuxUpdatePath.isNotEmpty && pendingLinuxUpdateVersion.isNotEmpty && !_isPendingLinuxUpdateAlreadyInstalled();
+  bool get hasPendingMacOsUpdate => pendingMacOsUpdatePath.isNotEmpty && pendingMacOsUpdateVersion.isNotEmpty && !_isPendingMacOsUpdateAlreadyInstalled();
 
   Map<UpdateAssetKind, ReleaseAsset> get availableAndroidUpdateAssets {
     final release = latestGithubRelease;
@@ -3273,6 +3296,18 @@ class AppController extends ChangeNotifier {
     final release = latestGithubRelease;
     if (release == null) return null;
     return ReleaseAssetMatcher.preferredWindowsInstaller(release);
+  }
+
+  ReleaseAsset? get linuxUpdateInstallerAsset {
+    final release = latestGithubRelease;
+    if (release == null) return null;
+    return ReleaseAssetMatcher.preferredLinuxInstaller(release);
+  }
+
+  ReleaseAsset? get macOsUpdateInstallerAsset {
+    final release = latestGithubRelease;
+    if (release == null) return null;
+    return ReleaseAssetMatcher.preferredMacOsInstaller(release);
   }
 
   bool canShowStartupUpdateDialog(GithubRelease release) => _shownUpdateDialogVersionThisSession != release.displayVersion;
@@ -3331,6 +3366,22 @@ class AppController extends ChangeNotifier {
       await UpdateDownloadStore.cleanupStaleWindowsUpdates(keepVersion: result.release!.displayVersion);
     } else if (Platform.isWindows && _isPendingWindowsUpdateAlreadyInstalled()) {
       await _clearPendingWindowsUpdate(deleteFile: true);
+    }
+    if (result.hasUpdate && Platform.isLinux) {
+      if (pendingLinuxUpdateVersion.isNotEmpty && pendingLinuxUpdateVersion != result.release!.displayVersion) {
+        await _clearPendingLinuxUpdate(deleteFile: true);
+      }
+      await UpdateDownloadStore.cleanupStaleLinuxUpdates(keepVersion: result.release!.displayVersion);
+    } else if (Platform.isLinux && _isPendingLinuxUpdateAlreadyInstalled()) {
+      await _clearPendingLinuxUpdate(deleteFile: true);
+    }
+    if (result.hasUpdate && Platform.isMacOS) {
+      if (pendingMacOsUpdateVersion.isNotEmpty && pendingMacOsUpdateVersion != result.release!.displayVersion) {
+        await _clearPendingMacOsUpdate(deleteFile: true);
+      }
+      await UpdateDownloadStore.cleanupStaleMacOsUpdates(keepVersion: result.release!.displayVersion);
+    } else if (Platform.isMacOS && _isPendingMacOsUpdateAlreadyInstalled()) {
+      await _clearPendingMacOsUpdate(deleteFile: true);
     }
     notifyListeners();
     return result;
@@ -3684,6 +3735,342 @@ class AppController extends ChangeNotifier {
     final sp = await prefs.prefs;
     await sp.remove('pendingWindowsUpdatePath');
     await sp.remove('pendingWindowsUpdateVersion');
+  }
+
+  Future<void> downloadLinuxUpdate({bool force = false}) async {
+    if (!Platform.isLinux) {
+      updateStatusMessage = 'In-app Linux update download is available on Linux only.';
+      notifyListeners();
+      return;
+    }
+    final release = latestGithubRelease;
+    final asset = linuxUpdateInstallerAsset;
+    if (release == null || asset == null) {
+      updateStatusMessage = 'This release does not include a Linux AppImage or portable archive.';
+      notifyListeners();
+      return;
+    }
+    if (!ReleaseAssetMatcher.isTrustedReleaseAssetUrl(asset.browserDownloadUrl)) {
+      updateStatusMessage = 'Update asset is not from the configured GitHub release repository.';
+      notifyListeners();
+      return;
+    }
+
+    await UpdateDownloadStore.cleanupStaleLinuxUpdates(keepVersion: release.displayVersion);
+    await UpdateDownloadStore.cleanupPartialFiles();
+    final packageFile = await UpdateDownloadStore.linuxReleaseFile(release: release, asset: asset);
+    final partialFile = File('${packageFile.path}.part');
+    if (await packageFile.exists()) {
+      if (force) {
+        try {
+          await packageFile.delete();
+        } catch (_) {
+          updateStatusMessage = 'Could not replace the previously downloaded Linux package. Please try again.';
+          notifyListeners();
+          return;
+        }
+        await _clearPendingLinuxUpdate();
+      } else {
+        await _savePendingLinuxUpdate(path: packageFile.path, version: release.displayVersion);
+        await installPendingLinuxUpdate();
+        return;
+      }
+    }
+
+    _updateDownloadClient?.close();
+    _updateDownloadClient = http.Client();
+    _updateDownloadCancelled = false;
+    updateDownloadBusy = true;
+    final startedAt = DateTime.now();
+    updateDownloadProgress = DownloadProgressSnapshot(
+      receivedBytes: 0,
+      totalBytes: asset.sizeBytes,
+      startedAt: startedAt,
+      now: startedAt,
+    );
+    updateStatusMessage = 'Downloading Linux update package...';
+    notifyListeners();
+
+    IOSink? sink;
+    try {
+      final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+      final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('HTTP ${response.statusCode}');
+      }
+      final total = response.contentLength ?? asset.sizeBytes;
+      sink = partialFile.openWrite();
+      var received = 0;
+      var lastNotify = DateTime.now();
+      await for (final chunk in response.stream) {
+        received += chunk.length;
+        sink.add(chunk);
+        final now = DateTime.now();
+        if (now.difference(lastNotify).inMilliseconds >= 140 || (total > 0 && received >= total)) {
+          updateDownloadProgress = DownloadProgressSnapshot(
+            receivedBytes: received,
+            totalBytes: total,
+            startedAt: startedAt,
+            now: now,
+          );
+          lastNotify = now;
+          notifyListeners();
+        }
+      }
+      await sink.close();
+      sink = null;
+      if (await packageFile.exists()) await packageFile.delete();
+      await partialFile.rename(packageFile.path);
+      final completedTotal = total <= 0 ? received : total;
+      updateDownloadProgress = DownloadProgressSnapshot(
+        receivedBytes: completedTotal,
+        totalBytes: completedTotal,
+        startedAt: startedAt,
+        now: DateTime.now(),
+        status: 'Complete',
+      );
+      updateDownloadBusy = false;
+      updateStatusMessage = 'Download complete. Opening Linux update package...';
+      await _savePendingLinuxUpdate(path: packageFile.path, version: release.displayVersion);
+      notifyListeners();
+      await installPendingLinuxUpdate();
+    } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      updateDownloadBusy = false;
+      updateDownloadProgress = null;
+      if (!_updateDownloadCancelled) {
+        updateStatusMessage = 'Linux update download failed or was interrupted. Please try again.';
+      }
+      if (await partialFile.exists()) {
+        try {
+          await partialFile.delete();
+        } catch (_) {}
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> installPendingLinuxUpdate() async {
+    if (!Platform.isLinux) return;
+    if (_isPendingLinuxUpdateAlreadyInstalled()) {
+      await _clearPendingLinuxUpdate(deleteFile: true);
+      updateStatusMessage = 'Koinly is already updated.';
+      notifyListeners();
+      return;
+    }
+    if (pendingLinuxUpdatePath.isEmpty || !await File(pendingLinuxUpdatePath).exists()) {
+      await _clearPendingLinuxUpdate();
+      updateStatusMessage = 'Downloaded Linux update package was not found. Please download it again.';
+      notifyListeners();
+      return;
+    }
+    final opened = await LinuxUpdateInstaller.install(pendingLinuxUpdatePath);
+    updateStatusMessage = opened
+        ? 'Linux update package opened. Complete the update to use the latest Koinly build.'
+        : 'Could not open the downloaded Linux update package. Please try again.';
+    notifyListeners();
+  }
+
+  Future<void> _savePendingLinuxUpdate({required String path, required String version}) async {
+    pendingLinuxUpdatePath = path;
+    pendingLinuxUpdateVersion = version;
+    await prefs.setString('pendingLinuxUpdatePath', path);
+    await prefs.setString('pendingLinuxUpdateVersion', version);
+  }
+
+  bool _isPendingLinuxUpdateAlreadyInstalled() {
+    if (pendingLinuxUpdateVersion.trim().isEmpty) return false;
+    final installed = SemanticVersion.tryParse(appVersion);
+    final pending = SemanticVersion.tryParse(pendingLinuxUpdateVersion);
+    if (installed == null || pending == null) return false;
+    return pending.compareTo(installed) <= 0;
+  }
+
+  Future<void> _clearPendingLinuxUpdate({bool deleteFile = false}) async {
+    if (deleteFile && pendingLinuxUpdatePath.isNotEmpty) {
+      final file = File(pendingLinuxUpdatePath);
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+    pendingLinuxUpdatePath = '';
+    pendingLinuxUpdateVersion = '';
+    final sp = await prefs.prefs;
+    await sp.remove('pendingLinuxUpdatePath');
+    await sp.remove('pendingLinuxUpdateVersion');
+  }
+
+  Future<void> downloadMacOsUpdate({bool force = false}) async {
+    if (!Platform.isMacOS) {
+      updateStatusMessage = 'In-app macOS update download is available on macOS only.';
+      notifyListeners();
+      return;
+    }
+    final release = latestGithubRelease;
+    final asset = macOsUpdateInstallerAsset;
+    if (release == null || asset == null) {
+      updateStatusMessage = 'This release does not include a macOS installer package.';
+      notifyListeners();
+      return;
+    }
+    if (!ReleaseAssetMatcher.isTrustedReleaseAssetUrl(asset.browserDownloadUrl)) {
+      updateStatusMessage = 'Update asset is not from the configured GitHub release repository.';
+      notifyListeners();
+      return;
+    }
+
+    await UpdateDownloadStore.cleanupStaleMacOsUpdates(keepVersion: release.displayVersion);
+    await UpdateDownloadStore.cleanupPartialFiles();
+    final packageFile = await UpdateDownloadStore.macOsReleaseFile(release: release, asset: asset);
+    final partialFile = File('${packageFile.path}.part');
+    if (await packageFile.exists()) {
+      if (force) {
+        try {
+          await packageFile.delete();
+        } catch (_) {
+          updateStatusMessage = 'Could not replace the previously downloaded macOS package. Please try again.';
+          notifyListeners();
+          return;
+        }
+        await _clearPendingMacOsUpdate();
+      } else {
+        await _savePendingMacOsUpdate(path: packageFile.path, version: release.displayVersion);
+        await installPendingMacOsUpdate();
+        return;
+      }
+    }
+
+    _updateDownloadClient?.close();
+    _updateDownloadClient = http.Client();
+    _updateDownloadCancelled = false;
+    updateDownloadBusy = true;
+    final startedAt = DateTime.now();
+    updateDownloadProgress = DownloadProgressSnapshot(
+      receivedBytes: 0,
+      totalBytes: asset.sizeBytes,
+      startedAt: startedAt,
+      now: startedAt,
+    );
+    updateStatusMessage = 'Downloading macOS installer...';
+    notifyListeners();
+
+    IOSink? sink;
+    try {
+      final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+      final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('HTTP ${response.statusCode}');
+      }
+      final total = response.contentLength ?? asset.sizeBytes;
+      sink = partialFile.openWrite();
+      var received = 0;
+      var lastNotify = DateTime.now();
+      await for (final chunk in response.stream) {
+        received += chunk.length;
+        sink.add(chunk);
+        final now = DateTime.now();
+        if (now.difference(lastNotify).inMilliseconds >= 140 || (total > 0 && received >= total)) {
+          updateDownloadProgress = DownloadProgressSnapshot(
+            receivedBytes: received,
+            totalBytes: total,
+            startedAt: startedAt,
+            now: now,
+          );
+          lastNotify = now;
+          notifyListeners();
+        }
+      }
+      await sink.close();
+      sink = null;
+      if (await packageFile.exists()) await packageFile.delete();
+      await partialFile.rename(packageFile.path);
+      final completedTotal = total <= 0 ? received : total;
+      updateDownloadProgress = DownloadProgressSnapshot(
+        receivedBytes: completedTotal,
+        totalBytes: completedTotal,
+        startedAt: startedAt,
+        now: DateTime.now(),
+        status: 'Complete',
+      );
+      updateDownloadBusy = false;
+      updateStatusMessage = 'Download complete. Opening macOS installer...';
+      await _savePendingMacOsUpdate(path: packageFile.path, version: release.displayVersion);
+      notifyListeners();
+      await installPendingMacOsUpdate();
+    } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      updateDownloadBusy = false;
+      updateDownloadProgress = null;
+      if (!_updateDownloadCancelled) {
+        updateStatusMessage = 'macOS update download failed or was interrupted. Please try again.';
+      }
+      if (await partialFile.exists()) {
+        try {
+          await partialFile.delete();
+        } catch (_) {}
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> installPendingMacOsUpdate() async {
+    if (!Platform.isMacOS) return;
+    if (_isPendingMacOsUpdateAlreadyInstalled()) {
+      await _clearPendingMacOsUpdate(deleteFile: true);
+      updateStatusMessage = 'Koinly is already updated.';
+      notifyListeners();
+      return;
+    }
+    if (pendingMacOsUpdatePath.isEmpty || !await File(pendingMacOsUpdatePath).exists()) {
+      await _clearPendingMacOsUpdate();
+      updateStatusMessage = 'Downloaded macOS installer was not found. Please download it again.';
+      notifyListeners();
+      return;
+    }
+    final opened = await MacOsUpdateInstaller.install(pendingMacOsUpdatePath);
+    updateStatusMessage = opened
+        ? 'macOS installer opened. Complete installation to update Koinly.'
+        : 'Could not open the downloaded macOS installer. Please try again.';
+    notifyListeners();
+  }
+
+  Future<void> _savePendingMacOsUpdate({required String path, required String version}) async {
+    pendingMacOsUpdatePath = path;
+    pendingMacOsUpdateVersion = version;
+    await prefs.setString('pendingMacOsUpdatePath', path);
+    await prefs.setString('pendingMacOsUpdateVersion', version);
+  }
+
+  bool _isPendingMacOsUpdateAlreadyInstalled() {
+    if (pendingMacOsUpdateVersion.trim().isEmpty) return false;
+    final installed = SemanticVersion.tryParse(appVersion);
+    final pending = SemanticVersion.tryParse(pendingMacOsUpdateVersion);
+    if (installed == null || pending == null) return false;
+    return pending.compareTo(installed) <= 0;
+  }
+
+  Future<void> _clearPendingMacOsUpdate({bool deleteFile = false}) async {
+    if (deleteFile && pendingMacOsUpdatePath.isNotEmpty) {
+      final file = File(pendingMacOsUpdatePath);
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+    pendingMacOsUpdatePath = '';
+    pendingMacOsUpdateVersion = '';
+    final sp = await prefs.prefs;
+    await sp.remove('pendingMacOsUpdatePath');
+    await sp.remove('pendingMacOsUpdateVersion');
   }
 
   Future<void> _savePendingAndroidUpdate({required String path, required String version, required UpdateAssetKind kind}) async {
@@ -7969,12 +8356,50 @@ class _KeyboardDismissOnBack extends StatelessWidget {
   }
 }
 
+class AmountVisibilityToggle extends StatelessWidget {
+  const AmountVisibilityToggle({super.key, this.size = 18, this.padding = const EdgeInsets.all(4)});
+
+  final double size;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final hidden = context.select<AppController, bool>((state) => state.amountsHidden);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Tooltip(
+      message: hidden ? 'Show amounts' : 'Hide amounts',
+      child: MotionInkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => unawaited(context.read<AppController>().toggleAmountsHidden()),
+        child: Padding(
+          padding: padding,
+          child: Icon(
+            hidden ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            size: size,
+            color: dark ? const Color(0xFF93DFBC) : kSleekAccent.withOpacity(.82),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PageScaffold extends StatelessWidget {
-  const PageScaffold({super.key, required this.title, this.actions = const [], required this.child, this.subtitle});
+  const PageScaffold({
+    super.key,
+    required this.title,
+    this.actions = const [],
+    required this.child,
+    this.subtitle,
+    this.floatingActionButton,
+    this.titleTrailing,
+  });
   final String title;
   final String? subtitle;
   final List<Widget> actions;
   final Widget child;
+  final Widget? floatingActionButton;
+  final Widget? titleTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -7991,7 +8416,23 @@ class PageScaffold extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).appBarTheme.titleTextStyle?.copyWith(fontSize: desktop ? 26 : small ? 23 : 27)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).appBarTheme.titleTextStyle?.copyWith(fontSize: desktop ? 26 : small ? 23 : 27),
+                    ),
+                  ),
+                  if (titleTrailing != null) ...[
+                    const SizedBox(width: 7),
+                    titleTrailing!,
+                  ],
+                ],
+              ),
               if (subtitle != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
@@ -8007,6 +8448,7 @@ class PageScaffold extends StatelessWidget {
               .toList(),
         ),
         body: KoinlyAtmosphere(child: SafeArea(top: false, child: child)),
+        floatingActionButton: floatingActionButton,
       ),
     );
   }
@@ -16182,6 +16624,7 @@ class TransactionListScreen extends StatelessWidget {
     final txs = state.transactionListTransactions();
     return PageScaffold(
       title: 'Transaction',
+      titleTrailing: const AmountVisibilityToggle(size: 18, padding: EdgeInsets.all(3)),
       subtitle: '${txs.length} records • ${state.activeRange().label} • ${transactionSortModeLabel(state.transactionSortMode)}',
       actions: [
         IconButton(
@@ -18273,9 +18716,20 @@ class _AnalysisTrendChartState extends State<AnalysisTrendChart> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Cash flow trend',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Cash flow trend',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        const AmountVisibilityToggle(size: 17, padding: EdgeInsets.all(3)),
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -18657,13 +19111,21 @@ class ManageCategoriesScreen extends StatelessWidget {
     return PageScaffold(
       title: 'Manage categories',
       subtitle: title,
-      actions: [IconButton(onPressed: () => showCategoryEditor(context, initialType: type), icon: const Icon(Icons.add_rounded))],
+      floatingActionButton: MotionTouchFeedback(
+        scale: .958,
+        child: FloatingActionButton.extended(
+          heroTag: 'manageCategoriesAddFab',
+          onPressed: () => showCategoryEditor(context, initialType: type),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Add'),
+        ),
+      ),
       child: ResponsiveListContent(
         itemCount: cats.length,
         empty: EmptyCard(
           icon: Icons.category_rounded,
           title: 'No ${enumName(type)} categories',
-          body: 'Tap the + button to create a category.',
+          body: 'Tap Add to create a category.',
         ),
         itemBuilder: (context, index) {
           final category = cats[index];
@@ -18789,9 +19251,19 @@ class _CategoryBreakdownCardState extends State<CategoryBreakdownCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                chartTitle,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      chartTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  const AmountVisibilityToggle(size: 17, padding: EdgeInsets.all(3)),
+                ],
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -19913,6 +20385,8 @@ class UpdateActionPanel extends StatelessWidget {
     final state = context.watch<AppController>();
     if (Platform.isAndroid) return _AndroidUpdateActionPanel(state: state);
     if (Platform.isWindows) return _WindowsUpdateActionPanel(state: state);
+    if (Platform.isLinux) return _LinuxUpdateActionPanel(state: state);
+    if (Platform.isMacOS) return _MacOsUpdateActionPanel(state: state);
     return ExpressiveCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -20060,6 +20534,154 @@ class _WindowsUpdateActionPanel extends StatelessWidget {
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () => unawaited(state.downloadWindowsUpdate(force: pendingForThisRelease)),
+            icon: const Icon(Icons.download_rounded),
+            label: Text(pendingForThisRelease ? 'Re-download installer' : 'Download update'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LinuxUpdateActionPanel extends StatelessWidget {
+  const _LinuxUpdateActionPanel({required this.state});
+
+  final AppController state;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = state.linuxUpdateInstallerAsset;
+    if (state.updateDownloadBusy && state.updateDownloadProgress != null) {
+      return DownloadProgressCard(
+        architecture: 'Linux package',
+        progress: state.updateDownloadProgress!,
+        onCancel: () => unawaited(state.cancelUpdateDownload()),
+      );
+    }
+    if (asset == null) {
+      return ExpressiveCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Linux update package', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(
+              'This release does not include a Linux AppImage or portable archive.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                final url = state.latestGithubRelease?.htmlUrl;
+                if (url != null && url.isNotEmpty) {
+                  launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Open release page'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final pendingForThisRelease = state.hasPendingLinuxUpdate &&
+        state.pendingLinuxUpdateVersion == state.latestGithubRelease?.displayVersion;
+    return ExpressiveCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Linux update package', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Text(
+            '${asset.name}${asset.sizeBytes > 0 ? ' • ${formatBytes(asset.sizeBytes)}' : ''}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+          ),
+          if (pendingForThisRelease) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => unawaited(state.installPendingLinuxUpdate()),
+              icon: const Icon(Icons.install_desktop_rounded),
+              label: const Text('Open downloaded update'),
+            ),
+          ],
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () => unawaited(state.downloadLinuxUpdate(force: pendingForThisRelease)),
+            icon: const Icon(Icons.download_rounded),
+            label: Text(pendingForThisRelease ? 'Re-download package' : 'Download update'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MacOsUpdateActionPanel extends StatelessWidget {
+  const _MacOsUpdateActionPanel({required this.state});
+
+  final AppController state;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = state.macOsUpdateInstallerAsset;
+    if (state.updateDownloadBusy && state.updateDownloadProgress != null) {
+      return DownloadProgressCard(
+        architecture: 'macOS installer',
+        progress: state.updateDownloadProgress!,
+        onCancel: () => unawaited(state.cancelUpdateDownload()),
+      );
+    }
+    if (asset == null) {
+      return ExpressiveCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('macOS installer', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(
+              'This release does not include a macOS installer asset.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                final url = state.latestGithubRelease?.htmlUrl;
+                if (url != null && url.isNotEmpty) {
+                  launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Open release page'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final pendingForThisRelease = state.hasPendingMacOsUpdate &&
+        state.pendingMacOsUpdateVersion == state.latestGithubRelease?.displayVersion;
+    return ExpressiveCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('macOS installer', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Text(
+            '${asset.name}${asset.sizeBytes > 0 ? ' • ${formatBytes(asset.sizeBytes)}' : ''}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+          ),
+          if (pendingForThisRelease) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => unawaited(state.installPendingMacOsUpdate()),
+              icon: const Icon(Icons.install_desktop_rounded),
+              label: const Text('Install downloaded update'),
+            ),
+          ],
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () => unawaited(state.downloadMacOsUpdate(force: pendingForThisRelease)),
             icon: const Icon(Icons.download_rounded),
             label: Text(pendingForThisRelease ? 'Re-download installer' : 'Download update'),
           ),
@@ -24378,7 +25000,7 @@ class AboutScreen extends StatelessWidget {
             const SectionHeader('Legal'),
             SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'Local data-first finance tracker', color: kSleekAccentHex, onTap: () => _showLegal(context, 'Privacy Policy')),
             SettingsTile(icon: Icons.description_rounded, title: 'Terms and conditions', subtitle: 'Usage terms', color: '#A6E3A1', onTap: () => _showLegal(context, 'Terms and conditions')),
-            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
+            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3.0 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
           ],
         ),
       ),
