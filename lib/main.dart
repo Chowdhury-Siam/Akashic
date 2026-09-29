@@ -24378,7 +24378,7 @@ class AboutScreen extends StatelessWidget {
             const SectionHeader('Legal'),
             SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'Local data-first finance tracker', color: kSleekAccentHex, onTap: () => _showLegal(context, 'Privacy Policy')),
             SettingsTile(icon: Icons.description_rounded, title: 'Terms and conditions', subtitle: 'Usage terms', color: '#A6E3A1', onTap: () => _showLegal(context, 'Terms and conditions')),
-            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'Apache License 2.0 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
+            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
           ],
         ),
       ),

@@ -1,3 +1,9 @@
+## [1.0.1205] - 2026-09-29
+
+- Changed Koinly's project license from Apache License 2.0 to the GNU General Public License v3.0 (GPL-3.0).
+- Updated the README license badge/section and the in-app license subtitle to reflect GPL v3 while preserving third-party dependency license notices.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1205+249`.
+
 ## [1.0.1204] - 2026-09-28
 
 - Fixed the Material time-picker clock popup inheriting Koinly's app-wide always-scrollable/elastic physics, which let the otherwise fixed clock surface move or bounce.
