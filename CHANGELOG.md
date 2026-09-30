@@ -1,3 +1,11 @@
+## [1.0.1211] - 2026-09-30
+
+- Reworked the New/Edit loan editor to use the same compact action pattern as transactions.
+- Replaced the separate loan start-date and start-time buttons with a single `Time • Date` action that opens a focused popup for both values.
+- Replaced the inline Interest section with an `Interest` action that opens the existing None/Simple/Compound, rate, and accrual/compounding configuration in a dedicated popup.
+- Kept the loan due-date controls separate so the repayment deadline remains independent from the loan start timestamp.
+- Added a regression contract for the compact loan controls and bumped synchronized app/Android/Worker release metadata to `1.0.1211+255`.
+
 ## [1.0.1210] - 2026-09-30
 
 - Replaced the separate transaction date and time buttons with a single `Time • Date` control that opens one configuration popup while preserving single/range date and time support.

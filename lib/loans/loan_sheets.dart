@@ -1,5 +1,214 @@
 part of '../main.dart';
 
+@immutable
+class LoanStartDateTimeConfiguration {
+  const LoanStartDateTimeConfiguration({required this.start});
+
+  final DateTime start;
+}
+
+@immutable
+class LoanInterestConfiguration {
+  const LoanInterestConfiguration({
+    required this.type,
+    required this.period,
+    required this.rate,
+  });
+
+  final LoanInterestType type;
+  final LoanInterestPeriod period;
+  final double rate;
+}
+
+Future<LoanStartDateTimeConfiguration?> showLoanStartDateTimeConfiguration(
+  BuildContext context, {
+  required DateTime start,
+}) {
+  var workingStart = start;
+
+  return showKoinlyPopup<LoanStartDateTimeConfiguration>(
+    context,
+    maxWidth: 470,
+    maxHeight: 430,
+    child: StatefulBuilder(
+      builder: (dialogContext, setModalState) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+          child: KoinlyPopupContent(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Time • Date',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 18),
+                Text('Start date', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final selected = await pickDate(dialogContext, workingStart);
+                    if (selected == null || !dialogContext.mounted) return;
+                    setModalState(() {
+                      workingStart = DateTime(
+                        selected.year,
+                        selected.month,
+                        selected.day,
+                        workingStart.hour,
+                        workingStart.minute,
+                      );
+                    });
+                  },
+                  icon: const Icon(Icons.calendar_today_rounded),
+                  label: Text(DateFormat('MMM d, yyyy').format(workingStart)),
+                ),
+                const SizedBox(height: 14),
+                Text('Start time', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final selected = await pickTime(dialogContext, TimeOfDay.fromDateTime(workingStart));
+                    if (selected == null || !dialogContext.mounted) return;
+                    setModalState(() {
+                      workingStart = DateTime(
+                        workingStart.year,
+                        workingStart.month,
+                        workingStart.day,
+                        selected.hour,
+                        selected.minute,
+                      );
+                    });
+                  },
+                  icon: const Icon(Icons.schedule_rounded),
+                  label: Text(DateFormat('h:mm a').format(workingStart)),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    LoanStartDateTimeConfiguration(start: workingStart),
+                  ),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+Future<LoanInterestConfiguration?> showLoanInterestConfiguration(
+  BuildContext context, {
+  required LoanInterestType type,
+  required LoanInterestPeriod period,
+  required double rate,
+}) async {
+  final rateController = TextEditingController(
+    text: rate > 0 ? (rate == rate.roundToDouble() ? rate.toStringAsFixed(0) : rate.toStringAsFixed(2)) : '',
+  );
+  var workingType = type;
+  var workingPeriod = period;
+
+  try {
+    return await showKoinlyPopup<LoanInterestConfiguration>(
+      context,
+      maxWidth: 470,
+      maxHeight: 590,
+      child: StatefulBuilder(
+        builder: (dialogContext, setModalState) {
+          final rateValue = double.tryParse(rateController.text.trim()) ?? 0;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+            child: KoinlyPopupContent(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Interest',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 18),
+                  SleekPillSelector<LoanInterestType>(
+                    options: const [
+                      SleekPillOption(value: LoanInterestType.none, label: 'None'),
+                      SleekPillOption(value: LoanInterestType.simple, label: 'Simple'),
+                      SleekPillOption(value: LoanInterestType.compound, label: 'Compound'),
+                    ],
+                    selected: workingType,
+                    onChanged: (value) => setModalState(() {
+                      workingType = value;
+                      if (value == LoanInterestType.simple && workingPeriod != LoanInterestPeriod.flat) {
+                        workingPeriod = LoanInterestPeriod.yearly;
+                      }
+                    }),
+                  ),
+                  if (workingType != LoanInterestType.none) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      contextMenuBuilder: koinlyTextFieldContextMenu,
+                      enableInteractiveSelection: true,
+                      onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+                      controller: rateController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setModalState(() {}),
+                      decoration: InputDecoration(
+                        labelText: workingPeriod == LoanInterestPeriod.flat ? 'Fixed total interest' : 'Annual interest rate',
+                        suffixText: workingPeriod == LoanInterestPeriod.flat ? '% of principal' : '% APR',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SleekCyclePillSelector<LoanInterestPeriod>(
+                      options: workingType == LoanInterestType.simple
+                          ? const [
+                              SleekPillOption(value: LoanInterestPeriod.yearly, label: 'Accrue by day'),
+                              SleekPillOption(value: LoanInterestPeriod.flat, label: 'Fixed total'),
+                            ]
+                          : const [
+                              SleekPillOption(value: LoanInterestPeriod.yearly, label: 'Yearly compounding'),
+                              SleekPillOption(value: LoanInterestPeriod.monthly, label: 'Monthly compounding'),
+                              SleekPillOption(value: LoanInterestPeriod.daily, label: 'Daily compounding'),
+                              SleekPillOption(value: LoanInterestPeriod.flat, label: 'Fixed total interest'),
+                            ],
+                      selected: workingPeriod,
+                      onChanged: (value) => setModalState(() => workingPeriod = value),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  FilledButton(
+                    onPressed: () {
+                      if (!rateValue.isFinite || rateValue < 0 || rateValue > 1000) {
+                        showSnack(dialogContext, 'Enter a valid interest rate.');
+                        return;
+                      }
+                      Navigator.pop(
+                        dialogContext,
+                        LoanInterestConfiguration(
+                          type: workingType,
+                          period: workingPeriod,
+                          rate: workingType == LoanInterestType.none ? 0 : rateValue,
+                        ),
+                      );
+                    },
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  } finally {
+    rateController.dispose();
+  }
+}
+
 Future<void> showLoanEditorSheet(BuildContext context, {Loan? loan, LoanDirection defaultDirection = LoanDirection.lent}) {
   return showKoinlyPopup<void>(
     context,
@@ -230,80 +439,41 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () async {
-              final selected = await pickDate(context, startDate);
-              if (selected != null && mounted) {
-                setState(() => startDate = DateTime(
-                      selected.year,
-                      selected.month,
-                      selected.day,
-                      startDate.hour,
-                      startDate.minute,
-                    ));
-              }
+              FocusManager.instance.primaryFocus?.unfocus();
+              final selection = await showLoanStartDateTimeConfiguration(
+                context,
+                start: startDate,
+              );
+              if (!mounted || selection == null) return;
+              setState(() => startDate = selection.start);
             },
             icon: const Icon(Icons.event_rounded),
-            label: Text('Start · ${DateFormat('MMM d, yyyy').format(startDate)}'),
+            label: const Text('Time • Date'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () async {
-              final selected = await pickTime(context, TimeOfDay.fromDateTime(startDate));
-              if (selected != null && mounted) {
-                setState(() => startDate = DateTime(
-                      startDate.year,
-                      startDate.month,
-                      startDate.day,
-                      selected.hour,
-                      selected.minute,
-                    ));
-              }
+              FocusManager.instance.primaryFocus?.unfocus();
+              final selection = await showLoanInterestConfiguration(
+                context,
+                type: interestType,
+                period: interestPeriod,
+                rate: double.tryParse(rate.text.trim()) ?? 0,
+              );
+              if (!mounted || selection == null) return;
+              setState(() {
+                interestType = selection.type;
+                interestPeriod = selection.period;
+                rate.text = selection.rate <= 0
+                    ? ''
+                    : (selection.rate == selection.rate.roundToDouble()
+                        ? selection.rate.toStringAsFixed(0)
+                        : selection.rate.toStringAsFixed(2));
+              });
             },
-            icon: const Icon(Icons.schedule_rounded),
-            label: Text('Time · ${DateFormat('h:mm a').format(startDate)}'),
+            icon: const Icon(Icons.percent_rounded),
+            label: const Text('Interest'),
           ),
-          const SectionHeader('Interest'),
-          SleekPillSelector<LoanInterestType>(
-            options: const [
-              SleekPillOption(value: LoanInterestType.none, label: 'None'),
-              SleekPillOption(value: LoanInterestType.simple, label: 'Simple'),
-              SleekPillOption(value: LoanInterestType.compound, label: 'Compound'),
-            ],
-            selected: interestType,
-            onChanged: (value) => setState(() {
-              interestType = value;
-              if (value == LoanInterestType.simple && interestPeriod != LoanInterestPeriod.flat) {
-                interestPeriod = LoanInterestPeriod.yearly;
-              }
-            }),
-          ),
-          if (interestType != LoanInterestType.none) ...[
-            const SizedBox(height: 12),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
-              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-              controller: rate,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: interestPeriod == LoanInterestPeriod.flat ? 'Fixed total interest' : 'Annual interest rate',
-                suffixText: interestPeriod == LoanInterestPeriod.flat ? '% of principal' : '% APR',
-              ),
-            ),
-            const SizedBox(height: 10),
-            SleekCyclePillSelector<LoanInterestPeriod>(
-              options: interestType == LoanInterestType.simple
-                  ? const [
-                      SleekPillOption(value: LoanInterestPeriod.yearly, label: 'Accrue by day'),
-                      SleekPillOption(value: LoanInterestPeriod.flat, label: 'Fixed total'),
-                    ]
-                  : const [
-                      SleekPillOption(value: LoanInterestPeriod.yearly, label: 'Yearly compounding'),
-                      SleekPillOption(value: LoanInterestPeriod.monthly, label: 'Monthly compounding'),
-                      SleekPillOption(value: LoanInterestPeriod.daily, label: 'Daily compounding'),
-                      SleekPillOption(value: LoanInterestPeriod.flat, label: 'Fixed total interest'),
-                    ],
-              selected: interestPeriod,
-              onChanged: (value) => setState(() => interestPeriod = value),
-            ),
-          ],
           const SizedBox(height: 10),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
