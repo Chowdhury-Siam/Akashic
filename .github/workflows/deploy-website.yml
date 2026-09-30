@@ -1,0 +1,107 @@
+name: Deploy Yutaka Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'wrangler.jsonc'
+      - '.github/workflows/deploy-website.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'wrangler.jsonc'
+      - '.github/workflows/deploy-website.yml'
+  workflow_dispatch:
+
+# Pull requests run checks only; forks cannot deploy the original website.
+permissions:
+  contents: read
+
+concurrency:
+  group: yutaka-website-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Test and check website
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run automated tests
+        run: npm test
+      - name: Check Cloudflare Worker bundle
+        run: npm run check:bundle
+
+  deploy:
+    name: Deploy to Cloudflare Workers
+    needs: validate
+    if: >-
+      github.event.repository.fork == false &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Configure Cloudflare Worker name
+        id: worker
+        env:
+          CLOUDFLARE_WORKER_NAME: ${{ secrets.CLOUDFLARE_WORKER_NAME }}
+        run: node scripts/configure-worker-name.mjs
+      - name: Configure app-store links from GitHub secrets
+        env:
+          PLAY_STORE_URL: ${{ secrets.PLAY_STORE_URL }}
+          MICROSOFT_STORE_URL: ${{ secrets.MICROSOFT_STORE_URL }}
+        run: node scripts/configure-store-links.mjs
+      - name: Validate Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "$CF_TOKEN" || -z "$CF_ACCOUNT" ]]; then
+            echo '::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in GitHub Actions secrets.'
+            exit 1
+          fi
+      - name: Deploy website
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+      - name: Add deployment link to job summary
+        if: success()
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs['deployment-url'] }}
+          WORKER_NAME: ${{ steps.worker.outputs.name }}
+        run: |
+          echo '## Yutaka website deployed' >> "$GITHUB_STEP_SUMMARY"
+          echo "Cloudflare Worker: $WORKER_NAME" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$DEPLOY_URL" ]]; then
+            echo "Website: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
+            echo "Interactive demo: ${DEPLOY_URL%/}/demo/" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Find the workers.dev URL in the Cloudflare Workers dashboard.' >> "$GITHUB_STEP_SUMMARY"
+          fi

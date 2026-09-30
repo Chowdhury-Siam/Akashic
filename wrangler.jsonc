@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "yutaka-website",
+  "compatibility_date": "2026-09-25",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}

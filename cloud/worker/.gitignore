@@ -1,6 +1,0 @@
-.worker-secrets
-.dev.vars
-.dev.vars.*
-.env
-.env.*
-!.env.example

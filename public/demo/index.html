@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1216">
+  <meta name="robots" content="index,follow">
+  <title>Try the Yutaka app — interactive demo</title>
+  <meta name="description" content="Try a realistic interactive sample of the Yutaka finance app. The sample is private and uses fictional money, accounts and transactions.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Yutaka">
+  <meta property="og:title" content="Try the Yutaka app — interactive demo">
+  <meta property="og:description" content="Try a realistic interactive sample of the Yutaka personal finance app.">
+  <meta property="og:image" content="/assets/yutaka-app-social-v1.3.0.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1024">
+  <meta property="og:image:height" content="1024">
+  <meta property="og:image:alt" content="Yutaka app icon — multicolor Y on a dark rounded square">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="/assets/yutaka-app-social-v1.3.0.png">
+  <link rel="icon" type="image/png" href="/assets/yutaka-app-icon.png">
+  <link rel="apple-touch-icon" href="/assets/yutaka-app-icon.png">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/app-demo.css">
+  <script type="module" src="/assets/demo.js"></script>
+</head>
+<body class="demo-page native-demo">
+  <a class="skip" href="#demo-main">Skip to sample app</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="app-svg-defs" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/></symbol>
+    <symbol id="i-analysis" viewBox="0 0 24 24"><path d="M3 17.5 9 11l4 3 8-9"/><path d="M16 5h5v5"/><path d="M3 21h18"/></symbol>
+    <symbol id="i-loans" viewBox="0 0 24 24"><path d="M7 7h14m0 0-4-4m4 4-4 4M17 17H3m0 0 4-4m-4 4 4 4"/></symbol>
+    <symbol id="i-transaction" viewBox="0 0 24 24"><path d="M8 3h8l4 4v14H4V3h4Z"/><path d="M16 3v5h4M8 12h8M8 16h8"/></symbol>
+    <symbol id="i-categories" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7V5a2 2 0 0 1 2-2h13v4M3 7h17a1 1 0 0 1 1 1v12H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><path d="M16 12h5v5h-5a2.5 2.5 0 0 1 0-5Z"/><circle cx="17" cy="14.5" r=".7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-savings" viewBox="0 0 24 24"><path d="M3 10h18M5 10V20h14V10M3 7l9-4 9 4v3H3V7ZM8 14v3m4-3v3m4-3v3"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M10 3h4l.6 2.2 1.7 1 2.2-.7 2 3.5-1.6 1.6v2l1.6 1.6-2 3.5-2.2-.7-1.7 1L14 21h-4l-.6-2.2-1.7-1-2.2.7-2-3.5L5.1 13v-2L3.5 9.4l2-3.5 2.2.7 1.7-1L10 3Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4m8-4v4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3 21 21M10.5 6.1c.5-.1 1-.1 1.5-.1 6.4 0 10 6 10 6a18 18 0 0 1-3 3.4M6.1 6.1A18 18 0 0 0 2 12s3.6 6 10 6c1.5 0 2.9-.3 4.1-.8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M7 14h4m-4 3h6"/></symbol>
+    <symbol id="i-subscription" viewBox="0 0 24 24"><path d="M19 8A8 8 0 0 0 5 5L3 7m0-4v4h4M5 16a8 8 0 0 0 14 3l2-2m0 4v-4h-4M12 8v4l3 2"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5M12 7v5l4 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 5-.9L20 8l-4-4L5 15l-1 5ZM13 7l4 4"/></symbol>
+  </svg>
+  <div class="sample-strip"><span class="sample-dot"></span><strong>INTERACTIVE SAMPLE</strong><span>Fictional finances · saved only in this browser</span><a href="/">Back to website <span aria-hidden="true">↗</span></a></div>
+  <div class="app-layout">
+    <aside class="app-rail" aria-label="App navigation">
+      <a class="rail-logo" href="/" title="Yutaka website" aria-label="Yutaka website"><img src="/assets/yutaka-mark.png" width="40" height="40" alt="Yutaka"></a>
+      <nav class="demo-nav rail-primary" id="demo-nav" aria-label="Yutaka sections">
+        <button type="button" data-page="overview" class="active" aria-label="Home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+        <button type="button" data-page="analytics" aria-label="Analysis"><svg><use href="#i-analysis"/></svg><span>Analysis</span></button>
+        <button type="button" data-page="loans" aria-label="Loans"><svg><use href="#i-loans"/></svg><span>Loans</span></button>
+        <button type="button" data-page="transactions" aria-label="Transaction"><svg><use href="#i-transaction"/></svg><span>Transaction</span></button>
+        <button type="button" data-page="categories" aria-label="Categories"><svg><use href="#i-categories"/></svg><span>Categories</span></button>
+      </nav>
+      <div class="rail-lower"><button type="button" data-page="settings" aria-label="Settings"><svg><use href="#i-settings"/></svg><span>Settings</span></button><button type="button" id="sidebar-trigger" aria-label="More pages" aria-expanded="false"><svg><use href="#i-menu"/></svg><span>More</span></button></div>
+    </aside>
+    <div class="app-stage">
+      <header class="app-header"><div class="app-title"><h1 id="current-path">Home</h1><span id="current-subtitle">This month</span></div><div class="header-tools"><span class="sample-chip"><span class="sample-dot"></span> Demo</span><span id="native-page-actions" class="native-header-actions"></span><button type="button" id="date-range-trigger" data-action="date-range" aria-label="Change date range" title="Date range"><svg><use href="#i-calendar"/></svg></button><button type="button" id="settings-trigger" data-page="settings" aria-label="Settings" title="Settings"><svg><use href="#i-settings"/></svg></button></div></header>
+      <main id="demo-main" class="app-scroll"><div class="app-content"><div id="demo-view" aria-live="polite"></div></div></main>
+      <div class="app-blur" id="quick-backdrop" hidden></div>
+      <div id="quick-menu" class="app-quick-menu" aria-label="Quick pages" hidden><button type="button" data-page="notes"><svg><use href="#i-note"/></svg> Note</button><button type="button" data-page="subscriptions"><svg><use href="#i-subscription"/></svg> Subscription</button><button type="button" data-page="plans"><svg><use href="#i-plan"/></svg> Plan</button></div>
+      <div class="app-floating-actions"><button type="button" id="quick-menu-button" data-action="quick-menu" class="app-fab app-fab-menu" title="Plan, subscription and note" aria-expanded="false"><svg><use href="#i-menu"/></svg></button><button type="button" id="quick-add" data-action="add-transaction" class="app-fab app-fab-add" title="Add a transaction"><svg><use href="#i-plus"/></svg></button></div>
+      <nav class="app-dock" id="mobile-demo-nav" aria-label="Main tabs">
+        <button type="button" data-mobile="overview" class="active" aria-label="Home"><svg><use href="#i-home"/></svg></button><button type="button" data-mobile="analytics" aria-label="Analysis"><svg><use href="#i-analysis"/></svg></button><button type="button" data-mobile="loans" aria-label="Loans"><svg><use href="#i-loans"/></svg></button><button type="button" data-mobile="transactions" aria-label="Transaction"><svg><use href="#i-transaction"/></svg></button><button type="button" data-mobile="categories" aria-label="Categories"><svg><use href="#i-categories"/></svg></button>
+      </nav>
+      <div id="more-backdrop" class="app-more-backdrop" hidden></div>
+      <aside class="app-more-panel" id="demo-sidebar" aria-label="Additional pages" hidden><div class="more-panel-head"><img src="/assets/yutaka-mark.png" alt="" width="32" height="32"><strong>Yutaka</strong><span>DEMO</span><button type="button" id="more-close" aria-label="Close additional pages"><svg><use href="#i-close"/></svg></button></div><nav class="app-more-nav" aria-label="Additional app pages"><button data-page="accounts"><svg><use href="#i-wallet"/></svg> Accounts</button><button data-page="budgets"><svg><use href="#i-savings"/></svg> Budgets</button><button data-page="plans"><svg><use href="#i-plan"/></svg> Plan</button><button data-page="subscriptions"><svg><use href="#i-subscription"/></svg> Subscription</button><button data-page="notes"><svg><use href="#i-note"/></svg> Notes</button><button data-page="settings"><svg><use href="#i-settings"/></svg> Settings</button></nav><div class="more-panel-foot"><button type="button" data-action="reset-demo"><svg><use href="#i-restore"/></svg> Reset sample data</button><a href="/">Return to website ↗</a></div></aside>
+    </div>
+  </div>
+  <dialog id="demo-dialog" class="demo-dialog native-dialog" aria-labelledby="dialog-title"><form method="dialog" id="dialog-form"><div class="dialog-head"><h2 id="dialog-title">New transaction</h2><button type="button" class="dialog-close" id="dialog-close" aria-label="Close dialog"><svg><use href="#i-close"/></svg></button></div><div class="dialog-body" id="dialog-body"></div><p id="dialog-error" role="alert" class="dialog-error" hidden></p><div class="dialog-actions"><button type="button" class="button button-outline" id="dialog-cancel">Cancel</button><button type="submit" class="button button-green" id="dialog-submit">Save</button></div></form></dialog>
+  <dialog id="range-dialog" class="demo-dialog native-dialog range-dialog" aria-labelledby="range-title"><form method="dialog" id="range-form"><div class="dialog-head"><h2 id="range-title">Select period</h2><button type="button" class="dialog-close" id="range-close" aria-label="Close date range"><svg><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="period-options" id="period-options"><label><input type="radio" name="period" value="today">Today</label><label><input type="radio" name="period" value="week">This week</label><label><input type="radio" name="period" value="month">This month</label><label><input type="radio" name="period" value="year">This year</label><label><input type="radio" name="period" value="all">All Time</label><label><input type="radio" name="period" value="custom">Custom range</label></div><div class="field-row" id="custom-range" hidden><label class="field">Start date<input type="date" id="range-start"></label><label class="field">End date<input type="date" id="range-end"></label></div></div><div class="dialog-actions"><button type="button" class="button button-outline" id="range-cancel">Cancel</button><button type="submit" class="button button-green">Apply</button></div></form></dialog>
+  <div id="demo-toast" class="demo-toast" role="status" aria-live="polite"></div>
+</body>
+</html>
