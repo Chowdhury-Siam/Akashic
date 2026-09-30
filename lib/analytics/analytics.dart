@@ -289,11 +289,11 @@ _AnalyticsCore _buildAnalyticsCore(AppController state, AnalyticsRange range) {
       expenseByCategory[tx.categoryId] = (expenseByCategory[tx.categoryId] ?? 0) + tx.amount;
     }
     if (tx.type == MoneyTransactionType.transfer) {
-      transferVolume += tx.amount;
+      transferVolume += tx.transferAmount;
       transferCount++;
     }
-    if (isSavingsTransferIn(state, tx)) savingsIn += tx.amount;
-    if (isSavingsTransferOut(state, tx)) savingsOut += tx.amount;
+    if (isSavingsTransferIn(state, tx)) savingsIn += tx.transferAmount;
+    if (isSavingsTransferOut(state, tx)) savingsOut += tx.transferAmount;
   }
 
   List<AnalyticsCategoryItem> categoryItems(Map<String, double> totals, double overall) {
@@ -538,7 +538,7 @@ class AnalyticsPdfService {
     final income = transactions.where((tx) => tx.countsAsIncome).fold<double>(0, (sum, tx) => sum + tx.amount);
     final expense = transactions.where((tx) => tx.countsAsExpense).fold<double>(0, (sum, tx) => sum + tx.amount);
     final transfers = transactions.where((tx) => tx.type == MoneyTransactionType.transfer).toList(growable: false);
-    final transferVolume = transfers.fold<double>(0, (sum, tx) => sum + tx.amount);
+    final transferVolume = transfers.fold<double>(0, (sum, tx) => sum + tx.transferAmount);
 
     String accountName(String id) => state.accountOf(id)?.name ?? 'Unknown account';
     String categoryName(MoneyTransaction tx) => state.categoryOf(tx.categoryId)?.name ?? 'Uncategorized';
@@ -577,6 +577,8 @@ class AnalyticsPdfService {
         tx.displayType,
         if (tx.type != MoneyTransactionType.transfer) category,
         if (tx.type != MoneyTransactionType.transfer) from,
+        if (tx.serviceChargeEnabled)
+          'Service charge ${_analyticsPdfMoney(state, tx.serviceChargeAmount)}${tx.serviceChargeMode == ServiceChargeMode.percentage ? ' (${tx.serviceChargeValue.toStringAsFixed(tx.serviceChargeValue == tx.serviceChargeValue.roundToDouble() ? 0 : 2)}%)' : ''}',
         if (tx.excludeFromReports) 'Excluded from reports',
       ];
       var notes = tx.notes.trim();
@@ -711,7 +713,7 @@ Uint8List _analyticsTextReport(AppController state, AnalyticsSnapshot snapshot, 
     final income = transactions.where((tx) => tx.countsAsIncome).fold<double>(0, (sum, tx) => sum + tx.amount);
     final expense = transactions.where((tx) => tx.countsAsExpense).fold<double>(0, (sum, tx) => sum + tx.amount);
     final transfers = transactions.where((tx) => tx.type == MoneyTransactionType.transfer).toList(growable: false);
-    final transferVolume = transfers.fold<double>(0, (sum, tx) => sum + tx.amount);
+    final transferVolume = transfers.fold<double>(0, (sum, tx) => sum + tx.transferAmount);
     lines
       ..add('Koinly Transaction History')
       ..add('${snapshot.filterLabel} | ${snapshot.range.label}')
@@ -742,6 +744,12 @@ Uint8List _analyticsTextReport(AppController state, AnalyticsSnapshot snapshot, 
           ..add('Type: ${tx.displayType} | Amount: ${_analyticsReportMoney(state, signedAmount)}')
           ..add('Title: ${_analyticsTransactionTitle(state, tx)}')
           ..add('Category: $category | From: $from${to.isEmpty ? '' : ' | To: $to'}${tx.excludeFromReports ? ' | Excluded from reports' : ''}');
+        if (tx.serviceChargeEnabled) {
+          final chargeSetting = tx.serviceChargeMode == ServiceChargeMode.percentage
+              ? '${tx.serviceChargeValue.toStringAsFixed(tx.serviceChargeValue == tx.serviceChargeValue.roundToDouble() ? 0 : 2)}%'
+              : _analyticsReportMoney(state, tx.serviceChargeValue);
+          lines.add('Base amount: ${_analyticsReportMoney(state, tx.baseAmount)} | Service charge: ${_analyticsReportMoney(state, tx.serviceChargeAmount)} ($chargeSetting)');
+        }
         if (tx.notes.trim().isNotEmpty) lines.add('Notes: ${tx.notes.trim()}');
         lines.add('');
       }
@@ -992,7 +1000,7 @@ Uint8List _analyticsXlsxReport(AppController state, AnalyticsSnapshot snapshot, 
       ['Generated', generated],
       ['App version', appVersion],
       [],
-      ['Start', 'End', 'Type', 'Amount', 'Currency', 'Title', 'Category', 'From account', 'To account', 'Notes', 'Excluded from reports'],
+      ['Start', 'End', 'Type', 'Amount', 'Base amount', 'Service charge', 'Service charge mode', 'Service charge value', 'Currency', 'Title', 'Category', 'From account', 'To account', 'Notes', 'Excluded from reports'],
     ];
     for (final tx in transactions) {
       final amount = switch (tx.type) {
@@ -1005,6 +1013,10 @@ Uint8List _analyticsXlsxReport(AppController state, AnalyticsSnapshot snapshot, 
         DateFormat('yyyy-MM-dd HH:mm').format(tx.effectiveEndOn),
         tx.displayType,
         amount,
+        tx.baseAmount,
+        tx.serviceChargeEnabled ? tx.serviceChargeAmount : 0,
+        tx.serviceChargeEnabled ? (tx.serviceChargeMode == ServiceChargeMode.percentage ? 'Percentage' : 'Number') : 'Off',
+        tx.serviceChargeEnabled ? tx.serviceChargeValue : 0,
         state.currencyCode,
         _analyticsTransactionTitle(state, tx),
         state.categoryOf(tx.categoryId)?.name ?? 'Uncategorized',

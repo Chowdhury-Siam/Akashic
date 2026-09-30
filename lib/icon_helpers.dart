@@ -50,6 +50,10 @@ IconData iconFor(String name) {
     case 'subscription': return Icons.subscriptions_rounded;
     case 'fuel': return Icons.local_gas_station_rounded;
     case 'home': return Icons.home_rounded;
+    case 'analysis': return Icons.auto_graph_rounded;
+    case 'loans': return Icons.currency_exchange_rounded;
+    case 'transaction': return Icons.receipt_long_rounded;
+    case 'categories': return Icons.category_rounded;
     case 'house': return Icons.house_rounded;
     case 'apartment': return Icons.apartment_rounded;
     case 'utilities': return Icons.lightbulb_rounded;

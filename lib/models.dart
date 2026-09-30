@@ -7,12 +7,14 @@ import 'package:intl/intl.dart';
 enum AccountType { regular, credit, savings }
 enum CategoryType { income, expense }
 enum MoneyTransactionType { income, expense, transfer }
+enum ServiceChargeMode { number, percentage }
 enum TransactionSortMode { dateNewest, dateOldest, categoryAsc, categoryDesc, amountHigh, amountLow, titleAsc, titleDesc }
 enum SubscriptionFrequency { daily, weekly, monthly, yearly }
 enum DateRangeType { today, thisWeek, thisMonth, thisYear, allTime, custom }
 enum FinancialHealthPeriod { monthly, yearly }
 enum CurrencyPosition { prefix, suffix }
 enum ThemePreference { system, light, dark, batterySaver }
+enum StartupPage { home, analysis, loans, transaction, categories }
 enum SyncDatabaseProvider { turso, mongoDb, local, cloudflareD1, supabase, neonPostgres, firebaseFirestore }
 
 const List<SyncDatabaseProvider> userSyncDatabaseProviders = [
@@ -521,6 +523,11 @@ class MoneyTransaction {
     required this.id,
     required this.type,
     required this.amount,
+    double? baseAmount,
+    this.serviceChargeEnabled = false,
+    this.serviceChargeMode = ServiceChargeMode.number,
+    this.serviceChargeValue = 0,
+    this.serviceChargeAmount = 0,
     this.title = '',
     required this.notes,
     required this.categoryId,
@@ -533,11 +540,19 @@ class MoneyTransaction {
     required this.createdOn,
     this.endOn,
     required this.updatedOn,
-  });
+  }) : baseAmount = baseAmount ?? amount;
 
   final String id;
   final MoneyTransactionType type;
+  /// Final amount posted to the source account/reports. When a service charge
+  /// is enabled this is the gross expense/source debit or net income credit.
   final double amount;
+  /// User-entered amount before any service charge is applied.
+  final double baseAmount;
+  final bool serviceChargeEnabled;
+  final ServiceChargeMode serviceChargeMode;
+  final double serviceChargeValue;
+  final double serviceChargeAmount;
   final String title;
   final String notes;
   final String categoryId;
@@ -553,6 +568,7 @@ class MoneyTransaction {
 
   bool get countsAsIncome => !excludeFromReports && type == MoneyTransactionType.income;
   bool get countsAsExpense => !excludeFromReports && type == MoneyTransactionType.expense;
+  double get transferAmount => type == MoneyTransactionType.transfer ? baseAmount : amount;
   bool get isLoanTransaction => linkedEntityType == 'loans' || linkedEntityType == 'loan_payments';
   String get displayType => isLoanTransaction ? 'Loan' : enumName(type);
   DateTime get effectiveEndOn {
@@ -568,6 +584,11 @@ class MoneyTransaction {
     String? id,
     MoneyTransactionType? type,
     double? amount,
+    double? baseAmount,
+    bool? serviceChargeEnabled,
+    ServiceChargeMode? serviceChargeMode,
+    double? serviceChargeValue,
+    double? serviceChargeAmount,
     String? title,
     String? notes,
     String? categoryId,
@@ -584,6 +605,11 @@ class MoneyTransaction {
         id: id ?? this.id,
         type: type ?? this.type,
         amount: amount ?? this.amount,
+        baseAmount: baseAmount ?? this.baseAmount,
+        serviceChargeEnabled: serviceChargeEnabled ?? this.serviceChargeEnabled,
+        serviceChargeMode: serviceChargeMode ?? this.serviceChargeMode,
+        serviceChargeValue: serviceChargeValue ?? this.serviceChargeValue,
+        serviceChargeAmount: serviceChargeAmount ?? this.serviceChargeAmount,
         title: title ?? this.title,
         notes: notes ?? this.notes,
         categoryId: categoryId ?? this.categoryId,
@@ -602,6 +628,11 @@ class MoneyTransaction {
         'id': id,
         'type': enumName(type),
         'amount': amount,
+        'base_amount': baseAmount,
+        'service_charge_enabled': serviceChargeEnabled ? 1 : 0,
+        'service_charge_mode': enumName(serviceChargeMode),
+        'service_charge_value': serviceChargeValue,
+        'service_charge_amount': serviceChargeAmount,
         'title': title,
         'notes': notes,
         'category_id': categoryId,
@@ -620,6 +651,13 @@ class MoneyTransaction {
         id: map['id'] as String,
         type: enumByName(MoneyTransactionType.values, map['type'] as String?, MoneyTransactionType.expense),
         amount: (map['amount'] as num? ?? 0).toDouble(),
+        baseAmount: (map['base_amount'] as num? ?? 0).toDouble() > 0
+            ? (map['base_amount'] as num).toDouble()
+            : (map['amount'] as num? ?? 0).toDouble(),
+        serviceChargeEnabled: (map['service_charge_enabled'] as num? ?? 0).toInt() == 1,
+        serviceChargeMode: enumByName(ServiceChargeMode.values, map['service_charge_mode'] as String?, ServiceChargeMode.number),
+        serviceChargeValue: (map['service_charge_value'] as num? ?? 0).toDouble(),
+        serviceChargeAmount: (map['service_charge_amount'] as num? ?? 0).toDouble(),
         title: map['title'] as String? ?? '',
         notes: map['notes'] as String? ?? '',
         categoryId: map['category_id'] as String? ?? '',

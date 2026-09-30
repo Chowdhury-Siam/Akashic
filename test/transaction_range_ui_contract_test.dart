@@ -32,6 +32,8 @@ void main() {
     expect(source, contains("'Select transaction time range'"));
     expect(source, contains('timeRangeEnabled'));
     expect(source, contains('dateRangeEnabled'));
+    expect(source, contains("label: const Text('Time • Date')"));
+    expect(source, contains('showTransactionDateTimeConfiguration('));
     expect(source, contains('endOn: hasEffectiveRange ? selectedEndDate : null'));
     expect(source, contains('Future<DateTimeRange?> pickCustomDateRange('));
     expect(source, contains('rangeOnly: true'));

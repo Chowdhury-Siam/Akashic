@@ -2236,7 +2236,7 @@ async function buildScheduledAnalyticsPdf(
       const excluded = Number(tx.exclude_from_reports ?? 0) === 1;
       if (!excluded && tx.type === 'income') income += amount;
       if (!excluded && tx.type === 'expense') expense += amount;
-      if (tx.type === 'transfer') { transferVolume += amount; transferCount += 1; }
+      if (tx.type === 'transfer') { transferVolume += rowNumber(tx, 'base_amount') || amount; transferCount += 1; }
     }
     lines.push('Koinly Transaction History');
     lines.push(`${scheduledDateFilterLabel(settings.dateFilter)} | ${range.label}`);
@@ -2262,6 +2262,16 @@ async function buildScheduledAnalyticsPdf(
           : accountName(tx.from_account_id);
         lines.push(`${date} | ${type} | ${sign}${scheduledAnalyticsMoney(currencyCode, amount)} | ${title}`);
         lines.push(`Category: ${categoryName(tx.category_id)} | Account: ${route}${Number(tx.exclude_from_reports ?? 0) === 1 ? ' | Excluded from reports' : ''}`);
+        if (Number(tx.service_charge_enabled ?? 0) === 1) {
+          const baseAmount = rowNumber(tx, 'base_amount') || amount;
+          const chargeAmount = rowNumber(tx, 'service_charge_amount');
+          const chargeValue = rowNumber(tx, 'service_charge_value');
+          const chargeMode = String(tx.service_charge_mode ?? 'number');
+          const chargeSetting = chargeMode === 'percentage'
+            ? `${chargeValue}%`
+            : scheduledAnalyticsMoney(currencyCode, chargeValue);
+          lines.push(`Base amount: ${scheduledAnalyticsMoney(currencyCode, baseAmount)} | Service charge: ${scheduledAnalyticsMoney(currencyCode, chargeAmount)} (${chargeSetting})`);
+        }
         const notes = cleanText(tx.notes, 500);
         if (notes) lines.push(`Notes: ${notes}`);
         lines.push('');
@@ -2291,12 +2301,13 @@ async function buildScheduledAnalyticsPdf(
           expenseCategories.set(categoryId, (expenseCategories.get(categoryId) ?? 0) + amount);
         }
         if (tx.type === 'transfer') {
-          transferVolume += amount;
+          const transferAmount = rowNumber(tx, 'base_amount') || amount;
+          transferVolume += transferAmount;
           transferCount += 1;
           const fromSavings = accounts.get(String(tx.from_account_id ?? ''))?.type === 'savings';
           const toSavings = accounts.get(String(tx.to_account_id ?? ''))?.type === 'savings';
-          if (!fromSavings && toSavings) savingsIn += amount;
-          if (fromSavings && !toSavings) savingsOut += amount;
+          if (!fromSavings && toSavings) savingsIn += transferAmount;
+          if (fromSavings && !toSavings) savingsOut += transferAmount;
         }
       }
       return { txs, income, expense, transferVolume, transferCount, savingsIn, savingsOut, expenseCategories, incomeCategories };

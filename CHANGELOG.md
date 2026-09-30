@@ -1,3 +1,19 @@
+## [1.0.1210] - 2026-09-30
+
+- Replaced the separate transaction date and time buttons with a single `Time • Date` control that opens one configuration popup while preserving single/range date and time support.
+- Replaced the second transaction timing button with `Service charge`; service charge is off by default and can be configured as a fixed number or percentage.
+- Service charges are persisted and synchronized with transactions. Expenses add the charge, income deducts it, and transfers charge only the source account while the destination receives the original transfer amount.
+- Transaction-history PDF/TXT/XLSX and Worker-generated history reports now retain service-charge details, while transfer-volume analytics continue to use the actual transferred base amount.
+- Added database migration and regression contracts for the new transaction metadata.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1210+254`.
+
+## [1.0.1209] - 2026-09-30
+
+- Added a Settings > General > Startup page option for choosing which primary Koinly page opens after launch.
+- Users can choose Home, Analysis, Loans, Transaction, or Categories; Home remains the default for existing and new installs unless changed.
+- The selected startup page is persisted with preferences without forcing an immediate navigation change while editing Settings.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1209+253`.
+
 ## [1.0.1208] - 2026-09-29
 
 - Added the same global show/hide-amount eye control used on the Home balance card to the Transaction title, Loans Portfolio header, Categories breakdown header, and Analysis cash-flow header.

@@ -172,7 +172,7 @@ class KoinlyDatabase {
     final path = p.join(dir, 'koinly_flutter.db');
     _db = await sql.openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: (database, version) async {
         await _createSchema(database);
         await _seed(database);
@@ -263,6 +263,11 @@ class KoinlyDatabase {
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
         amount REAL NOT NULL,
+        base_amount REAL NOT NULL DEFAULT 0,
+        service_charge_enabled INTEGER NOT NULL DEFAULT 0,
+        service_charge_mode TEXT NOT NULL DEFAULT 'number',
+        service_charge_value REAL NOT NULL DEFAULT 0,
+        service_charge_amount REAL NOT NULL DEFAULT 0,
         title TEXT NOT NULL DEFAULT '',
         notes TEXT NOT NULL,
         category_id TEXT NOT NULL,
@@ -461,6 +466,25 @@ class KoinlyDatabase {
     if (!columns.contains('end_on')) {
       await database.execute('ALTER TABLE transactions ADD COLUMN end_on INTEGER');
     }
+    if (!columns.contains('base_amount')) {
+      await database.execute('ALTER TABLE transactions ADD COLUMN base_amount REAL NOT NULL DEFAULT 0');
+    }
+    if (!columns.contains('service_charge_enabled')) {
+      await database.execute('ALTER TABLE transactions ADD COLUMN service_charge_enabled INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!columns.contains('service_charge_mode')) {
+      await database.execute("ALTER TABLE transactions ADD COLUMN service_charge_mode TEXT NOT NULL DEFAULT 'number'");
+    }
+    if (!columns.contains('service_charge_value')) {
+      await database.execute('ALTER TABLE transactions ADD COLUMN service_charge_value REAL NOT NULL DEFAULT 0');
+    }
+    if (!columns.contains('service_charge_amount')) {
+      await database.execute('ALTER TABLE transactions ADD COLUMN service_charge_amount REAL NOT NULL DEFAULT 0');
+    }
+    // Legacy transactions did not store the pre-charge amount. For those rows,
+    // the persisted amount is already the base amount because service charge
+    // support did not exist yet.
+    await database.rawUpdate('UPDATE transactions SET base_amount = amount WHERE base_amount <= 0');
   }
 
   Future<void> _seed(sql.Database database) async {
@@ -995,8 +1019,10 @@ class KoinlyDatabase {
     } else if (tx.type == MoneyTransactionType.expense) {
       await updateAmount(tx.fromAccountId, -tx.amount);
     } else {
+      // A transfer service charge belongs only to the source account. The
+      // destination still receives the original transfer amount.
       await updateAmount(tx.fromAccountId, -tx.amount);
-      await updateAmount(tx.toAccountId ?? '', tx.amount);
+      await updateAmount(tx.toAccountId ?? '', tx.baseAmount);
     }
   }
 
@@ -2022,7 +2048,8 @@ class AppController extends ChangeNotifier {
   bool onboardingCompleted = false;
   bool starterAccountsSkipped = false;
   int desktopSetupVersionCompleted = 0;
-  int tabIndex = 0;
+  StartupPage startupPage = StartupPage.home;
+  int tabIndex = kHomeTabIndex;
 
   List<Account> accounts = [];
   List<Category> categories = [];
@@ -2227,6 +2254,7 @@ class AppController extends ChangeNotifier {
     await database.db;
     await SubscriptionBackgroundService.processDueNow();
     await _loadPreferences();
+    tabIndex = _tabIndexForStartupPage(startupPage);
     await reload();
     // v1.0.1065-1067 could merge a restored account set on top of the old
     // built-in starter rows. A duplicate starter fingerprint is strong legacy
@@ -2384,6 +2412,7 @@ class AppController extends ChangeNotifier {
     starterAccountsSkipped = await prefs.getBool('starterAccountsSkipped', false);
     desktopSetupVersionCompleted = await prefs.getInt('desktopSetupVersionCompleted', 0);
     themePreference = await prefs.getEnum('themePreference', ThemePreference.values, ThemePreference.dark);
+    startupPage = await prefs.getEnum('startupPage', StartupPage.values, StartupPage.home);
     currencySymbol = await prefs.getString('currencySymbol', '৳');
     currencyCode = await prefs.getString('currencyCode', 'BDT');
     currencyPosition = await prefs.getEnum('currencyPosition', CurrencyPosition.values, CurrencyPosition.suffix);
@@ -3138,6 +3167,7 @@ class AppController extends ChangeNotifier {
 
   Future<Map<String, dynamic>> exportPreferences() async => {
         'themePreference': enumName(themePreference),
+        'startupPage': enumName(startupPage),
         'currencySymbol': currencySymbol,
         'currencyCode': currencyCode,
         'currencyPosition': enumName(currencyPosition),
@@ -5152,6 +5182,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> _replaceRemotePreferences(Map<String, dynamic>? remote) async {
     final sp = await prefs.prefs;
+    await sp.setString('startupPage', enumName(StartupPage.home));
     await sp.setString('currencySymbol', '৳');
     await sp.setString('currencyCode', 'BDT');
     await sp.setString('currencyPosition', enumName(CurrencyPosition.suffix));
@@ -6684,6 +6715,14 @@ class AppController extends ChangeNotifier {
       result.add(BudgetProgress(budget, txs.fold<double>(0, (sum, tx) => sum + tx.amount), txs));
     }
     return result;
+  }
+
+  Future<void> setStartupPage(StartupPage value) async {
+    if (startupPage == value) return;
+    startupPage = value;
+    await prefs.setEnum('startupPage', value);
+    notifyListeners();
+    await queuePreferenceSync();
   }
 
   Future<void> saveTheme(ThemePreference value) async {
@@ -16688,6 +16727,11 @@ Future<void> _duplicateTransaction(BuildContext context, MoneyTransaction tx) as
     id: _uuid.v4(),
     type: tx.type,
     amount: tx.amount,
+    baseAmount: tx.baseAmount,
+    serviceChargeEnabled: tx.serviceChargeEnabled,
+    serviceChargeMode: tx.serviceChargeMode,
+    serviceChargeValue: tx.serviceChargeValue,
+    serviceChargeAmount: tx.serviceChargeAmount,
     title: tx.title,
     notes: tx.notes,
     categoryId: tx.categoryId,
@@ -16867,6 +16911,362 @@ String transactionDateTimeLabel(MoneyTransaction transaction) {
   return '${transactionDateSpanLabel(transaction.createdOn, end)} • ${transactionTimeSpanLabel(transaction.createdOn, end, forceRange: hasTimeRange)}';
 }
 
+class TransactionDateTimeConfiguration {
+  const TransactionDateTimeConfiguration({
+    required this.start,
+    required this.end,
+    required this.dateRangeEnabled,
+    required this.timeRangeEnabled,
+  });
+
+  final DateTime start;
+  final DateTime end;
+  final bool dateRangeEnabled;
+  final bool timeRangeEnabled;
+}
+
+class ServiceChargeConfiguration {
+  const ServiceChargeConfiguration({
+    required this.enabled,
+    required this.mode,
+    required this.value,
+  });
+
+  final bool enabled;
+  final ServiceChargeMode mode;
+  final double value;
+}
+
+double _roundTransactionMoney(double value) => (value * 100).roundToDouble() / 100;
+
+double _serviceChargeAmount({
+  required double baseAmount,
+  required bool enabled,
+  required ServiceChargeMode mode,
+  required double value,
+}) {
+  if (!enabled || baseAmount <= 0 || value <= 0) return 0;
+  final raw = mode == ServiceChargeMode.percentage ? baseAmount * (value / 100) : value;
+  return _roundTransactionMoney(raw);
+}
+
+double _postedTransactionAmount({
+  required MoneyTransactionType type,
+  required double baseAmount,
+  required double serviceChargeAmount,
+}) {
+  final raw = switch (type) {
+    MoneyTransactionType.income => baseAmount - serviceChargeAmount,
+    MoneyTransactionType.expense => baseAmount + serviceChargeAmount,
+    MoneyTransactionType.transfer => baseAmount + serviceChargeAmount,
+  };
+  return _roundTransactionMoney(raw);
+}
+
+Future<TransactionDateTimeConfiguration?> showTransactionDateTimeConfiguration(
+  BuildContext context, {
+  required DateTime start,
+  required DateTime end,
+  required bool dateRangeEnabled,
+  required bool timeRangeEnabled,
+}) {
+  var workingStart = start;
+  var workingEnd = end;
+  var workingDateRange = dateRangeEnabled;
+  var workingTimeRange = timeRangeEnabled;
+
+  DateTime withDateAndTime(DateTime date, TimeOfDay time) =>
+      DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+  return showKoinlyPopup<TransactionDateTimeConfiguration>(
+    context,
+    maxWidth: 470,
+    maxHeight: 520,
+    child: StatefulBuilder(
+      builder: (dialogContext, setModalState) {
+        final dateLabel = workingDateRange
+            ? transactionDateSpanLabel(workingStart, workingEnd)
+            : DateFormat('MMM d, yyyy').format(workingStart);
+        final timeLabel = transactionTimeSpanLabel(
+          workingStart,
+          workingEnd,
+          forceRange: workingTimeRange,
+        );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+          child: KoinlyPopupContent(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Time • Date',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 18),
+                Text('Date', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final selection = await pickTransactionDateSelection(
+                      dialogContext,
+                      workingStart,
+                      workingEnd,
+                      useRange: workingDateRange,
+                    );
+                    if (selection == null || !dialogContext.mounted) return;
+                    final startTime = TimeOfDay.fromDateTime(workingStart);
+                    final endTime = TimeOfDay.fromDateTime(workingEnd);
+                    var resetTimeRange = false;
+                    final newStart = withDateAndTime(selection.start, startTime);
+                    var newEnd = withDateAndTime(
+                      selection.useRange ? selection.end : selection.start,
+                      workingTimeRange ? endTime : startTime,
+                    );
+                    if (!selection.useRange && workingTimeRange && !newEnd.isAfter(newStart)) {
+                      resetTimeRange = true;
+                      newEnd = newStart;
+                    }
+                    setModalState(() {
+                      workingDateRange = selection.useRange;
+                      if (resetTimeRange) workingTimeRange = false;
+                      workingStart = newStart;
+                      workingEnd = newEnd;
+                    });
+                    if (resetTimeRange && dialogContext.mounted) {
+                      showSnack(dialogContext, 'Time range was reset because its end time was not after the selected date');
+                    }
+                  },
+                  icon: Icon(workingDateRange ? Icons.date_range_rounded : Icons.calendar_today_rounded),
+                  label: Text(dateLabel),
+                ),
+                const SizedBox(height: 14),
+                Text('Time', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final selection = await pickTransactionTimeSelection(
+                      dialogContext,
+                      TimeOfDay.fromDateTime(workingStart),
+                      TimeOfDay.fromDateTime(workingEnd),
+                      useRange: workingTimeRange,
+                      datesSpanMultipleDays: workingDateRange && !isSameCalendarDay(workingStart, workingEnd),
+                    );
+                    if (selection == null || !dialogContext.mounted) return;
+                    final newStart = withDateAndTime(workingStart, selection.start);
+                    final endDate = workingDateRange ? workingEnd : workingStart;
+                    final newEnd = withDateAndTime(
+                      endDate,
+                      selection.useRange ? selection.end : selection.start,
+                    );
+                    setModalState(() {
+                      workingTimeRange = selection.useRange;
+                      workingStart = newStart;
+                      workingEnd = workingDateRange || selection.useRange ? newEnd : newStart;
+                    });
+                  },
+                  icon: Icon(workingTimeRange ? Icons.timelapse_rounded : Icons.schedule_rounded),
+                  label: Text(timeLabel),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    TransactionDateTimeConfiguration(
+                      start: workingStart,
+                      end: workingEnd,
+                      dateRangeEnabled: workingDateRange,
+                      timeRangeEnabled: workingTimeRange,
+                    ),
+                  ),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+Future<ServiceChargeConfiguration?> showServiceChargeConfiguration(
+  BuildContext context, {
+  required double baseAmount,
+  required MoneyTransactionType transactionType,
+  required bool enabled,
+  required ServiceChargeMode mode,
+  required double value,
+}) async {
+  final state = context.read<AppController>();
+  final valueController = TextEditingController(
+    text: value > 0 ? (value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(2)) : '',
+  );
+  var workingEnabled = enabled;
+  var workingMode = mode;
+
+  try {
+    return await showKoinlyPopup<ServiceChargeConfiguration>(
+      context,
+      maxWidth: 470,
+      maxHeight: 610,
+      child: StatefulBuilder(
+        builder: (dialogContext, setModalState) {
+          final rawValue = double.tryParse(valueController.text.trim()) ?? 0;
+          final charge = _serviceChargeAmount(
+            baseAmount: baseAmount,
+            enabled: workingEnabled,
+            mode: workingMode,
+            value: rawValue,
+          );
+          final posted = _postedTransactionAmount(
+            type: transactionType,
+            baseAmount: baseAmount,
+            serviceChargeAmount: charge,
+          );
+          final impactText = switch (transactionType) {
+            MoneyTransactionType.expense => 'The service charge is added to the expense.',
+            MoneyTransactionType.income => 'The service charge is deducted from the income.',
+            MoneyTransactionType.transfer => 'The source pays the charge; the destination receives the original amount.',
+          };
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+            child: KoinlyPopupContent(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Service charge',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: workingEnabled,
+                    onChanged: (next) => setModalState(() => workingEnabled = next),
+                    title: const Text('Enable service charge', style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                  if (workingEnabled) ...[
+                    const SizedBox(height: 8),
+                    SleekPillSelector<ServiceChargeMode>(
+                      options: const [
+                        SleekPillOption(value: ServiceChargeMode.number, label: 'Number', icon: Icons.payments_outlined),
+                        SleekPillOption(value: ServiceChargeMode.percentage, label: 'Percentage', icon: Icons.percent_rounded),
+                      ],
+                      selected: workingMode,
+                      onChanged: (next) => setModalState(() {
+                        workingMode = next;
+                        valueController.clear();
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      contextMenuBuilder: koinlyTextFieldContextMenu,
+                      enableInteractiveSelection: true,
+                      controller: valueController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => setModalState(() {}),
+                      inputFormatters: [
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          final text = newValue.text;
+                          if (text.isEmpty || RegExp(r'^\d*\.?\d*$').hasMatch(text)) return newValue;
+                          return oldValue;
+                        }),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: workingMode == ServiceChargeMode.percentage ? 'Percentage' : 'Charge amount',
+                        suffixText: workingMode == ServiceChargeMode.percentage ? '%' : null,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ExpressiveCard(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          _ServiceChargePreviewRow(label: 'Base amount', value: state.format(baseAmount)),
+                          const SizedBox(height: 8),
+                          _ServiceChargePreviewRow(label: 'Service charge', value: state.format(charge)),
+                          const Divider(height: 20),
+                          _ServiceChargePreviewRow(
+                            label: transactionType == MoneyTransactionType.income
+                                ? 'Net amount'
+                                : transactionType == MoneyTransactionType.transfer
+                                    ? 'Source total'
+                                    : 'Total amount',
+                            value: state.format(posted < 0 ? 0.0 : posted),
+                            emphasized: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      impactText,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  FilledButton(
+                    onPressed: () {
+                      final parsed = double.tryParse(valueController.text.trim()) ?? 0;
+                      if (workingEnabled && parsed <= 0) {
+                        showSnack(dialogContext, 'Enter a valid service charge');
+                        return;
+                      }
+                      if (workingEnabled && workingMode == ServiceChargeMode.percentage && parsed > 100) {
+                        showSnack(dialogContext, 'Percentage must be between 0 and 100');
+                        return;
+                      }
+                      Navigator.pop(
+                        dialogContext,
+                        ServiceChargeConfiguration(
+                          enabled: workingEnabled,
+                          mode: workingMode,
+                          value: workingEnabled ? parsed : 0,
+                        ),
+                      );
+                    },
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  } finally {
+    valueController.dispose();
+  }
+}
+
+class _ServiceChargePreviewRow extends StatelessWidget {
+  const _ServiceChargePreviewRow({required this.label, required this.value, this.emphasized = false});
+
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: emphasized ? FontWeight.w900 : FontWeight.w700,
+        );
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: style?.copyWith(color: emphasized ? null : kSleekMuted))),
+        Text(value, style: style),
+      ],
+    );
+  }
+}
+
 Future<void> showTransactionEditor(BuildContext context, {MoneyTransaction? transaction, Category? lockedCategory}) async {
   await showKoinlyPopup<void>(
     context,
@@ -16898,6 +17298,9 @@ class _TransactionEditorState extends State<TransactionEditor> {
   DateTime selectedEndDate = DateTime.now();
   bool dateRangeEnabled = false;
   bool timeRangeEnabled = false;
+  bool serviceChargeEnabled = false;
+  ServiceChargeMode serviceChargeMode = ServiceChargeMode.number;
+  double serviceChargeValue = 0;
   bool _amountHasFocus = false;
   bool busy = false;
 
@@ -16910,8 +17313,11 @@ class _TransactionEditorState extends State<TransactionEditor> {
     if (tx != null) {
       title.text = tx.title;
       notes.text = tx.notes;
-      amount.text = tx.amount.toStringAsFixed(2);
+      amount.text = tx.baseAmount.toStringAsFixed(2);
       type = tx.type;
+      serviceChargeEnabled = !tx.isLoanTransaction && tx.serviceChargeEnabled;
+      serviceChargeMode = tx.serviceChargeMode;
+      serviceChargeValue = tx.serviceChargeValue;
       categoryId = tx.categoryId;
       fromAccountId = tx.fromAccountId;
       toAccountId = tx.toAccountId;
@@ -16937,9 +17343,6 @@ class _TransactionEditorState extends State<TransactionEditor> {
     amountFocus.unfocus();
     FocusScope.of(context).unfocus();
   }
-
-  DateTime _withDateAndTime(DateTime date, TimeOfDay time) =>
-      DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
   @override
   void dispose() {
@@ -17186,63 +17589,48 @@ class _TransactionEditorState extends State<TransactionEditor> {
             OutlinedButton.icon(
               onPressed: () async {
                 _dismissAmountFocus();
-                final selection = await pickTransactionDateSelection(
+                final selection = await showTransactionDateTimeConfiguration(
                   context,
-                  selectedDate,
-                  selectedEndDate,
-                  useRange: dateRangeEnabled,
+                  start: selectedDate,
+                  end: selectedEndDate,
+                  dateRangeEnabled: dateRangeEnabled,
+                  timeRangeEnabled: timeRangeEnabled,
                 );
                 if (!mounted || selection == null) return;
-                final startTime = TimeOfDay.fromDateTime(selectedDate);
-                final endTime = TimeOfDay.fromDateTime(selectedEndDate);
-                var resetTimeRange = false;
-                final newStart = _withDateAndTime(selection.start, startTime);
-                var newEnd = _withDateAndTime(
-                  selection.useRange ? selection.end : selection.start,
-                  timeRangeEnabled ? endTime : startTime,
-                );
-                if (!selection.useRange && timeRangeEnabled && !newEnd.isAfter(newStart)) {
-                  resetTimeRange = true;
-                  newEnd = newStart;
-                }
                 setState(() {
-                  dateRangeEnabled = selection.useRange;
-                  if (resetTimeRange) timeRangeEnabled = false;
-                  selectedDate = newStart;
-                  selectedEndDate = newEnd;
+                  selectedDate = selection.start;
+                  selectedEndDate = selection.end;
+                  dateRangeEnabled = selection.dateRangeEnabled;
+                  timeRangeEnabled = selection.timeRangeEnabled;
                 });
-                if (resetTimeRange && mounted) {
-                  showSnack(context, 'Time range was reset because its end time was not after the selected date');
-                }
               },
-              icon: Icon(dateRangeEnabled ? Icons.date_range_rounded : Icons.calendar_today_rounded),
-              label: Text(dateRangeEnabled
-                  ? transactionDateSpanLabel(selectedDate, selectedEndDate)
-                  : DateFormat('MMM d, yyyy').format(selectedDate)),
+              icon: const Icon(Icons.event_rounded),
+              label: const Text('Time • Date'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: () async {
-                _dismissAmountFocus();
-                final selection = await pickTransactionTimeSelection(
-                  context,
-                  TimeOfDay.fromDateTime(selectedDate),
-                  TimeOfDay.fromDateTime(selectedEndDate),
-                  useRange: timeRangeEnabled,
-                  datesSpanMultipleDays: dateRangeEnabled && !isSameCalendarDay(selectedDate, selectedEndDate),
-                );
-                if (!mounted || selection == null) return;
-                final start = _withDateAndTime(selectedDate, selection.start);
-                final endDate = dateRangeEnabled ? selectedEndDate : selectedDate;
-                final end = _withDateAndTime(endDate, selection.useRange ? selection.end : selection.start);
-                setState(() {
-                  timeRangeEnabled = selection.useRange;
-                  selectedDate = start;
-                  selectedEndDate = dateRangeEnabled || selection.useRange ? end : start;
-                });
-              },
-              icon: Icon(timeRangeEnabled ? Icons.timelapse_rounded : Icons.schedule_rounded),
-              label: Text(transactionTimeSpanLabel(selectedDate, selectedEndDate, forceRange: timeRangeEnabled)),
+              onPressed: isLoanTransaction
+                  ? null
+                  : () async {
+                      _dismissAmountFocus();
+                      final baseValue = double.tryParse(amount.text.trim()) ?? 0;
+                      final selection = await showServiceChargeConfiguration(
+                        context,
+                        baseAmount: baseValue,
+                        transactionType: type,
+                        enabled: serviceChargeEnabled,
+                        mode: serviceChargeMode,
+                        value: serviceChargeValue,
+                      );
+                      if (!mounted || selection == null) return;
+                      setState(() {
+                        serviceChargeEnabled = selection.enabled;
+                        serviceChargeMode = selection.mode;
+                        serviceChargeValue = selection.value;
+                      });
+                    },
+              icon: const Icon(Icons.receipt_long_rounded),
+              label: const Text('Service charge'),
             ),
             const SizedBox(height: 12),
             TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
@@ -17266,8 +17654,29 @@ class _TransactionEditorState extends State<TransactionEditor> {
                       ? null
                       : () async {
                           _dismissAmountFocus();
-                          final value = double.tryParse(amount.text) ?? 0;
-                          if (value <= 0) return showSnack(context, 'Enter a valid amount');
+                          final baseValue = double.tryParse(amount.text) ?? 0;
+                          if (baseValue <= 0) return showSnack(context, 'Enter a valid amount');
+                          final chargeEnabled = !isLoanTransaction && serviceChargeEnabled;
+                          if (chargeEnabled && serviceChargeValue <= 0) {
+                            return showSnack(context, 'Enter a valid service charge');
+                          }
+                          if (chargeEnabled && serviceChargeMode == ServiceChargeMode.percentage && serviceChargeValue > 100) {
+                            return showSnack(context, 'Service charge percentage must be between 0 and 100');
+                          }
+                          final chargeAmount = _serviceChargeAmount(
+                            baseAmount: baseValue,
+                            enabled: chargeEnabled,
+                            mode: serviceChargeMode,
+                            value: serviceChargeValue,
+                          );
+                          final postedAmount = _postedTransactionAmount(
+                            type: type,
+                            baseAmount: baseValue,
+                            serviceChargeAmount: chargeAmount,
+                          );
+                          if (type == MoneyTransactionType.income && postedAmount <= 0) {
+                            return showSnack(context, 'Service charge must be less than the income amount');
+                          }
                           final transactionTitle = title.text.trim();
                           if (type != MoneyTransactionType.transfer && transactionTitle.isEmpty) return showSnack(context, 'Enter a transaction title');
                           if (fromAccountId == null) return showSnack(context, 'Select an account');
@@ -17281,7 +17690,12 @@ class _TransactionEditorState extends State<TransactionEditor> {
                             final tx = MoneyTransaction(
                               id: widget.transaction?.id ?? _uuid.v4(),
                               type: type,
-                              amount: value,
+                              amount: postedAmount,
+                              baseAmount: baseValue,
+                              serviceChargeEnabled: chargeEnabled,
+                              serviceChargeMode: serviceChargeMode,
+                              serviceChargeValue: chargeEnabled ? serviceChargeValue : 0,
+                              serviceChargeAmount: chargeEnabled ? chargeAmount : 0,
                               title: type == MoneyTransactionType.transfer ? '' : transactionTitle,
                               notes: notes.text.trim(),
                               categoryId: type == MoneyTransactionType.transfer ? '' : (categoryId ?? ''),
@@ -17782,8 +18196,8 @@ class FinancialHealthSummary {
     for (final tx in txs) {
       if (tx.countsAsIncome) income += tx.amount;
       if (tx.countsAsExpense) expense += tx.amount;
-      if (isSavingsTransferIn(state, tx)) savingsIn += tx.amount;
-      if (isSavingsTransferOut(state, tx)) savingsOut += tx.amount;
+      if (isSavingsTransferIn(state, tx)) savingsIn += tx.transferAmount;
+      if (isSavingsTransferOut(state, tx)) savingsOut += tx.transferAmount;
       if (isRecurringPaymentTransaction(state, tx)) {
         billPaymentTotal += tx.amount;
         billPaymentCount++;
@@ -17910,8 +18324,8 @@ MonthlyFinancialBreakdown monthlyBreakdownFor(AppController state, DateTime mont
   for (final tx in txs) {
     if (tx.countsAsIncome) income += tx.amount;
     if (tx.countsAsExpense) expense += tx.amount;
-    if (isSavingsTransferIn(state, tx)) savingsIn += tx.amount;
-    if (isSavingsTransferOut(state, tx)) savingsOut += tx.amount;
+    if (isSavingsTransferIn(state, tx)) savingsIn += tx.transferAmount;
+    if (isSavingsTransferOut(state, tx)) savingsOut += tx.transferAmount;
     if (isRecurringPaymentTransaction(state, tx)) {
       billPaymentTotal += tx.amount;
       billPaymentCount++;
@@ -20070,6 +20484,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             const SectionHeader('General'),
             SettingsTile(icon: Icons.palette_rounded, title: 'Theme', subtitle: _themeLabel(state.themePreference), color: '#A6E3A1', onTap: () => showThemeDialog(context)),
+            SettingsTile(icon: Icons.open_in_browser_rounded, title: 'Startup page', subtitle: startupPageLabel(state.startupPage), color: '#9AD0F5', onTap: () => showStartupPageSheet(context)),
             SettingsTile(icon: Icons.payments_rounded, title: 'Currency customization', subtitle: '${state.currencyCode} • ${state.currencyPosition == CurrencyPosition.prefix ? 'Prefix' : 'Suffix'}', color: kSleekAccentHex, onTap: () => showCurrencySheet(context)),
             SettingsTile(icon: Icons.notifications_active_rounded, title: 'Reminder notification', subtitle: state.reminderEnabled ? 'Daily at ${state.reminderTime.format(context)}' : 'Disabled', color: '#FBC879', onTap: () => showReminderSheet(context)),
             SettingsTile(icon: Icons.filter_alt_rounded, title: 'Default date filter', subtitle: _dateRangeLabel(state.dateRangeType), color: '#B4A5FF', onTap: () => showDateRangeSheet(context)),
@@ -23555,6 +23970,97 @@ class _ProviderChoiceCard extends StatelessWidget {
       ),
     );
   }
+}
+
+int _tabIndexForStartupPage(StartupPage page) {
+  switch (page) {
+    case StartupPage.home:
+      return kHomeTabIndex;
+    case StartupPage.analysis:
+      return kAnalysisTabIndex;
+    case StartupPage.loans:
+      return kLoansTabIndex;
+    case StartupPage.transaction:
+      return kTransactionTabIndex;
+    case StartupPage.categories:
+      return kCategoriesTabIndex;
+  }
+}
+
+String startupPageLabel(StartupPage page) {
+  switch (page) {
+    case StartupPage.home:
+      return 'Home';
+    case StartupPage.analysis:
+      return 'Analysis';
+    case StartupPage.loans:
+      return 'Loans';
+    case StartupPage.transaction:
+      return 'Transaction';
+    case StartupPage.categories:
+      return 'Categories';
+  }
+}
+
+SelectionOption optionFromStartupPage(StartupPage page) {
+  switch (page) {
+    case StartupPage.home:
+      return const SelectionOption(
+        id: 'home',
+        title: 'Home',
+        subtitle: '',
+        iconName: 'home',
+        iconColor: kSleekAccentHex,
+      );
+    case StartupPage.analysis:
+      return const SelectionOption(
+        id: 'analysis',
+        title: 'Analysis',
+        subtitle: '',
+        iconName: 'analysis',
+        iconColor: '#86E3CE',
+      );
+    case StartupPage.loans:
+      return const SelectionOption(
+        id: 'loans',
+        title: 'Loans',
+        subtitle: '',
+        iconName: 'loans',
+        iconColor: '#FBC879',
+      );
+    case StartupPage.transaction:
+      return const SelectionOption(
+        id: 'transaction',
+        title: 'Transaction',
+        subtitle: '',
+        iconName: 'transaction',
+        iconColor: '#7EA6F8',
+      );
+    case StartupPage.categories:
+      return const SelectionOption(
+        id: 'categories',
+        title: 'Categories',
+        subtitle: '',
+        iconName: 'categories',
+        iconColor: '#B4A5FF',
+      );
+  }
+}
+
+Future<void> showStartupPageSheet(BuildContext context) async {
+  final state = context.read<AppController>();
+  final selectedId = await showAppleWheelSelectionSheet(
+    context,
+    title: 'Choose Startup Page',
+    selectedId: enumName(state.startupPage),
+    options: StartupPage.values.map(optionFromStartupPage).toList(),
+  );
+  if (selectedId == null) return;
+  final selected = StartupPage.values.firstWhere(
+    (page) => enumName(page) == selectedId,
+    orElse: () => state.startupPage,
+  );
+  await state.setStartupPage(selected);
 }
 
 Future<void> showThemeDialog(BuildContext context) async {
