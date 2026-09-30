@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show appFlavor;
 
 // Neutral charcoal surfaces keep the teal accent focused on actions and data.
 const Color kSleekBackground = Color(0xFF0F1216);
@@ -32,7 +33,9 @@ const String kSleekAccentHex = '#00BD91';
 const String kLegacyStarterCashIconHex = '#78D8E8';
 
 const appTitle = 'Koinly';
-const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1211');
+const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1215');
+const kAndroidDistribution = appFlavor ?? String.fromEnvironment('KOINLY_ANDROID_DISTRIBUTION', defaultValue: 'direct');
+const bool kIsGooglePlayBuild = kAndroidDistribution == 'play';
 const kLowEndFriendlyUi = true;
 const backupPassword = 'YOUR_SECRET_PASSWORD';
 const kSyncAdminTelegramUrl = 'https://t.me/Ch0wdhury_Siam';

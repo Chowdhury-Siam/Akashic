@@ -88,28 +88,35 @@ jobs:
   # cannot spend Actions minutes building Koinly application packages.
   build-apks:
     needs: prepare-worker-bundle
-    name: Build Android ${{ matrix.label }} APK
+    name: Build Android ${{ matrix.label }}
     if: github.repository == 'Chowdhury-Siam/Koinly'
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 4
       matrix:
         include:
           - variant: universal
-            label: universal
+            label: direct universal APK
+            package: apk
             target_platform: android-arm,android-arm64
-            source_apk: app-release.apk
+            source_apk: app-direct-release.apk
             split_per_abi: false
           - variant: arm32
-            label: ARM32
+            label: direct ARM32 APK
+            package: apk
             target_platform: android-arm
-            source_apk: app-armeabi-v7a-release.apk
+            source_apk: app-direct-armeabi-v7a-release.apk
             split_per_abi: true
           - variant: arm64
-            label: ARM64
+            label: direct ARM64 APK
+            package: apk
             target_platform: android-arm64
-            source_apk: app-arm64-v8a-release.apk
+            source_apk: app-direct-arm64-v8a-release.apk
             split_per_abi: true
+          - variant: play
+            label: Google Play AAB
+            package: aab
+            split_per_abi: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,6 +140,30 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+
+      - name: Verify Android 16 / API 36 app target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_API36'
+          import pathlib
+          import re
+
+          gradle = pathlib.Path('android/app/build.gradle').read_text(encoding='utf-8')
+
+          def require_value(name: str, expected: int) -> None:
+              pattern = rf'\b{name}\s*=\s*(\d+)'
+              match = re.search(pattern, gradle)
+              if not match:
+                  raise SystemExit(f'::error::{name} is missing from android/app/build.gradle')
+              actual = int(match.group(1))
+              if actual != expected:
+                  raise SystemExit(f'::error::{name} must be {expected} for Android 16 / API 36 Play releases; found {actual}.')
+              print(f'{name}={actual}')
+
+          require_value('compileSdk', 36)
+          require_value('targetSdk', 36)
+          PY_VERIFY_API36
 
       - name: Verify preinstalled Android SDK 36 and NDK 28
         shell: bash
@@ -284,33 +315,66 @@ jobs:
           echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
 
-      # Build each APK flavor in its own matrix runner. The previous workflow built
-      # the universal APK and then rebuilt both ABIs again for split APKs in one job.
-      # Running these independent release builds concurrently cuts Android wall-clock
-      # time while preserving the same three standalone installable APK outputs.
-      - name: Build ${{ matrix.label }} APK
+      # Build each Android distribution artifact in its own matrix runner. Direct
+      # installs keep three APK variants, while the Play flavor produces a signed AAB
+      # whose merged manifest is checked to ensure sideload-update capability is absent.
+      - name: Build ${{ matrix.label }}
         shell: bash
         run: |
-          extra_args=()
-          if [ "${{ matrix.split_per_abi }}" = "true" ]; then
-            extra_args+=(--split-per-abi)
+          if [ "${{ matrix.package }}" = "aab" ]; then
+            flutter build appbundle \
+              --flavor play \
+              --release \
+              --build-name="$KOINLY_APP_VERSION_NAME" \
+              --build-number="$KOINLY_APP_BUILD_NUMBER" \
+              --no-pub \
+              --no-tree-shake-icons \
+              --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME" \
+              --dart-define=KOINLY_ANDROID_DISTRIBUTION=play
+            PLAY_MANIFEST="$(find build/app/intermediates -type f -path '*playRelease*' -name AndroidManifest.xml -print -quit)"
+            if [ -z "$PLAY_MANIFEST" ]; then
+              echo "::error::Could not locate the merged Google Play manifest for policy verification."
+              exit 1
+            fi
+            if grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' "$PLAY_MANIFEST"; then
+              echo "::error::Google Play manifest unexpectedly requests REQUEST_INSTALL_PACKAGES."
+              exit 1
+            fi
+            if grep -q 'com.koinly.siam.fileprovider' "$PLAY_MANIFEST"; then
+              echo "::error::Google Play manifest unexpectedly contains Koinly's direct APK FileProvider."
+              exit 1
+            fi
+            PLAY_AAB="$(find build/app/outputs/bundle -type f -name '*.aab' -path '*playRelease*' -print -quit)"
+            if [ -z "$PLAY_AAB" ]; then
+              echo "::error::Google Play AAB was not produced."
+              exit 1
+            fi
+            cp "$PLAY_AAB" "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-play.aab"
+          else
+            extra_args=()
+            if [ "${{ matrix.split_per_abi }}" = "true" ]; then
+              extra_args+=(--split-per-abi)
+            fi
+            flutter build apk \
+              --flavor direct \
+              --release \
+              "${extra_args[@]}" \
+              --target-platform "${{ matrix.target_platform }}" \
+              --build-name="$KOINLY_APP_VERSION_NAME" \
+              --build-number="$KOINLY_APP_BUILD_NUMBER" \
+              --no-pub \
+              --no-tree-shake-icons \
+              --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME" \
+              --dart-define=KOINLY_ANDROID_DISTRIBUTION=direct
+            cp "build/app/outputs/flutter-apk/${{ matrix.source_apk }}" \
+              "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
           fi
-          flutter build apk \
-            --release \
-            "${extra_args[@]}" \
-            --target-platform "${{ matrix.target_platform }}" \
-            --build-name="$KOINLY_APP_VERSION_NAME" \
-            --build-number="$KOINLY_APP_BUILD_NUMBER" \
-            --no-pub \
-            --no-tree-shake-icons \
-            --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME"
-          cp "build/app/outputs/flutter-apk/${{ matrix.source_apk }}" \
-            "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
 
-      - name: List APK artifacts
+      - name: List Android artifacts
         run: ls -lh artifacts
 
       - name: Verify APK signatures
+        if: matrix.package == 'apk'
         run: |
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           if [ ! -x "$APKSIGNER" ]; then
@@ -322,11 +386,21 @@ jobs:
             "$APKSIGNER" verify --print-certs "$apk"
           done
 
-      - name: Upload ${{ matrix.label }} APK
+      - name: Upload direct APK
+        if: matrix.package == 'apk'
         uses: actions/upload-artifact@v5
         with:
           name: koinly-android-${{ matrix.variant }}
           path: artifacts/Koinly-v*-${{ matrix.variant }}.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload Google Play AAB
+        if: matrix.package == 'aab'
+        uses: actions/upload-artifact@v5
+        with:
+          name: koinly-play-store-aab
+          path: artifacts/Koinly-v*-play.aab
           if-no-files-found: error
           compression-level: 0
 

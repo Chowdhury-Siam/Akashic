@@ -55,7 +55,7 @@ void main() {
     // Widget tests otherwise use Ahem, which cannot represent app typography.
     final fontPath = Platform.environment['KOINLY_PREVIEW_FONT'] ?? r'C:\Windows\Fonts\segoeui.ttf';
     final fontBytes = ByteData.sublistView(await File(fontPath).readAsBytes());
-    for (final family in ['.SF Pro Display', 'Roboto', 'Ahem', 'Segoe UI']) {
+    for (final family in ['Inter', 'Roboto', 'Ahem', 'Segoe UI']) {
       await (FontLoader(family)..addFont(Future.value(fontBytes))).load();
     }
     await (FontLoader('MaterialIcons')

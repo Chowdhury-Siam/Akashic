@@ -58,25 +58,27 @@ class UpdateBackgroundService {
 
   static Future<void> setEnabled(bool enabled) async {
     if (!Platform.isAndroid) return;
-    // Remove the pre-1.0.1167 Dart updater if it is still present, then let
-    // Android's native Worker own future closed-app release checks.
+    // Remove the pre-1.0.1167 Dart updater if it is still present. Google Play
+    // builds intentionally disable the GitHub background checker because Play
+    // is the authoritative update channel for those installs.
     await Workmanager().cancelByUniqueName(_legacyBackgroundUpdateUniqueName);
+    final nativeEnabled = enabled && !kIsGooglePlayBuild;
     try {
-      await _nativeUpdateChannel.invokeMethod<void>('sync', {'enabled': enabled});
+      await _nativeUpdateChannel.invokeMethod<void>('sync', {'enabled': nativeEnabled});
     } on PlatformException {
       // Foreground update checks remain available even if a vendor-specific
       // Android build cannot install the native schedule.
     } on MissingPluginException {
       // Allows tests/non-Android hosts to exercise preference code safely.
     }
-    if (!enabled) {
+    if (!nativeEnabled) {
       await ReminderService.cancelUpdateAvailableNotification();
     }
   }
 
   // Retained for old queued work and for deterministic foreground fallback.
   static Future<bool> runBackgroundCheck() async {
-    if (!Platform.isAndroid) return true;
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return true;
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!(prefs.getBool(_automaticUpdatePreferenceKey) ?? true)) return true;
@@ -92,7 +94,7 @@ class UpdateBackgroundService {
   }
 
   static Future<void> notifyReleaseIfNeeded(GithubRelease release) async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return;
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool(_automaticUpdatePreferenceKey) ?? true)) return;
     if (prefs.getString(_lastNotifiedUpdateVersionKey) == release.displayVersion) return;

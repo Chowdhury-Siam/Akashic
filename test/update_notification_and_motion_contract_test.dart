@@ -6,7 +6,7 @@ void main() {
   test('automatic updates use native Android WorkManager when Koinly is closed', () {
     final app = File('lib/main.dart').readAsStringSync();
     final background = File('lib/update_background_service.dart').readAsStringSync();
-    final nativeWorker = File('android/app/src/main/kotlin/com/koinly/siam/UpdateCheckWorker.kt').readAsStringSync();
+    final nativeWorker = File('android/app/src/direct/kotlin/com/koinly/siam/UpdateCheckWorker.kt').readAsStringSync();
     final activity = File('android/app/src/main/kotlin/com/koinly/siam/MainActivity.kt').readAsStringSync();
     final reminders = File('lib/reminder_service.dart').readAsStringSync();
 
@@ -14,7 +14,7 @@ void main() {
     expect(app, contains('await UpdateBackgroundService.setEnabled(enabled);'));
     expect(background, contains("MethodChannel('com.koinly.siam/update_background')"));
     expect(background, contains("cancelByUniqueName(_legacyBackgroundUpdateUniqueName)"));
-    expect(background, contains("invokeMethod<void>('sync', {'enabled': enabled})"));
+    expect(background, contains("invokeMethod<void>('sync', {'enabled': nativeEnabled})"));
     expect(nativeWorker, contains('PeriodicWorkRequestBuilder<UpdateCheckWorker>(15, TimeUnit.MINUTES)'));
     expect(nativeWorker, contains('.setRequiredNetworkType(NetworkType.CONNECTED)'));
     expect(nativeWorker, contains('ExistingPeriodicWorkPolicy.UPDATE'));
@@ -22,7 +22,9 @@ void main() {
     expect(nativeWorker, contains('https://api.github.com/repos/Chowdhury-Siam/Koinly/releases/latest'));
     expect(nativeWorker, contains('Koinly ${release.version} is available'));
     expect(nativeWorker, contains('lastNotifiedUpdateVersion'));
-    expect(activity, contains('NativeUpdateCheckScheduler.sync(this)'));
+    expect(activity, contains('NativeUpdateCheckScheduler.sync(this, BuildConfig.DISTRIBUTION == "direct")'));
+    expect(background, contains('enabled && !kIsGooglePlayBuild'));
+    expect(background, contains('if (!Platform.isAndroid || kIsGooglePlayBuild) return true;')); 
     expect(activity, contains('updateBackgroundChannel'));
     expect(reminders, contains("'koinly_app_updates'"));
     expect(reminders, contains("'Koinly updates'"));

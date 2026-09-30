@@ -21,6 +21,7 @@ import 'package:flutter/material.dart' hide Category, Summary;
 import 'package:flutter/cupertino.dart' hide Category, Summary;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -2192,6 +2193,7 @@ class AppController extends ChangeNotifier {
   String updateStatusMessage = 'Not checked yet.';
   DateTime? updateLastCheckedAt;
   GithubRelease? latestGithubRelease;
+  GooglePlayUpdateInfo? googlePlayUpdateInfo;
   UpdateAssetKind selectedAndroidUpdateKind = UpdateAssetKind.arm64;
   DownloadProgressSnapshot? updateDownloadProgress;
   String pendingAndroidUpdatePath = '';
@@ -2223,6 +2225,7 @@ class AppController extends ChangeNotifier {
   DataHealthReport? dataHealthReport;
   bool dataHealthBusy = false;
   String? _shownUpdateDialogVersionThisSession;
+  int? _shownGooglePlayUpdateVersionCodeThisSession;
   http.Client? _updateDownloadClient;
   bool _updateDownloadCancelled = false;
 
@@ -2606,7 +2609,13 @@ class AppController extends ChangeNotifier {
     pendingAndroidUpdateVersion = await prefs.getString('pendingAndroidUpdateVersion', '');
     final pendingKindName = await prefs.getString('pendingAndroidUpdateKind', '');
     pendingAndroidUpdateKind = pendingKindName.isEmpty ? null : enumByName(UpdateAssetKind.values, pendingKindName, UpdateAssetKind.arm64);
-    if (pendingAndroidUpdatePath.isNotEmpty && _isPendingAndroidUpdateAlreadyInstalled()) {
+    if (Platform.isAndroid && kIsGooglePlayBuild) {
+      // A user may migrate from the direct APK flavor to the Play flavor. Do
+      // not keep any previously downloaded sideload installer around once Play
+      // becomes the authoritative update channel.
+      await _clearPendingAndroidUpdate(deleteFile: true);
+      await UpdateDownloadStore.purgeAndroidUpdateFiles();
+    } else if (pendingAndroidUpdatePath.isNotEmpty && _isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
     } else if (pendingAndroidUpdatePath.isNotEmpty && !await File(pendingAndroidUpdatePath).exists()) {
       await _clearPendingAndroidUpdate();
@@ -3308,13 +3317,15 @@ class AppController extends ChangeNotifier {
 
   bool get cloudSyncApprovalRequired => cloudSyncErrorCode == 'SYNC_APPROVAL_REQUIRED';
 
-  bool get hasAvailableUpdate => updateCheckOutcome == UpdateCheckOutcome.updateAvailable && latestGithubRelease != null;
+  bool get hasAvailableUpdate => updateCheckOutcome == UpdateCheckOutcome.updateAvailable &&
+      (kIsGooglePlayBuild ? googlePlayUpdateInfo?.available == true : latestGithubRelease != null);
   bool get hasPendingAndroidUpdate => pendingAndroidUpdatePath.isNotEmpty && pendingAndroidUpdateVersion.isNotEmpty && !_isPendingAndroidUpdateAlreadyInstalled();
   bool get hasPendingWindowsUpdate => pendingWindowsUpdatePath.isNotEmpty && pendingWindowsUpdateVersion.isNotEmpty && !_isPendingWindowsUpdateAlreadyInstalled();
   bool get hasPendingLinuxUpdate => pendingLinuxUpdatePath.isNotEmpty && pendingLinuxUpdateVersion.isNotEmpty && !_isPendingLinuxUpdateAlreadyInstalled();
   bool get hasPendingMacOsUpdate => pendingMacOsUpdatePath.isNotEmpty && pendingMacOsUpdateVersion.isNotEmpty && !_isPendingMacOsUpdateAlreadyInstalled();
 
   Map<UpdateAssetKind, ReleaseAsset> get availableAndroidUpdateAssets {
+    if (kIsGooglePlayBuild) return const {};
     final release = latestGithubRelease;
     if (release == null) return const {};
     return ReleaseAssetMatcher.androidApks(release);
@@ -3346,6 +3357,16 @@ class AppController extends ChangeNotifier {
     _shownUpdateDialogVersionThisSession = release.displayVersion;
   }
 
+  bool get canShowGooglePlayStartupUpdateDialog {
+    final versionCode = googlePlayUpdateInfo?.availableVersionCode ?? 0;
+    return versionCode > 0 && _shownGooglePlayUpdateVersionCodeThisSession != versionCode;
+  }
+
+  void markGooglePlayStartupUpdateDialogShown() {
+    final versionCode = googlePlayUpdateInfo?.availableVersionCode ?? 0;
+    if (versionCode > 0) _shownGooglePlayUpdateVersionCodeThisSession = versionCode;
+  }
+
   void selectAndroidUpdateKind(UpdateAssetKind kind) {
     selectedAndroidUpdateKind = kind;
     notifyListeners();
@@ -3353,7 +3374,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> setAutomaticUpdatePopupEnabled(bool enabled) async {
     if (automaticUpdatePopupEnabled == enabled) return;
-    if (enabled && Platform.isAndroid) {
+    if (enabled && Platform.isAndroid && !kIsGooglePlayBuild) {
       await ReminderService.requestNotificationPermission();
     }
     automaticUpdatePopupEnabled = enabled;
@@ -3366,6 +3387,36 @@ class AppController extends ChangeNotifier {
     if (updateCheckBusy) {
       return UpdateCheckResult(outcome: updateCheckOutcome, release: latestGithubRelease, message: updateStatusMessage);
     }
+
+    if (Platform.isAndroid && kIsGooglePlayBuild) {
+      updateCheckBusy = true;
+      updateStatusMessage = manual ? 'Checking Google Play for updates...' : 'Checking Google Play...';
+      notifyListeners();
+      try {
+        final info = await AndroidUpdateInstaller.checkGooglePlayUpdate();
+        googlePlayUpdateInfo = info;
+        latestGithubRelease = null;
+        updateLastCheckedAt = DateTime.now();
+        updateCheckOutcome = info.available ? UpdateCheckOutcome.updateAvailable : UpdateCheckOutcome.upToDate;
+        updateStatusMessage = info.available
+            ? (info.canStart ? 'A Google Play update is available.' : 'An update is available on Google Play, but it cannot be started yet.')
+            : 'You are up to date.';
+        return UpdateCheckResult(outcome: updateCheckOutcome, message: updateStatusMessage);
+      } on PlatformException catch (error) {
+        googlePlayUpdateInfo = null;
+        latestGithubRelease = null;
+        updateLastCheckedAt = DateTime.now();
+        updateCheckOutcome = UpdateCheckOutcome.httpError;
+        updateStatusMessage = error.message?.trim().isNotEmpty == true
+            ? error.message!.trim()
+            : 'Could not check Google Play for updates.';
+        return UpdateCheckResult(outcome: updateCheckOutcome, message: updateStatusMessage);
+      } finally {
+        updateCheckBusy = false;
+        notifyListeners();
+      }
+    }
+
     updateCheckBusy = true;
     updateStatusMessage = manual ? 'Checking Koinly releases now...' : 'Checking Koinly releases...';
     notifyListeners();
@@ -3373,9 +3424,10 @@ class AppController extends ChangeNotifier {
     updateCheckBusy = false;
     updateCheckOutcome = result.outcome;
     latestGithubRelease = result.release;
+    googlePlayUpdateInfo = null;
     updateLastCheckedAt = DateTime.now();
     updateStatusMessage = result.message.isEmpty ? _friendlyUpdateOutcome(result.outcome) : result.message;
-    if (result.hasUpdate && Platform.isAndroid) {
+    if (result.hasUpdate && result.release != null && Platform.isAndroid) {
       final assets = availableAndroidUpdateAssets;
       if (assets.containsKey(UpdateAssetKind.arm64)) {
         selectedAndroidUpdateKind = UpdateAssetKind.arm64;
@@ -3389,7 +3441,7 @@ class AppController extends ChangeNotifier {
     } else if (Platform.isAndroid && _isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
     }
-    if (result.hasUpdate && Platform.isWindows) {
+    if (result.hasUpdate && result.release != null && Platform.isWindows) {
       if (pendingWindowsUpdateVersion.isNotEmpty && pendingWindowsUpdateVersion != result.release!.displayVersion) {
         await _clearPendingWindowsUpdate(deleteFile: true);
       }
@@ -3397,7 +3449,7 @@ class AppController extends ChangeNotifier {
     } else if (Platform.isWindows && _isPendingWindowsUpdateAlreadyInstalled()) {
       await _clearPendingWindowsUpdate(deleteFile: true);
     }
-    if (result.hasUpdate && Platform.isLinux) {
+    if (result.hasUpdate && result.release != null && Platform.isLinux) {
       if (pendingLinuxUpdateVersion.isNotEmpty && pendingLinuxUpdateVersion != result.release!.displayVersion) {
         await _clearPendingLinuxUpdate(deleteFile: true);
       }
@@ -3405,7 +3457,7 @@ class AppController extends ChangeNotifier {
     } else if (Platform.isLinux && _isPendingLinuxUpdateAlreadyInstalled()) {
       await _clearPendingLinuxUpdate(deleteFile: true);
     }
-    if (result.hasUpdate && Platform.isMacOS) {
+    if (result.hasUpdate && result.release != null && Platform.isMacOS) {
       if (pendingMacOsUpdateVersion.isNotEmpty && pendingMacOsUpdateVersion != result.release!.displayVersion) {
         await _clearPendingMacOsUpdate(deleteFile: true);
       }
@@ -3415,6 +3467,32 @@ class AppController extends ChangeNotifier {
     }
     notifyListeners();
     return result;
+  }
+
+  Future<void> startGooglePlayUpdate() async {
+    if (!Platform.isAndroid || !kIsGooglePlayBuild) return;
+    final info = googlePlayUpdateInfo;
+    if (info == null || !info.available) {
+      updateStatusMessage = 'Check Google Play for updates first.';
+      notifyListeners();
+      return;
+    }
+    if (!info.canStart) {
+      updateStatusMessage = 'Google Play cannot start this update yet. Try again later.';
+      notifyListeners();
+      return;
+    }
+    try {
+      final started = await AndroidUpdateInstaller.startGooglePlayUpdate();
+      updateStatusMessage = started
+          ? 'Google Play update started.'
+          : 'Google Play could not start the update. Try again later.';
+    } on PlatformException catch (error) {
+      updateStatusMessage = error.message?.trim().isNotEmpty == true
+          ? error.message!.trim()
+          : 'Google Play could not start the update.';
+    }
+    notifyListeners();
   }
 
   String _friendlyUpdateOutcome(UpdateCheckOutcome outcome) {
@@ -3437,6 +3515,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> downloadSelectedAndroidUpdate() async {
+    if (kIsGooglePlayBuild) {
+      updateStatusMessage = 'Google Play builds update through Google Play.';
+      notifyListeners();
+      return;
+    }
     if (!Platform.isAndroid) {
       updateStatusMessage = 'In-app APK installation is available on Android only.';
       notifyListeners();
@@ -3552,7 +3635,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> installPendingAndroidUpdate() async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
       updateStatusMessage = 'Koinly is already updated.';
@@ -3583,7 +3666,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> resumePendingAndroidInstallIfAllowed() async {
-    if (!Platform.isAndroid || pendingAndroidUpdatePath.isEmpty || updateDownloadBusy) return;
+    if (!Platform.isAndroid || kIsGooglePlayBuild || pendingAndroidUpdatePath.isEmpty || updateDownloadBusy) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
       updateStatusMessage = 'Koinly is already updated.';
@@ -7151,22 +7234,20 @@ class KoinlyApp extends StatelessWidget {
             outlineVariant: kSleekLightOutlineVariant,
           );
 
-    final textTheme = Typography.material2021(platform: TargetPlatform.android).black.apply(
-          fontFamily: '.SF Pro Display',
-          fontFamilyFallback: const <String>[
-            'SF Pro Display',
-            '.SF Pro Text',
-            '.SF UI Display',
-            '.SF UI Text',
-            'SF Pro Text',
-            'Helvetica Neue',
-            'Segoe UI',
-            'Roboto',
-            'sans-serif',
-          ],
-          displayColor: scheme.onSurface,
-          bodyColor: scheme.onSurface,
-        );
+    final textTheme = GoogleFonts.interTextTheme(
+      Typography.material2021(platform: TargetPlatform.android).black,
+    ).apply(
+      fontFamilyFallback: const <String>[
+        'Segoe UI',
+        'Roboto',
+        'Noto Sans',
+        'Helvetica Neue',
+        'Arial',
+        'sans-serif',
+      ],
+      displayColor: scheme.onSurface,
+      bodyColor: scheme.onSurface,
+    );
 
     final pageTransitionBuilder = const KoinlyPageTransitionsBuilder();
 
@@ -7182,16 +7263,13 @@ class KoinlyApp extends StatelessWidget {
 
     return ThemeData(
       useMaterial3: true,
-      fontFamily: '.SF Pro Display',
+      fontFamily: 'Inter',
       fontFamilyFallback: const <String>[
-        'SF Pro Display',
-        '.SF Pro Text',
-        '.SF UI Display',
-        '.SF UI Text',
-        'SF Pro Text',
-        'Helvetica Neue',
         'Segoe UI',
         'Roboto',
+        'Noto Sans',
+        'Helvetica Neue',
+        'Arial',
         'sans-serif',
       ],
       colorScheme: scheme,
@@ -7766,9 +7844,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver, Sing
     final checkedRecently = lastCheckedAt != null && DateTime.now().difference(lastCheckedAt) < _automaticUpdateCheckInterval;
     final canRetryRecentFailure = checkedRecently && _shouldRetryAutomaticUpdateCheck(state.updateCheckOutcome);
     if (checkedRecently && !canRetryRecentFailure) {
-      final release = state.latestGithubRelease;
-      if (state.hasAvailableUpdate && release != null) {
-        await _showAutomaticUpdateDialogIfReady(state, release);
+      if (state.hasAvailableUpdate) {
+        if (Platform.isAndroid && kIsGooglePlayBuild) {
+          await _showAutomaticGooglePlayUpdateDialogIfReady(state);
+        } else {
+          final release = state.latestGithubRelease;
+          if (release != null) await _showAutomaticUpdateDialogIfReady(state, release);
+        }
       }
       return;
     }
@@ -7777,11 +7859,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver, Sing
     try {
       final result = await state.checkForUpdates();
       if (!mounted) return;
-      if (result.hasUpdate && result.release != null) {
-        if (state.automaticUpdatePopupEnabled) {
-          await UpdateBackgroundService.notifyReleaseIfNeeded(result.release!);
+      if (result.hasUpdate) {
+        if (Platform.isAndroid && kIsGooglePlayBuild) {
+          await _showAutomaticGooglePlayUpdateDialogIfReady(state);
+        } else if (result.release != null) {
+          if (state.automaticUpdatePopupEnabled) {
+            await UpdateBackgroundService.notifyReleaseIfNeeded(result.release!);
+          }
+          await _showAutomaticUpdateDialogIfReady(state, result.release!);
         }
-        await _showAutomaticUpdateDialogIfReady(state, result.release!);
       } else if (_shouldRetryAutomaticUpdateCheck(result.outcome)) {
         _scheduleAutomaticUpdateCheck(delay: _automaticUpdateRetryDelay);
       }
@@ -7793,6 +7879,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver, Sing
   bool _shouldRetryAutomaticUpdateCheck(UpdateCheckOutcome outcome) {
     return outcome == UpdateCheckOutcome.networkError ||
         outcome == UpdateCheckOutcome.httpError;
+  }
+
+  Future<void> _showAutomaticGooglePlayUpdateDialogIfReady(AppController state) async {
+    if (!mounted || !state.automaticUpdatePopupEnabled || !state.canShowGooglePlayStartupUpdateDialog) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      _scheduleAutomaticUpdateCheck(delay: _blockedUpdatePromptRetryDelay);
+      return;
+    }
+    state.markGooglePlayStartupUpdateDialogShown();
+    await showUpdateBottomSheet(context);
   }
 
   Future<void> _showAutomaticUpdateDialogIfReady(AppController state, GithubRelease release) async {
@@ -16667,11 +16764,6 @@ class TransactionListScreen extends StatelessWidget {
       subtitle: '${txs.length} records • ${state.activeRange().label} • ${transactionSortModeLabel(state.transactionSortMode)}',
       actions: [
         IconButton(
-          tooltip: 'Date range',
-          onPressed: () => showDateRangeSheet(context),
-          icon: const Icon(Icons.date_range_rounded),
-        ),
-        IconButton(
           key: const ValueKey('transaction-sort-button'),
           tooltip: 'Sort: ${transactionSortModeLabel(state.transactionSortMode)}',
           onPressed: () => showTransactionSortSheet(context),
@@ -20644,7 +20736,7 @@ class UpdatesScreen extends StatelessWidget {
     final releaseDate = release?.publishedAt == null ? 'Not available' : DateFormat('MMM d, yyyy • h:mm a').format(release!.publishedAt!.toLocal());
     return PageScaffold(
       title: 'Updates',
-      subtitle: updateRepositorySlug,
+      subtitle: Platform.isAndroid && kIsGooglePlayBuild ? 'Google Play' : updateRepositorySlug,
       child: ResponsiveContent(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         child: Column(
@@ -20673,9 +20765,19 @@ class UpdatesScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   MiniMetric('Installed version', appVersion, Icons.phone_android_rounded),
                   const SizedBox(height: 10),
-                  MiniMetric('Latest version', release?.displayVersion ?? 'Not checked', Icons.new_releases_rounded),
-                  const SizedBox(height: 10),
-                  MiniMetric('Release date', releaseDate, Icons.event_rounded),
+                  MiniMetric(
+                    Platform.isAndroid && kIsGooglePlayBuild ? 'Available build' : 'Latest version',
+                    Platform.isAndroid && kIsGooglePlayBuild
+                        ? ((state.googlePlayUpdateInfo?.availableVersionCode ?? 0) > 0
+                            ? '${state.googlePlayUpdateInfo!.availableVersionCode}'
+                            : 'Not checked')
+                        : (release?.displayVersion ?? 'Not checked'),
+                    Icons.new_releases_rounded,
+                  ),
+                  if (!(Platform.isAndroid && kIsGooglePlayBuild)) ...[
+                    const SizedBox(height: 10),
+                    MiniMetric('Release date', releaseDate, Icons.event_rounded),
+                  ],
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: state.updateCheckBusy
@@ -20706,7 +20808,9 @@ class UpdatesScreen extends StatelessWidget {
                     onChanged: (value) => context.read<AppController>().setAutomaticUpdatePopupEnabled(value),
                     title: const Text('Automatic update pop-ups', style: TextStyle(fontWeight: FontWeight.w900)),
                     subtitle: Text(
-                      'Show update details automatically and send a notification when a newer Koinly release is found. Manual update checks still work when this is off.',
+                      Platform.isAndroid && kIsGooglePlayBuild
+                          ? 'Show an in-app prompt when Google Play reports a newer Koinly version. Google Play remains the only update installer for this build.'
+                          : 'Show update details automatically and send a notification when a newer Koinly release is found. Manual update checks still work when this is off.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -20738,6 +20842,49 @@ Future<void> showUpdateBottomSheet(BuildContext context) {
         builder: (context, scrollController) {
           return Consumer<AppController>(
             builder: (context, state, _) {
+              if (Platform.isAndroid && kIsGooglePlayBuild) {
+                final info = state.googlePlayUpdateInfo;
+                if (info == null || !info.available) {
+                  return ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+                    children: const [EmptyCard(icon: Icons.system_update_alt_rounded, title: 'No Google Play update', body: 'Check for updates first.')],
+                  );
+                }
+                return ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+                  children: [
+                    Row(
+                      children: [
+                        iconBubble(context, 'download', kSleekAccentHex, size: 54),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Google Play update', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 3),
+                              Text('Available build ${info.availableVersionCode}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w800)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    ExpressiveCard(
+                      child: Text(
+                        'This Google Play build updates only through Google Play. Koinly will not download or install APK files from GitHub.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const UpdateActionPanel(),
+                    const SizedBox(height: 10),
+                    TextButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('Later')),
+                  ],
+                );
+              }
               final release = state.latestGithubRelease;
               if (release == null) {
                 return ListView(
@@ -20798,6 +20945,7 @@ class UpdateActionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
+    if (Platform.isAndroid && kIsGooglePlayBuild) return _GooglePlayUpdateActionPanel(state: state);
     if (Platform.isAndroid) return _AndroidUpdateActionPanel(state: state);
     if (Platform.isWindows) return _WindowsUpdateActionPanel(state: state);
     if (Platform.isLinux) return _LinuxUpdateActionPanel(state: state);
@@ -20817,6 +20965,45 @@ class UpdateActionPanel extends StatelessWidget {
             },
             icon: const Icon(Icons.open_in_new_rounded),
             label: const Text('Open release page'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GooglePlayUpdateActionPanel extends StatelessWidget {
+  const _GooglePlayUpdateActionPanel({required this.state});
+
+  final AppController state;
+
+  @override
+  Widget build(BuildContext context) {
+    final info = state.googlePlayUpdateInfo;
+    if (info == null || !info.available) {
+      return const EmptyCard(
+        icon: Icons.store_rounded,
+        title: 'No Google Play update',
+        body: 'Check Google Play for updates first.',
+      );
+    }
+    return ExpressiveCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Google Play', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Text(
+            info.canStart
+                ? 'Build ${info.availableVersionCode} is ready to install through Google Play.'
+                : 'Build ${info.availableVersionCode} is available, but Google Play cannot start it yet.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: info.canStart ? () => unawaited(state.startGooglePlayUpdate()) : null,
+            icon: const Icon(Icons.system_update_alt_rounded),
+            label: const Text('Update with Google Play'),
           ),
         ],
       ),

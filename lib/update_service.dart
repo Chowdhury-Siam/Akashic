@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'app_config.dart';
+
 const updateGithubOwner = 'Chowdhury-Siam';
 const updateGithubRepo = 'Koinly';
 const updateGithubApiBase = 'https://api.github.com';
@@ -194,7 +196,35 @@ class UpdateCheckResult {
   final SemanticVersion? latestVersion;
   final String message;
 
-  bool get hasUpdate => outcome == UpdateCheckOutcome.updateAvailable && release != null;
+  bool get hasUpdate => outcome == UpdateCheckOutcome.updateAvailable;
+}
+
+
+@immutable
+class GooglePlayUpdateInfo {
+  const GooglePlayUpdateInfo({
+    required this.available,
+    required this.immediateAllowed,
+    required this.flexibleAllowed,
+    required this.inProgress,
+    required this.availableVersionCode,
+  });
+
+  final bool available;
+  final bool immediateAllowed;
+  final bool flexibleAllowed;
+  final bool inProgress;
+  final int availableVersionCode;
+
+  bool get canStart => available && (immediateAllowed || flexibleAllowed);
+
+  factory GooglePlayUpdateInfo.fromMap(Map<dynamic, dynamic> map) => GooglePlayUpdateInfo(
+        available: map['available'] == true,
+        immediateAllowed: map['immediateAllowed'] == true,
+        flexibleAllowed: map['flexibleAllowed'] == true,
+        inProgress: map['inProgress'] == true,
+        availableVersionCode: (map['availableVersionCode'] as num? ?? 0).toInt(),
+      );
 }
 
 class GithubUpdateService {
@@ -658,6 +688,19 @@ class UpdateDownloadStore {
     );
   }
 
+  static Future<void> purgeAndroidUpdateFiles({Directory? directory}) async {
+    final dir = directory ?? await updatesDirectory();
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      final lowerPath = entity.path.toLowerCase();
+      if (!lowerPath.endsWith('.apk') && !lowerPath.endsWith('.part')) continue;
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+  }
+
   static Future<void> cleanupStaleWindowsUpdates({
     required String keepVersion,
     Directory? directory,
@@ -801,18 +844,37 @@ class MacOsUpdateInstaller {
 class AndroidUpdateInstaller {
   static const MethodChannel _channel = MethodChannel('com.koinly.siam/updater');
 
-  static Future<bool> canInstallPackages() async {
+  static Future<GooglePlayUpdateInfo> checkGooglePlayUpdate() async {
+    if (!Platform.isAndroid) {
+      return const GooglePlayUpdateInfo(
+        available: false,
+        immediateAllowed: false,
+        flexibleAllowed: false,
+        inProgress: false,
+        availableVersionCode: 0,
+      );
+    }
+    final map = await _channel.invokeMethod<Map<dynamic, dynamic>>('checkGooglePlayUpdate');
+    return GooglePlayUpdateInfo.fromMap(map ?? const <dynamic, dynamic>{});
+  }
+
+  static Future<bool> startGooglePlayUpdate() async {
     if (!Platform.isAndroid) return false;
+    return await _channel.invokeMethod<bool>('startGooglePlayUpdate') ?? false;
+  }
+
+  static Future<bool> canInstallPackages() async {
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return false;
     return await _channel.invokeMethod<bool>('canInstallPackages') ?? false;
   }
 
   static Future<void> openInstallPermissionSettings() async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return;
     await _channel.invokeMethod<void>('openInstallPermissionSettings');
   }
 
   static Future<bool> installApk(String path) async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return false;
     return await _channel.invokeMethod<bool>('installApk', {'path': path}) ?? false;
   }
 }

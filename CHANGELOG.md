@@ -1,3 +1,32 @@
+## [1.0.1215] - 2026-09-30
+
+- Replaced the active SF Pro typography stack with Inter across the Flutter application.
+- Added the maintained `google_fonts` Inter integration with system fallbacks so Android/Play builds no longer depend on Apple SF Pro font names.
+- Updated the self-hosted Worker administration page to use an Inter-first, non-Apple system fallback stack while keeping the page self-contained.
+- Updated typography regression/visual-test coverage for Inter.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1215+259`.
+
+## [1.0.1214] - 2026-09-30
+
+- Locked Android releases to Android 16 / API 36 with `compileSdk = 36` and `targetSdk = 36`.
+- Added a GitHub Actions guard that fails the Android release before compilation if either SDK target is accidentally lowered, while continuing to provision Android Platform 36 and Build Tools 36.0.0.
+- Added an Android API 36 regression contract and documented the Play/direct API level in the build instructions.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1214+258`.
+
+## [1.0.1213] - 2026-09-30
+
+- Split Android updates into two distribution channels: Google Play builds now use the official Google Play In-App Updates flow, while direct/sideloaded APK builds retain the GitHub APK updater.
+- Removed `REQUEST_INSTALL_PACKAGES` and the APK FileProvider from the Google Play manifest; they are now present only in the `direct` Android flavor.
+- Disabled GitHub background update checks/notifications in Google Play builds so Play is the authoritative source of update availability.
+- Added a signed Google Play `.aab` artifact to the release workflow while keeping direct APK artifacts separate.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1213+257`.
+
+## [1.0.1212] - 2026-09-30
+
+- Removed the standalone date-range/calendar button from the Transaction page top app bar.
+- Date filtering remains available through the existing transaction filtering/date-range flows; only the redundant top action was removed.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1212+256`.
+
 ## [1.0.1211] - 2026-09-30
 
 - Reworked the New/Edit loan editor to use the same compact action pattern as transactions.

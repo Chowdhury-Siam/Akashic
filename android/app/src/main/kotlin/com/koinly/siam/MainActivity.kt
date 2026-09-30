@@ -11,11 +11,16 @@ import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 import java.util.TimeZone
 
 class MainActivity: FlutterFragmentActivity() {
@@ -28,15 +33,25 @@ class MainActivity: FlutterFragmentActivity() {
     private val backupDirectoryRequestCode = 4208
     private var pendingProfileMediaPermissionResult: MethodChannel.Result? = null
     private var pendingBackupDirectoryResult: MethodChannel.Result? = null
+    private val playUpdateManager by lazy { AppUpdateManagerFactory.create(this) }
+    private val playUpdateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        // Google Play owns the update UI. Koinly rechecks availability when the
+        // activity resumes, so cancellation/failure never leaves stale state.
+    }
+    private val flexibleUpdateListener = InstallStateUpdatedListener { state ->
+        if (state.installStatus() == InstallStatus.DOWNLOADED) {
+            playUpdateManager.completeUpdate()
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        NativeUpdateCheckScheduler.sync(this)
+        NativeUpdateCheckScheduler.sync(this, BuildConfig.DISTRIBUTION == "direct")
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updateBackgroundChannel).setMethodCallHandler { call, result ->
             when (call.method) {
                 "sync" -> {
-                    val enabled = call.argument<Boolean>("enabled")
-                    NativeUpdateCheckScheduler.sync(this, enabled)
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    NativeUpdateCheckScheduler.sync(this, enabled && BuildConfig.DISTRIBUTION == "direct")
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -44,17 +59,24 @@ class MainActivity: FlutterFragmentActivity() {
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updaterChannel).setMethodCallHandler { call, result ->
             when (call.method) {
-                "canInstallPackages" -> result.success(canInstallPackages())
+                "distribution" -> result.success(BuildConfig.DISTRIBUTION)
+                "checkGooglePlayUpdate" -> checkGooglePlayUpdate(result)
+                "startGooglePlayUpdate" -> startGooglePlayUpdate(result)
+                "canInstallPackages" -> result.success(BuildConfig.DISTRIBUTION == "direct" && DirectApkInstaller.canInstallPackages(this))
                 "openInstallPermissionSettings" -> {
-                    openInstallPermissionSettings()
+                    if (BuildConfig.DISTRIBUTION == "direct") DirectApkInstaller.openInstallPermissionSettings(this)
                     result.success(null)
                 }
                 "installApk" -> {
-                    val path = call.argument<String>("path")
-                    if (path.isNullOrBlank()) {
-                        result.error("missing_path", "APK path is missing.", null)
+                    if (BuildConfig.DISTRIBUTION != "direct") {
+                        result.success(false)
                     } else {
-                        result.success(installApk(path))
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank()) {
+                            result.error("missing_path", "APK path is missing.", null)
+                        } else {
+                            result.success(DirectApkInstaller.installApk(this, path))
+                        }
                     }
                 }
                 else -> result.notImplemented()
@@ -135,6 +157,114 @@ class MainActivity: FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (BuildConfig.DISTRIBUTION != "play") return
+        playUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
+            when {
+                info.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS &&
+                    info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) -> {
+                    playUpdateManager.startUpdateFlowForResult(
+                        info,
+                        playUpdateLauncher,
+                        AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build(),
+                    )
+                }
+                info.installStatus() == InstallStatus.DOWNLOADED -> playUpdateManager.completeUpdate()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (BuildConfig.DISTRIBUTION == "play") {
+            try {
+                playUpdateManager.unregisterListener(flexibleUpdateListener)
+            } catch (_: Exception) {
+            }
+        }
+        super.onDestroy()
+    }
+
+    private fun checkGooglePlayUpdate(result: MethodChannel.Result) {
+        if (BuildConfig.DISTRIBUTION != "play") {
+            result.success(
+                mapOf(
+                    "available" to false,
+                    "immediateAllowed" to false,
+                    "flexibleAllowed" to false,
+                    "inProgress" to false,
+                    "availableVersionCode" to 0,
+                ),
+            )
+            return
+        }
+        playUpdateManager.appUpdateInfo
+            .addOnSuccessListener { info ->
+                val availability = info.updateAvailability()
+                result.success(
+                    mapOf(
+                        "available" to (availability == UpdateAvailability.UPDATE_AVAILABLE ||
+                            availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS),
+                        "immediateAllowed" to info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE),
+                        "flexibleAllowed" to info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE),
+                        "inProgress" to (availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS),
+                        "availableVersionCode" to info.availableVersionCode(),
+                    ),
+                )
+            }
+            .addOnFailureListener { error ->
+                result.error("play_update_check_failed", error.message ?: "Google Play update check failed.", null)
+            }
+    }
+
+    private fun startGooglePlayUpdate(result: MethodChannel.Result) {
+        if (BuildConfig.DISTRIBUTION != "play") {
+            result.success(false)
+            return
+        }
+        playUpdateManager.appUpdateInfo
+            .addOnSuccessListener { info ->
+                val availability = info.updateAvailability()
+                val updateAvailable = availability == UpdateAvailability.UPDATE_AVAILABLE ||
+                    availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
+                if (!updateAvailable) {
+                    result.success(false)
+                    return@addOnSuccessListener
+                }
+
+                val type = when {
+                    info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) -> AppUpdateType.IMMEDIATE
+                    info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> AppUpdateType.FLEXIBLE
+                    else -> {
+                        result.success(false)
+                        return@addOnSuccessListener
+                    }
+                }
+                if (type == AppUpdateType.FLEXIBLE) {
+                    playUpdateManager.registerListener(flexibleUpdateListener)
+                }
+                try {
+                    val started = playUpdateManager.startUpdateFlowForResult(
+                        info,
+                        playUpdateLauncher,
+                        AppUpdateOptions.newBuilder(type).build(),
+                    )
+                    if (!started && type == AppUpdateType.FLEXIBLE) {
+                        playUpdateManager.unregisterListener(flexibleUpdateListener)
+                    }
+                    result.success(started)
+                } catch (error: Exception) {
+                    if (type == AppUpdateType.FLEXIBLE) {
+                        playUpdateManager.unregisterListener(flexibleUpdateListener)
+                    }
+                    result.error("play_update_start_failed", error.message ?: "Could not start the Google Play update.", null)
+                }
+            }
+            .addOnFailureListener { error ->
+                result.error("play_update_start_failed", error.message ?: "Could not start the Google Play update.", null)
+            }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -489,35 +619,5 @@ class MainActivity: FlutterFragmentActivity() {
         DocumentsContract.deleteDocument(contentResolver, documentUri)
     }
 
-    private fun canInstallPackages(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            packageManager.canRequestPackageInstalls()
-        } else {
-            true
-        }
-    }
 
-    private fun openInstallPermissionSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                data = Uri.parse("package:$packageName")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        }
-    }
-
-    private fun installApk(path: String): Boolean {
-        val apkFile = File(path)
-        if (!apkFile.exists()) return false
-        val apkUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        startActivity(intent)
-        return true
-    }
 }

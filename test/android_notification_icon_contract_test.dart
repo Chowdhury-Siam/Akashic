@@ -6,7 +6,7 @@ void main() {
   test('Android notifications use the dedicated monochrome Koinly status icon', () {
     final icon = File('android/app/src/main/res/drawable/ic_stat_koinly.xml').readAsStringSync();
     final reminders = File('lib/reminder_service.dart').readAsStringSync();
-    final worker = File('android/app/src/main/kotlin/com/koinly/siam/UpdateCheckWorker.kt').readAsStringSync();
+    final worker = File('android/app/src/direct/kotlin/com/koinly/siam/UpdateCheckWorker.kt').readAsStringSync();
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
 
     expect(icon, contains('android:fillColor="#FFFFFFFF"'));

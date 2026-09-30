@@ -21,9 +21,25 @@ android {
         applicationId = "com.koinly.siam"
         minSdk = 23
         targetSdk = 36
-        versionCode = 255
-        versionName = "1.0.1211"
+        versionCode = 259
+        versionName = "1.0.1215"
         multiDexEnabled true
+    }
+
+    flavorDimensions "distribution"
+    productFlavors {
+        direct {
+            dimension "distribution"
+            buildConfigField "String", "DISTRIBUTION", '"direct"'
+        }
+        play {
+            dimension "distribution"
+            buildConfigField "String", "DISTRIBUTION", '"play"'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {
@@ -83,4 +99,6 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
     implementation "androidx.core:core-ktx:1.13.1"
     implementation "androidx.work:work-runtime-ktx:2.10.2"
+    implementation "com.google.android.play:app-update:2.1.0"
+    implementation "com.google.android.play:app-update-ktx:2.1.0"
 }
