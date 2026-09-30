@@ -7678,11 +7678,8 @@ class _FinancialHealthReviewGateState extends State<FinancialHealthReviewGate> {
       final state = context.read<AppController>();
       final prompts = pendingFinancialHealthReviewPrompts(state);
       if (prompts.isEmpty) return;
-      await showKoinlyPopup<void>(
+      await showFinancialHealthReviewPopup<void>(
         context,
-        maxWidth: 680,
-        maxHeight: 800,
-        barrierDismissible: false,
         child: FinancialHealthReviewDialog(prompts: prompts),
       );
     });
@@ -7790,73 +7787,121 @@ class _FinancialHealthReviewDialogState extends State<FinancialHealthReviewDialo
     final state = context.watch<AppController>();
     final prompt = widget.prompts[_index];
     final last = _index >= widget.prompts.length - 1;
+    final compact = MediaQuery.sizeOf(context).width < 600;
 
-    return SizedBox(
-      height: 760,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-            child: Row(
-              children: [
-                iconBubble(context, prompt.period == FinancialHealthPeriod.monthly ? 'month' : 'year', prompt.period == FinancialHealthPeriod.monthly ? kSleekAccentHex : '#FBC879', size: 48),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(prompt.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-                      Text(prompt.subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700)),
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(compact ? 16 : 22, compact ? 16 : 20, compact ? 16 : 22, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              iconBubble(
+                context,
+                prompt.period == FinancialHealthPeriod.monthly ? 'month' : 'year',
+                prompt.period == FinancialHealthPeriod.monthly ? kSleekAccentHex : '#FBC879',
+                size: compact ? 44 : 48,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      prompt.title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            height: 1.08,
+                          ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      prompt.subtitle,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: kSleekMuted,
+                            fontWeight: FontWeight.w700,
+                            height: 1.28,
+                          ),
+                    ),
+                    if (compact && widget.prompts.length > 1) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_index + 1} of ${widget.prompts.length}',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: kSleekAccent,
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
                     ],
+                  ],
+                ),
+              ),
+              if (!compact && widget.prompts.length > 1) ...[
+                const SizedBox(width: 12),
+                Chip(
+                  label: Text('${_index + 1}/${widget.prompts.length}'),
+                  avatar: const Icon(Icons.auto_stories_rounded, size: 17),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Divider(height: 1, color: Theme.of(context).dividerColor.withOpacity(.22)),
+        Expanded(
+          child: PageView.builder(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: widget.prompts.length,
+            itemBuilder: (context, index) {
+              final item = widget.prompts[index];
+              final summary = FinancialHealthSummary.build(
+                state,
+                period: item.period,
+                selectedDate: item.selectedDate,
+              );
+              return SingleChildScrollView(
+                key: PageStorageKey<String>('financial-health-review-${item.key}'),
+                padding: EdgeInsets.fromLTRB(compact ? 16 : 22, 8, compact ? 16 : 22, 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: FinancialHealthSummarySection(summary: summary),
                   ),
                 ),
-                if (widget.prompts.length > 1)
-                  Chip(
-                    label: Text('${_index + 1}/${widget.prompts.length}'),
-                    avatar: const Icon(Icons.auto_stories_rounded, size: 17),
-                  ),
-              ],
-            ),
+              );
+            },
           ),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: widget.prompts.length,
-              itemBuilder: (context, index) {
-                final item = widget.prompts[index];
-                final summary = FinancialHealthSummary.build(state, period: item.period, selectedDate: item.selectedDate);
-                return KoinlyPopupContent(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: FinancialHealthSummarySection(summary: summary),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-            child: Row(
-              children: [
-                Expanded(
+        ),
+        Divider(height: 1, color: Theme.of(context).dividerColor.withOpacity(.22)),
+        Padding(
+          padding: EdgeInsets.fromLTRB(compact ? 16 : 22, 12, compact ? 16 : 22, compact ? 14 : 18),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 52,
                   child: OutlinedButton.icon(
                     onPressed: _busy ? null : _skipAll,
-                    icon: const Icon(Icons.skip_next_rounded),
+                    icon: const Icon(Icons.skip_next_rounded, size: 20),
                     label: const Text('Skip all'),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 52,
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _continue,
-                    icon: Icon(last ? Icons.done_rounded : Icons.arrow_forward_rounded),
+                    icon: Icon(last ? Icons.done_rounded : Icons.arrow_forward_rounded, size: 20),
                     label: Text(last ? 'Done' : 'Next'),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -10883,6 +10928,106 @@ Future<T?> showKoinlyPopup<T>(
       );
     },
   );
+}
+
+/// Dedicated responsive surface for the end-of-period financial health review.
+///
+/// The review is substantially taller than a normal confirmation dialog, so it
+/// must never be pushed through [KoinlyPopupContent]'s scale-down behavior. On
+/// phones and short windows it becomes a true full-screen modal with a fixed
+/// header/footer and independently scrollable report body. On larger screens it
+/// remains a centered desktop-style modal with the same readable content size.
+Future<T?> showFinancialHealthReviewPopup<T>(
+  BuildContext context, {
+  required Widget child,
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withOpacity(.72),
+    transitionDuration: AppMotion.medium,
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
+      return _FinancialHealthReviewPopupFrame(child: child);
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.of(context).disableAnimations) return child;
+      final fade = CurvedAnimation(
+        parent: animation,
+        curve: AppMotion.standard,
+        reverseCurve: AppMotion.emphasizedAccelerate,
+      );
+      final motion = CurvedAnimation(
+        parent: animation,
+        curve: AppMotion.spring,
+        reverseCurve: AppMotion.emphasizedAccelerate,
+      );
+      return FadeTransition(
+        opacity: fade,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, .018), end: Offset.zero).animate(motion),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+class _FinancialHealthReviewPopupFrame extends StatelessWidget {
+  const _FinancialHealthReviewPopupFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final safeWidth = math.max(280.0, media.size.width - media.padding.left - media.padding.right);
+    final safeHeight = math.max(420.0, media.size.height - media.padding.top - media.padding.bottom);
+    final useFullScreen = safeWidth < 720 || safeHeight < 760;
+    final surfaceColor = dark ? kSleekSurface : scheme.surface;
+
+    if (useFullScreen) {
+      return Material(
+        color: surfaceColor,
+        child: SafeArea(
+          child: SizedBox.expand(child: child),
+        ),
+      );
+    }
+
+    final width = math.min(900.0, safeWidth - 48);
+    final height = math.min(900.0, safeHeight - 48);
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        minimum: const EdgeInsets.all(24),
+        child: Center(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Material(
+              color: surfaceColor,
+              elevation: 20,
+              shadowColor: Colors.black.withOpacity(.5),
+              borderRadius: BorderRadius.circular(34),
+              clipBehavior: Clip.antiAlias,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(34),
+                  border: Border.all(
+                    color: dark ? Colors.white.withOpacity(.08) : scheme.outline.withOpacity(.16),
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _KoinlyPopupFrame extends StatelessWidget {

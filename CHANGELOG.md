@@ -1,3 +1,10 @@
+## [1.0.1220] - 2026-10-01
+
+- Rebuilt the end-of-period financial health review as a responsive full-screen modal on phones/short windows so the monthly/yearly report is never scaled down to unreadable text.
+- Kept the review header and actions fixed while the financial summary scrolls at normal size, with a centered large-screen presentation for tablets and desktop.
+- Reduced the review action height and improved compact header/progress layout for narrow screens.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1220+264`.
+
 ## [1.0.1219] - 2026-10-01
 
 - Fixed Android release builds failing in `:file_picker:checkReleaseAarMetadata` because the old `file_picker` Android module compiled against API 34 while `flutter_plugin_android_lifecycle` requires API 36.

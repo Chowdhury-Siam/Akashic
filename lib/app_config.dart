@@ -33,7 +33,7 @@ const String kSleekAccentHex = '#00BD91';
 const String kLegacyStarterCashIconHex = '#78D8E8';
 
 const appTitle = 'Koinly';
-const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1218');
+const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1220');
 const kAndroidDistribution = appFlavor ?? String.fromEnvironment('KOINLY_ANDROID_DISTRIBUTION', defaultValue: 'direct');
 const bool kIsGooglePlayBuild = kAndroidDistribution == 'play';
 const kLowEndFriendlyUi = true;
