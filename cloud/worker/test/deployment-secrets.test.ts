@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { deploymentSecrets } from '../scripts/prepare-secrets.mjs';
 
-test('deployment sends only database and JWT runtime secrets; administrator is the first Koinly account', async () => {
+test('deployment sends only database and JWT runtime secrets; administrator is the first Yutaka account', async () => {
   const env = {
     TURSO_DATABASE_URL: 'libsql://local-test.turso.io',
     TURSO_AUTH_TOKEN: 'synthetic-token',

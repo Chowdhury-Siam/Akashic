@@ -19,8 +19,8 @@ void main() {
     expect(app, isNot(contains("label: Text('Default')")));
     expect(app, isNot(contains('Use default service')));
     expect(app, isNot(contains('_useCustomCloudSync')));
-    expect(sync, isNot(contains('KOINLY_SYNC_API_BASE_URL')));
-    expect(build, isNot(contains('KOINLY_SYNC_API_BASE_URL')));
+    expect(sync, isNot(contains('YUTAKA_SYNC_API_BASE_URL')));
+    expect(build, isNot(contains('YUTAKA_SYNC_API_BASE_URL')));
     expect(worker, isNot(contains("'invite-key'")));
     expect(File('.github/workflows/deploy-owner-sync-worker.yml').existsSync(), isFalse);
   });

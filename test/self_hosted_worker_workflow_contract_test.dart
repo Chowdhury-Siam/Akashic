@@ -13,7 +13,7 @@ void main() {
     expect(
       workflow,
       contains(
-        "if: github.event_name == 'workflow_dispatch' || github.repository != 'Chowdhury-Siam/Koinly'",
+        "if: github.event_name == 'workflow_dispatch' || github.repository != 'Chowdhury-Siam/Yutaka'",
       ),
     );
     expect(workflow, isNot(contains('      - "cloud/worker/**"')));

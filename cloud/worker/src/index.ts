@@ -10,7 +10,7 @@ type Env = {
   REFRESH_TOKEN_TTL_SECONDS?: string;
   MAX_SYNC_BATCH_SIZE?: string;
   MAX_SYNC_REPLACE_SIZE?: string;
-  KOINLY_WORKER_VERSION?: string;
+  YUTAKA_WORKER_VERSION?: string;
   SYNC_HUB?: DurableObjectNamespace;
 };
 
@@ -62,7 +62,7 @@ export class SyncHub {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
-      server.serializeAttachment({ deviceId: request.headers.get('x-koinly-device-id') ?? '' });
+      server.serializeAttachment({ deviceId: request.headers.get('x-yutaka-device-id') ?? '' });
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -230,7 +230,7 @@ type AnalyticsPdfReportVariant = 'summary' | 'transactionHistory';
 type AnalyticsReportFormat = 'pdf' | 'xlsx' | 'txt';
 type AnalyticsPdfDateFilter = 'today' | 'thisWeek' | 'thisMonth' | 'thisYear' | 'allTime' | 'custom';
 
-const adminCookie = '__Host-koinly-admin';
+const adminCookie = '__Host-yutaka-admin';
 const adminSessionSeconds = 3600;
 
 export async function profile(request: Request, env: Env, connect: () => Client = () => createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })): Promise<Response> {
@@ -312,7 +312,7 @@ async function administratorAccount(db: Client): Promise<{ id: string; username:
     userId = await deploymentRecoveryOwnerUserId(db);
   } catch (error) {
     if (error instanceof HttpError && error.code === 'DEPLOYMENT_RECOVERY_NO_OWNER') {
-      throw new HttpError(503, 'Create the first Koinly account in the app. That first account automatically becomes the Worker administrator.');
+      throw new HttpError(503, 'Create the first Yutaka account in the app. That first account automatically becomes the Worker administrator.');
     }
     throw error;
   }
@@ -435,7 +435,7 @@ async function manageAccounts(request: Request, url: URL, env: Env, db: Client):
   }
   if (request.method === 'DELETE' && !match[2]) {
     if (userId === await deploymentRecoveryOwnerUserId(db)) {
-      throw new HttpError(409, 'The administrator account can only delete itself from Koinly or /delete-account after confirming its password.');
+      throw new HttpError(409, 'The administrator account can only delete itself from Yutaka or /delete-account after confirming its password.');
     }
     await deleteUserAccount(db, userId);
     return privateJson({ ok: true, message: 'Account deleted.' });
@@ -695,10 +695,10 @@ const telegramBackupEntityTables = [
   'loan_payments',
 ] as const;
 
-// The mobile app currently uses this compatibility key for .koinlybackup files.
+// The mobile app currently uses this compatibility key for .yutakabackup files.
 // Keep the Worker encoder byte-for-byte compatible so a Telegram backup can be
-// restored directly by Koinly without a conversion step.
-const koinlyBackupCompatibilityKey = 'YOUR_SECRET_PASSWORD';
+// restored directly by Yutaka without a conversion step.
+const yutakaBackupCompatibilityKey = 'YOUR_SECRET_PASSWORD';
 
 async function telegramBackupSettings(env: Env, db: Client, auth: AuthContext): Promise<Response> {
   const settings = await readTelegramBackupSettings(db, auth.userId);
@@ -805,7 +805,7 @@ async function testTelegramBackup(request: Request, env: Env, db: Client, auth: 
   await telegramApiJson(token, 'getMe', {});
   await telegramApiJson(token, 'sendMessage', {
     chat_id: chatId,
-    text: 'Koinly self-hosted Telegram backup is connected.',
+    text: 'Yutaka self-hosted Telegram backup is connected.',
     disable_web_page_preview: true,
   });
   return privateJson({ ok: true });
@@ -959,7 +959,7 @@ async function buildTelegramBackupFile(db: Client, userId: string): Promise<{ fi
   if (financeRecordCount === 0) {
     throw new HttpError(
       409,
-      'The cloud copy contains no finance records, so an empty Telegram backup was not sent. Open Koinly on a device with your data, use Upload local changes once, then create the backup again.',
+      'The cloud copy contains no finance records, so an empty Telegram backup was not sent. Open Yutaka on a device with your data, use Upload local changes once, then create the backup again.',
     );
   }
 
@@ -976,8 +976,8 @@ async function buildTelegramBackupFile(db: Client, userId: string): Promise<{ fi
     record_counts: recordCounts,
     finance_record_count: financeRecordCount,
   };
-  const fileName = `koinly_telegram_${compactUtcTimestamp(createdAt)}.koinlybackup`;
-  return { fileName, contents: encodeKoinlyBackup(payload) };
+  const fileName = `yutaka_telegram_${compactUtcTimestamp(createdAt)}.yutakabackup`;
+  return { fileName, contents: encodeYutakaBackup(payload) };
 }
 
 async function buildGoogleDriveBackupFile(db: Client, userId: string): Promise<{ fileName: string; contents: string }> {
@@ -986,7 +986,7 @@ async function buildGoogleDriveBackupFile(db: Client, userId: string): Promise<{
   if (financeRecordCount === 0) {
     throw new HttpError(
       409,
-      'The cloud copy contains no finance records, so an empty Google Drive backup was not uploaded. Open Koinly on a device with your data, use Upload local changes once, then create the backup again.',
+      'The cloud copy contains no finance records, so an empty Google Drive backup was not uploaded. Open Yutaka on a device with your data, use Upload local changes once, then create the backup again.',
     );
   }
   const createdAt = new Date();
@@ -1000,8 +1000,8 @@ async function buildGoogleDriveBackupFile(db: Client, userId: string): Promise<{
     record_counts: recordCounts,
     finance_record_count: financeRecordCount,
   };
-  const fileName = `koinly_drive_${compactUtcTimestamp(createdAt)}.koinlybackup`;
-  return { fileName, contents: encodeKoinlyBackup(payload) };
+  const fileName = `yutaka_drive_${compactUtcTimestamp(createdAt)}.yutakabackup`;
+  return { fileName, contents: encodeYutakaBackup(payload) };
 }
 
 function applyTelegramBackupRows(
@@ -1074,7 +1074,7 @@ async function sendTelegramBackupDocument(token: string, chatId: string, fileNam
     chatId,
     fileName,
     new Blob([contents], { type: 'application/octet-stream' }),
-    `Koinly cloud backup\n${new Date().toISOString().replace('T', ' ').replace('.000Z', ' UTC')}`,
+    `Yutaka cloud backup\n${new Date().toISOString().replace('T', ' ').replace('.000Z', ' UTC')}`,
   );
 }
 
@@ -1432,8 +1432,8 @@ function publicGoogleDriveBackupSettings(settings: GoogleDriveBackupSettings): R
   };
 }
 
-const analyticsGoogleDriveFolderName = 'Koinly Analytics';
-const backupGoogleDriveFolderName = 'Koinly Backup';
+const analyticsGoogleDriveFolderName = 'Yutaka Analytics';
+const backupGoogleDriveFolderName = 'Yutaka Backup';
 const analyticsReportMaxBytes = 10 * 1024 * 1024;
 
 async function googleDriveAnalyticsSettings(db: Client, auth: AuthContext): Promise<Response> {
@@ -1559,14 +1559,14 @@ async function googleDriveAnalyticsCallback(request: Request, env: Env, db: Clie
 
     const settings = await readGoogleDriveAnalyticsSettings(db, userId);
     if (!settings.clientId || !settings.encryptedClientSecret) {
-      throw new HttpError(409, 'Google Drive credentials are no longer configured in Koinly.');
+      throw new HttpError(409, 'Google Drive credentials are no longer configured in Yutaka.');
     }
     const clientSecret = await decryptWorkerSecret(
       env.JWT_SECRET,
       'google-drive-client-secret',
       settings.encryptedClientSecret,
       settings.clientSecretIv,
-      'The saved Google OAuth Client Secret cannot be decrypted. Re-enter it in Koinly.',
+      'The saved Google OAuth Client Secret cannot be decrypted. Re-enter it in Yutaka.',
     );
     const redirectUri = `${url.origin}/v1/analytics-upload/google-drive/callback`;
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -1588,7 +1588,7 @@ async function googleDriveAnalyticsCallback(request: Request, env: Env, db: Clie
     const refreshToken = String(tokenData.refresh_token ?? '').trim();
     const accessToken = String(tokenData.access_token ?? '').trim();
     if (!refreshToken) {
-      throw new HttpError(409, 'Google did not issue an offline refresh token. Remove Koinly from your Google account permissions, then connect again.');
+      throw new HttpError(409, 'Google did not issue an offline refresh token. Remove Yutaka from your Google account permissions, then connect again.');
     }
     if (!accessToken) throw new HttpError(502, 'Google did not return an access token.');
 
@@ -1618,13 +1618,13 @@ async function googleDriveAnalyticsCallback(request: Request, env: Env, db: Clie
     });
     return googleDriveCallbackPage(
       'Google Drive connected',
-      accountEmail ? `Koinly can now upload Analytics reports to ${accountEmail}. You can return to the app.` : 'Koinly can now upload Analytics reports to Google Drive. You can return to the app.',
+      accountEmail ? `Yutaka can now upload Analytics reports to ${accountEmail}. You can return to the app.` : 'Yutaka can now upload Analytics reports to Google Drive. You can return to the app.',
       true,
       200,
     );
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof HttpError ? error.message : 'Google Drive connection failed. Return to Koinly and try again.';
+    const message = error instanceof HttpError ? error.message : 'Google Drive connection failed. Return to Yutaka and try again.';
     return googleDriveCallbackPage('Google Drive connection failed', message, false, status);
   }
 }
@@ -1682,7 +1682,7 @@ async function uploadAnalyticsPdfToTelegram(request: Request, env: Env, db: Clie
     throw new HttpError(400, 'Configure Telegram credentials in Settings > Credential first.');
   }
   const token = await decryptTelegramBotToken(env.JWT_SECRET, telegram.encryptedToken, telegram.tokenIv);
-  const caption = report.caption || `Koinly Analytics\n${new Date().toISOString().replace('T', ' ').replace('.000Z', ' UTC')}`;
+  const caption = report.caption || `Yutaka Analytics\n${new Date().toISOString().replace('T', ' ').replace('.000Z', ' UTC')}`;
   await sendTelegramAnalyticsDocument(token, telegram.chatId, report.fileName, report.bytes, caption, report.mimeType);
   return privateJson({ ok: true, destination: 'telegram', fileName: report.fileName, format: report.format, sentAt: Date.now() });
 }
@@ -2361,8 +2361,8 @@ function previousScheduledRange(range: ScheduledAnalyticsRange): ScheduledAnalyt
 function scheduledAnalyticsFileName(settings: AnalyticsPdfScheduleSettings, range: ScheduledAnalyticsRange): string {
   const extension = settings.fileFormat;
   return settings.reportVariant === 'transactionHistory'
-    ? `Koinly-Transaction-History-${range.stamp}.${extension}`
-    : `Koinly-Analytics-${settings.dateFilter}-${range.stamp}.${extension}`;
+    ? `Yutaka-Transaction-History-${range.stamp}.${extension}`
+    : `Yutaka-Analytics-${settings.dateFilter}-${range.stamp}.${extension}`;
 }
 
 async function buildScheduledAnalyticsPdf(
@@ -2398,7 +2398,7 @@ async function buildScheduledAnalyticsPdf(
       if (!excluded && tx.type === 'expense') expense += amount;
       if (tx.type === 'transfer') { transferVolume += rowNumber(tx, 'base_amount') || amount; transferCount += 1; }
     }
-    lines.push('Koinly Transaction History');
+    lines.push('Yutaka Transaction History');
     lines.push(`${scheduledDateFilterLabel(settings.dateFilter)} | ${range.label}`);
     lines.push(`Generated ${scheduledDateTimeLabel(nowMs, settings.timezoneOffsetMinutes)}`);
     lines.push('');
@@ -2516,7 +2516,7 @@ async function buildScheduledAnalyticsPdf(
       }
     }
 
-    lines.push('Koinly Analytics');
+    lines.push('Yutaka Analytics');
     lines.push(`${scheduledDateFilterLabel(settings.dateFilter)} summary | ${range.label}`);
     lines.push(`Generated ${scheduledDateTimeLabel(nowMs, settings.timezoneOffsetMinutes)}`);
     lines.push('');
@@ -2579,8 +2579,8 @@ async function buildScheduledAnalyticsPdf(
     bytes,
     mimeType: analyticsReportMimeType(settings.fileFormat),
     caption: settings.reportVariant === 'transactionHistory'
-      ? `Koinly Transaction History • ${settings.fileFormat.toUpperCase()}\n${range.label}`
-      : `Koinly ${scheduledDateFilterLabel(settings.dateFilter)} Analytics • ${settings.fileFormat.toUpperCase()}\n${range.label}`,
+      ? `Yutaka Transaction History • ${settings.fileFormat.toUpperCase()}\n${range.label}`
+      : `Yutaka ${scheduledDateFilterLabel(settings.dateFilter)} Analytics • ${settings.fileFormat.toUpperCase()}\n${range.label}`,
   };
 }
 
@@ -2745,7 +2745,7 @@ function buildSimpleTextPdf(sourceLines: string[]): Uint8Array<ArrayBuffer> {
   const lines = sourceLines.flatMap(line => wrap(String(line)));
   const pages: string[][] = [];
   for (let index = 0; index < lines.length; index += 47) pages.push(lines.slice(index, index + 47));
-  if (pages.length === 0) pages.push(['Koinly']);
+  if (pages.length === 0) pages.push(['Yutaka']);
 
   const objects = new Map<number, string>();
   const pageIds: number[] = [];
@@ -2768,7 +2768,7 @@ function buildSimpleTextPdf(sourceLines: string[]): Uint8Array<ArrayBuffer> {
   objects.set(2, `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] >>`);
 
   const encoder = new TextEncoder();
-  let pdf = '%PDF-1.4\n%Koinly\n';
+  let pdf = '%PDF-1.4\n%Yutaka\n';
   const offsets: number[] = [0];
   for (let id = 1; id < nextId; id += 1) {
     offsets[id] = encoder.encode(pdf).byteLength;
@@ -2792,7 +2792,7 @@ async function googleDriveAccessToken(env: Env, settings: GoogleDriveAnalyticsSe
     'google-drive-client-secret',
     settings.encryptedClientSecret,
     settings.clientSecretIv,
-    'The saved Google OAuth Client Secret cannot be decrypted. Re-enter it in Koinly.',
+    'The saved Google OAuth Client Secret cannot be decrypted. Re-enter it in Yutaka.',
   );
   const refreshToken = await decryptWorkerSecret(
     env.JWT_SECRET,
@@ -2860,7 +2860,7 @@ async function googleDriveFolderById(accessToken: string, folderId: string): Pro
   }
   const capabilities = data.capabilities;
   if (capabilities && typeof capabilities === 'object' && (capabilities as Record<string, unknown>).canAddChildren === false) {
-    throw new HttpError(400, 'Koinly does not have permission to upload files into the configured Google Drive folder.');
+    throw new HttpError(400, 'Yutaka does not have permission to upload files into the configured Google Drive folder.');
   }
   return { id: String(data.id ?? folderId), name: cleanText(data.name, 240) || 'Google Drive folder' };
 }
@@ -2936,7 +2936,7 @@ async function googleDriveUploadDocument(
   bytes: Uint8Array<ArrayBuffer>,
   mimeType = analyticsReportMimeType(fileName),
 ): Promise<{ id: string; webViewLink: string }> {
-  const boundary = `koinly_${crypto.randomUUID().replace(/-/g, '')}`;
+  const boundary = `yutaka_${crypto.randomUUID().replace(/-/g, '')}`;
   const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType });
   const body = new Blob([
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
@@ -3118,7 +3118,7 @@ async function decryptTelegramBotToken(secret: string, ciphertext: string, encod
 }
 
 async function telegramBackupEncryptionKey(secret: string, usages: KeyUsage[]): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest('SHA-256', enc.encode(`koinly-telegram-backup-token:${secret}`));
+  const material = await crypto.subtle.digest('SHA-256', enc.encode(`yutaka-telegram-backup-token:${secret}`));
   return crypto.subtle.importKey('raw', material, { name: 'AES-GCM' }, false, usages);
 }
 
@@ -3150,13 +3150,13 @@ async function decryptWorkerSecret(
 }
 
 async function workerSecretEncryptionKey(secret: string, purpose: string, usages: KeyUsage[]): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest('SHA-256', enc.encode(`koinly-worker-secret:${purpose}:${secret}`));
+  const material = await crypto.subtle.digest('SHA-256', enc.encode(`yutaka-worker-secret:${purpose}:${secret}`));
   return crypto.subtle.importKey('raw', material, { name: 'AES-GCM' }, false, usages);
 }
 
-function encodeKoinlyBackup(payload: unknown): string {
+function encodeYutakaBackup(payload: unknown): string {
   const source = enc.encode(JSON.stringify(payload));
-  const key = enc.encode(koinlyBackupCompatibilityKey);
+  const key = enc.encode(yutakaBackupCompatibilityKey);
   const encrypted = new Uint8Array(source.length);
   for (let index = 0; index < source.length; index += 1) {
     encrypted[index] = source[index] ^ key[index % key.length];
@@ -3199,9 +3199,9 @@ function safeTelegramError(error: unknown): string {
 function rootResponse(env: Env): Response {
   return json({
     ok: true,
-    service: 'koinly-sync',
+    service: 'yutaka-sync',
     configured: isWorkerConfigured(env),
-    workerVersion: env.KOINLY_WORKER_VERSION ?? 'legacy',
+    workerVersion: env.YUTAKA_WORKER_VERSION ?? 'legacy',
     registrationMode: 'first-user',
     endpoints: {
       profile: '/profile',
@@ -3232,8 +3232,8 @@ async function healthResponse(env: Env): Promise<Response> {
   if (!configured) {
     return json({
       ok: false,
-      service: 'koinly-sync',
-      workerVersion: env.KOINLY_WORKER_VERSION ?? 'legacy',
+      service: 'yutaka-sync',
+      workerVersion: env.YUTAKA_WORKER_VERSION ?? 'legacy',
       configured: false,
       registrationMode: 'first-user',
       telegramBackupAvailable: true,
@@ -3264,8 +3264,8 @@ async function healthResponse(env: Env): Promise<Response> {
     }
     return json({
       ok: schemaReady,
-      service: 'koinly-sync',
-      workerVersion: env.KOINLY_WORKER_VERSION ?? 'legacy',
+      service: 'yutaka-sync',
+      workerVersion: env.YUTAKA_WORKER_VERSION ?? 'legacy',
       configured: true,
       registrationMode: 'first-user',
       telegramBackupAvailable: true,
@@ -3282,8 +3282,8 @@ async function healthResponse(env: Env): Promise<Response> {
   } catch (error) {
     return json({
       ok: false,
-      service: 'koinly-sync',
-      workerVersion: env.KOINLY_WORKER_VERSION ?? 'legacy',
+      service: 'yutaka-sync',
+      workerVersion: env.YUTAKA_WORKER_VERSION ?? 'legacy',
       configured: true,
       registrationMode: 'first-user',
       telegramBackupAvailable: true,
@@ -3358,7 +3358,7 @@ export async function register(request: Request, env: Env, db: Client): Promise<
   const username = normalizeUsername(body.username);
   const password = String(body.password ?? '');
   const deviceId = normalizeId(body.deviceId, 'deviceId');
-  const deviceName = cleanText(body.deviceName, 80) || 'Koinly device';
+  const deviceName = cleanText(body.deviceName, 80) || 'Yutaka device';
   const platform = cleanText(body.platform, 40) || 'unknown';
   validatePassword(password);
 
@@ -3591,7 +3591,7 @@ export async function login(request: Request, env: Env, db: Client): Promise<Res
   const username = normalizeUsername(body.username);
   const password = String(body.password ?? '');
   const deviceId = normalizeId(body.deviceId, 'deviceId');
-  const deviceName = cleanText(body.deviceName, 80) || 'Koinly device';
+  const deviceName = cleanText(body.deviceName, 80) || 'Yutaka device';
   const platform = cleanText(body.platform, 40) || 'unknown';
 
   const row = (await db.execute({ sql: 'SELECT id, username, password_hash, session_version FROM users WHERE username = ?', args: [username] })).rows[0];
@@ -3615,7 +3615,7 @@ export async function recoverAccount(request: Request, env: Env, db: Client): Pr
   const recoveryKey = normalizeRecoveryKey(body.recoveryKey);
   const newPassword = String(body.newPassword ?? '');
   const deviceId = normalizeId(body.deviceId, 'deviceId');
-  const deviceName = cleanText(body.deviceName, 80) || 'Koinly device';
+  const deviceName = cleanText(body.deviceName, 80) || 'Yutaka device';
   const platform = cleanText(body.platform, 40) || 'unknown';
   validatePassword(newPassword);
 
@@ -3707,7 +3707,7 @@ async function openLiveSync(request: Request, env: Env, auth: AuthContext): Prom
   }
   const id = env.SYNC_HUB.idFromName(auth.userId);
   const headers = new Headers(request.headers);
-  headers.set('x-koinly-device-id', auth.deviceId);
+  headers.set('x-yutaka-device-id', auth.deviceId);
   return env.SYNC_HUB.get(id).fetch(new Request('https://sync-hub/live', {
     method: 'GET',
     headers,
@@ -3934,7 +3934,7 @@ async function initialSync(request: Request, db: Client, auth: AuthContext): Pro
   if (adoptLocal && Array.isArray(body.operations)) {
     return pushWithOperations(db, auth, body.operations, 1000);
   }
-  return pull(new URL('https://koinly.local/v1/sync/pull?cursor=0&limit=250'), { MAX_SYNC_BATCH_SIZE: '250' } as Env, db, auth);
+  return pull(new URL('https://yutaka.local/v1/sync/pull?cursor=0&limit=250'), { MAX_SYNC_BATCH_SIZE: '250' } as Env, db, auth);
 }
 
 async function push(request: Request, env: Env, db: Client, auth: AuthContext): Promise<Response> {

@@ -83,11 +83,11 @@ String _legacyUsernameFromEmail(String value) {
   final local = raw.contains('@') ? raw.split('@').first : raw;
   var username = local.replaceAll(RegExp(r'[^a-z0-9._-]+'), '_');
   username = username.replaceAll(RegExp(r'^[._-]+|[._-]+$'), '');
-  if (username.isEmpty) username = 'koinly_owner';
+  if (username.isEmpty) username = 'yutaka_owner';
   while (username.length < 3) { username = '${username}_owner'; }
   if (username.length > 32) username = username.substring(0, 32);
   username = username.replaceAll(RegExp(r'[._-]+$'), '');
-  return username.isEmpty ? 'koinly_owner' : username;
+  return username.isEmpty ? 'yutaka_owner' : username;
 }
 
 Future<void> main() async {
@@ -131,7 +131,7 @@ Future<void> main() async {
   runApp(
     ChangeNotifierProvider(
       create: (_) => AppController()..initialize(),
-      child: const KoinlyApp(),
+      child: const YutakaApp(),
     ),
   );
 }
@@ -178,13 +178,13 @@ class CategoryDatabaseMergeResult {
   bool get hasChanges => plan.hasChanges;
 }
 
-class KoinlyDatabase {
+class YutakaDatabase {
   sql.Database? _db;
 
   Future<sql.Database> get db async {
     if (_db != null) return _db!;
     final dir = await sql.getDatabasesPath();
-    final path = p.join(dir, 'koinly_flutter.db');
+    final path = p.join(dir, 'yutaka_flutter.db');
     _db = await sql.openDatabase(
       path,
       version: 15,
@@ -836,15 +836,15 @@ class KoinlyDatabase {
     await (await db).delete('planned_purchases', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<List<KoinlyNote>> notes() async {
+  Future<List<YutakaNote>> notes() async {
     final maps = await (await db).query(
       'notes',
       orderBy: 'bookmarked DESC, updated_on DESC, created_on DESC',
     );
-    return maps.map(KoinlyNote.fromMap).toList();
+    return maps.map(YutakaNote.fromMap).toList();
   }
 
-  Future<void> upsertNote(KoinlyNote note) async {
+  Future<void> upsertNote(YutakaNote note) async {
     await (await db).insert(
       'notes',
       note.toMap(),
@@ -859,7 +859,7 @@ class KoinlyDatabase {
   /// Persists an editor autosave and its cloud outbox row atomically. If the
   /// process is backgrounded or terminated immediately after this transaction,
   /// the local note and the pending cloud mutation cannot get out of sync.
-  Future<void> upsertAutosavedNote(KoinlyNote note) async {
+  Future<void> upsertAutosavedNote(YutakaNote note) async {
     final database = await db;
     final row = note.toMap();
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1290,7 +1290,7 @@ class KoinlyDatabase {
   }
 
   Future<void> enqueuePreferences(Map<String, dynamic> preferences) async {
-    await enqueueSyncOperation(entityType: 'preferences', entityId: 'koinly', operation: 'upsert', payload: preferences);
+    await enqueueSyncOperation(entityType: 'preferences', entityId: 'yutaka', operation: 'upsert', payload: preferences);
   }
 
   Future<void> enqueueAllForAdoption(Map<String, dynamic> preferences) async {
@@ -1530,7 +1530,7 @@ class KoinlyDatabase {
       if (change['entityType'] == 'preferences' && change['operation'] == 'upsert') {
         final payload = (change['payload'] as Map? ?? {}).cast<String, dynamic>();
         await applyPreferences(payload);
-        await saveEntityVersion('preferences', 'koinly', (change['version'] as num? ?? 0).toInt());
+        await saveEntityVersion('preferences', 'yutaka', (change['version'] as num? ?? 0).toInt());
       }
     }
     for (final local in preservedLocalRows) {
@@ -1617,7 +1617,7 @@ class AutomaticBackupDirectorySelection {
   const AutomaticBackupDirectorySelection.appStorage()
       : path = '',
         uri = '',
-        label = 'Koinly app storage';
+        label = 'Yutaka app storage';
 
   final String path;
   final String uri;
@@ -1625,9 +1625,16 @@ class AutomaticBackupDirectorySelection {
 }
 
 class BackupService {
-  static const String safetyBackupPrefix = 'koinly_safety_';
-  static const String automaticBackupPrefix = 'koinly_auto_';
+  static const String safetyBackupPrefix = 'yutaka_safety_';
+  static const String automaticBackupPrefix = 'yutaka_auto_';
+  static const String backupExtension = 'yutakabackup';
+  static const String legacyBackupExtension = 'koinlybackup';
   static const int maxSafetyBackups = 3;
+
+  static bool isSupportedBackupPath(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.endsWith('.$backupExtension') || normalized.endsWith('.$legacyBackupExtension');
+  }
 
   static String _crypt(String source) {
     final key = utf8.encode(backupPassword);
@@ -1644,15 +1651,15 @@ class BackupService {
   }
 
   static String backupFileName() {
-    return 'koinly_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.koinlybackup';
+    return 'yutaka_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.${backupExtension}';
   }
 
   static String safetyBackupFileName() {
-    return '${safetyBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.koinlybackup';
+    return '${safetyBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.${backupExtension}';
   }
 
   static String automaticBackupFileName() {
-    return '${automaticBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.koinlybackup';
+    return '${automaticBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.${backupExtension}';
   }
 
   static Future<Directory> backupStorageDirectory() async {
@@ -1699,7 +1706,7 @@ class BackupService {
     final backupsDir = await backupStorageDirectory();
     final files = await backupsDir
         .list()
-        .where((entity) => entity is File && p.basename(entity.path).startsWith(safetyBackupPrefix) && entity.path.endsWith('.koinlybackup'))
+        .where((entity) => entity is File && p.basename(entity.path).startsWith(safetyBackupPrefix) && isSupportedBackupPath(entity.path))
         .cast<File>()
         .toList();
     files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
@@ -1745,7 +1752,7 @@ class BackupService {
     if (Platform.isAndroid && directoryUri.trim().isNotEmpty) {
       final canWrite = await AndroidSafBackupStore.canWrite(directoryUri.trim());
       if (!canWrite) {
-        throw StateError('Koinly no longer has permission to write to this Android folder. Choose the folder again.');
+        throw StateError('Yutaka no longer has permission to write to this Android folder. Choose the folder again.');
       }
       await AndroidSafBackupStore.writeFile(
         uri: directoryUri.trim(),
@@ -1760,7 +1767,7 @@ class BackupService {
     }
 
     if (Platform.isAndroid && directoryPath.trim().isNotEmpty) {
-      throw StateError('Android folder permission is missing. Choose the backup folder again so Koinly can save through Android folder access.');
+      throw StateError('Android folder permission is missing. Choose the backup folder again so Yutaka can save through Android folder access.');
     }
     if (directoryPath.trim().isEmpty) {
       throw StateError('Choose a backup folder before enabling automatic backup.');
@@ -1781,7 +1788,7 @@ class BackupService {
         .where((entity) =>
             entity is File &&
             p.basename(entity.path).startsWith(automaticBackupPrefix) &&
-            entity.path.toLowerCase().endsWith('.koinlybackup'))
+            isSupportedBackupPath(entity.path))
         .cast<File>()
         .toList();
     files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
@@ -1796,7 +1803,7 @@ class BackupService {
 
   static Future<void> pruneAndroidAutomaticBackups(String directoryUri) async {
     final files = (await AndroidSafBackupStore.listFiles(directoryUri))
-        .where((entry) => entry.name.startsWith(automaticBackupPrefix) && entry.name.toLowerCase().endsWith('.koinlybackup'))
+        .where((entry) => entry.name.startsWith(automaticBackupPrefix) && isSupportedBackupPath(entry.name))
         .toList()
       ..sort((a, b) => b.lastModified.compareTo(a.lastModified));
     for (final stale in files.skip(1)) {
@@ -1815,17 +1822,17 @@ class BackupService {
         if (selected == null) return null;
         return AutomaticBackupDirectorySelection(path: '', uri: selected.uri, label: selected.label);
       }
-      final path = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Choose where Koinly/Backup should be created');
+      final path = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Choose where Yutaka/Backup should be created');
       if (path == null || path.trim().isEmpty) return null;
       final selected = p.normalize(path.trim());
       final selectedName = p.basename(selected).toLowerCase();
       final parentName = p.basename(p.dirname(selected)).toLowerCase();
-      final alreadyBackupFolder = selectedName == 'backup' && parentName == 'koinly';
+      final alreadyBackupFolder = selectedName == 'backup' && parentName == 'yutaka';
       final backupPath = alreadyBackupFolder
           ? selected
-          : selectedName == 'koinly'
+          : selectedName == 'yutaka'
               ? p.join(selected, 'Backup')
-              : p.join(selected, 'Koinly', 'Backup');
+              : p.join(selected, 'Yutaka', 'Backup');
       await Directory(backupPath).create(recursive: true);
       return AutomaticBackupDirectorySelection(path: backupPath, uri: '', label: backupPath);
     } catch (_) {
@@ -1876,7 +1883,7 @@ class BackupService {
 
     // A restore is an import/merge flow, not a "Start new" flow. Remove only
     // untouched built-in account placeholders before folding in the backup so
-    // a restored Cash account does not sit beside Koinly's preloaded Cash.
+    // a restored Cash account does not sit beside Yutaka's preloaded Cash.
     await state.discardPreloadedStarterAccountsForImport();
 
     final currentPreferences = await state.exportPreferences();
@@ -1896,17 +1903,17 @@ class BackupService {
     FilePickerResult? picked;
     try {
       picked = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Load Koinly backup',
+        dialogTitle: 'Load Yutaka backup',
         type: FileType.custom,
-        allowedExtensions: const ['koinlybackup'],
+        allowedExtensions: const [backupExtension, legacyBackupExtension],
       );
     } catch (_) {
       picked = await FilePicker.platform.pickFiles(type: FileType.any);
     }
     if (picked == null || picked.files.single.path == null) return null;
     final file = File(picked.files.single.path!);
-    if (!file.path.toLowerCase().endsWith('.koinlybackup')) {
-      throw const FormatException('Please select a Koinly .koinlybackup file.');
+    if (!isSupportedBackupPath(file.path)) {
+      throw const FormatException('Please select a Yutaka .yutakabackup file or a legacy .koinlybackup file.');
     }
     return file;
   }
@@ -1931,10 +1938,10 @@ Future<void> runBackupFlow(BuildContext context, AppController state) async {
     String? savedPath;
     try {
       savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save Koinly backup',
+        dialogTitle: 'Save Yutaka backup',
         fileName: fileName,
         type: FileType.custom,
-        allowedExtensions: const ['koinlybackup'],
+        allowedExtensions: const [backupExtension],
         bytes: fileBytes,
       );
     } catch (_) {
@@ -1999,7 +2006,7 @@ Future<void> runLoadBackupFlow(BuildContext context, AppController state) async 
     }
   } catch (_) {
     if (context.mounted) {
-      showSnack(context, 'Could not load backup. Please choose a valid Koinly backup file.');
+      showSnack(context, 'Could not load backup. Please choose a valid Yutaka backup file.');
     }
   }
 }
@@ -2037,7 +2044,7 @@ Future<void> copyDiagnosticsReportFlow(BuildContext context, AppController state
 Future<void> shareDiagnosticsReportFlow(BuildContext context, AppController state) async {
   try {
     final report = await state.buildDiagnosticsReport();
-    await Share.share(report, subject: 'Koinly diagnostics');
+    await Share.share(report, subject: 'Yutaka diagnostics');
   } catch (_) {
     if (context.mounted) showSnack(context, 'Could not share diagnostics report.');
   }
@@ -2049,12 +2056,11 @@ Future<void> shareDiagnosticsReportFlow(BuildContext context, AppController stat
 // -----------------------------------------------------------------------------
 
 class AppController extends ChangeNotifier {
-  final database = KoinlyDatabase();
+  final database = YutakaDatabase();
   final prefs = PrefsStore();
   final secureCredentials = SecureCredentialStore();
   final syncProfiles = SyncProfileStore();
   final profileMediaStorage = const ProfileMediaStorage();
-  final profileMediaPermissions = const ProfileMediaPermissionService();
   static final NumberFormat _groupedAmountFormatter = NumberFormat('#,##0.##');
   static final NumberFormat _plainAmountFormatter = NumberFormat('0.##');
 
@@ -2068,7 +2074,7 @@ class AppController extends ChangeNotifier {
 
   List<Account> accounts = [];
   List<Category> categories = [];
-  List<KoinlyNote> notes = [];
+  List<YutakaNote> notes = [];
   List<PlannedPurchase> plannedPurchases = [];
   List<RecurringSubscription> subscriptions = [];
   List<MoneyTransaction> transactions = [];
@@ -2340,7 +2346,7 @@ class AppController extends ChangeNotifier {
 
     final currentUrl = CloudSyncService.normalizeApiBaseUrl(cloudSyncApiBaseUrl);
     final store = WorkerDeploymentCredentialStore();
-    final api = KoinlySyncApi(baseUrl: currentUrl);
+    final api = YutakaSyncApi(baseUrl: currentUrl);
     final local = await store.read(workerUrl: currentUrl);
 
     if (local != null &&
@@ -2383,7 +2389,7 @@ class AppController extends ChangeNotifier {
       return false;
     }
     try {
-      await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).saveDeploymentRecoveryProfile(
+      await YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl).saveDeploymentRecoveryProfile(
         accessToken: syncAccessToken,
         profile: profile.toJson().cast<String, dynamic>(),
       );
@@ -2396,7 +2402,7 @@ class AppController extends ChangeNotifier {
   Future<void> forgetWorkerDeploymentRecoveryProfile() async {
     if (cloudSyncEnabled && syncAccessToken.trim().isNotEmpty && cloudSyncApiBaseUrl.trim().isNotEmpty) {
       try {
-        await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl)
+        await YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl)
             .deleteDeploymentRecoveryProfile(accessToken: syncAccessToken);
       } catch (_) {
         // Always honor the local forget request even when the Worker is offline.
@@ -2624,7 +2630,7 @@ class AppController extends ChangeNotifier {
     await _loadSyncProfilesAndMigrateLegacySession();
 
     // A successfully authenticated existing account is already a configured
-    // Koinly setup. Older builds could persist the sync session before the
+    // Yutaka setup. Older builds could persist the sync session before the
     // onboarding completion flag, which left returning users trapped on the
     // first-run "Continue setup" screen after an app restart. Keep the
     // explicit setup choice only for a newly registered account.
@@ -2700,12 +2706,12 @@ class AppController extends ChangeNotifier {
         autoBackupDirectoryUri.trim().isNotEmpty &&
         autoBackupDirectoryLabel.trim().isNotEmpty) {
       final normalizedBackupLabel = autoBackupDirectoryLabel.replaceAll('\\', '/').toLowerCase();
-      if (normalizedBackupLabel == 'koinly/backup' || normalizedBackupLabel.endsWith('/koinly/backup')) {
+      if (normalizedBackupLabel == 'yutaka/backup' || normalizedBackupLabel.endsWith('/yutaka/backup')) {
         // Already points at the dedicated destination.
-      } else if (normalizedBackupLabel == 'koinly' || normalizedBackupLabel.endsWith('/koinly')) {
+      } else if (normalizedBackupLabel == 'yutaka' || normalizedBackupLabel.endsWith('/yutaka')) {
         autoBackupDirectoryLabel = '${autoBackupDirectoryLabel.trim()}/Backup';
       } else {
-        autoBackupDirectoryLabel = '${autoBackupDirectoryLabel.trim()}/Koinly/Backup';
+        autoBackupDirectoryLabel = '${autoBackupDirectoryLabel.trim()}/Yutaka/Backup';
       }
     }
     lastAutoBackupPath = await prefs.getString('lastAutoBackupPath', '');
@@ -2766,7 +2772,7 @@ class AppController extends ChangeNotifier {
 
   String get autoBackupLocationLabel {
     if (Platform.isAndroid && autoBackupDirectoryUri.trim().isNotEmpty) {
-      return autoBackupDirectoryLabel.trim().isEmpty ? 'Koinly/Backup' : autoBackupDirectoryLabel.trim();
+      return autoBackupDirectoryLabel.trim().isEmpty ? 'Yutaka/Backup' : autoBackupDirectoryLabel.trim();
     }
     if (autoBackupDirectoryPath.trim().isEmpty) return 'Choose folder';
     final normalized = p.normalize(autoBackupDirectoryPath.trim());
@@ -2839,7 +2845,7 @@ class AppController extends ChangeNotifier {
     _autoBackupTimer = null;
     // Android uses a native WorkManager job so automatic local backups keep
     // running after the Flutter process is closed. Other platforms retain the
-    // in-process timer while Koinly is running.
+    // in-process timer while Yutaka is running.
     if (Platform.isAndroid || !autoBackupEnabled || loading) return;
     final now = DateTime.now();
     final next = _nextAutoBackupSlot(now);
@@ -3100,7 +3106,7 @@ class AppController extends ChangeNotifier {
           severity: lastSyncFailure.isEmpty ? DataHealthSeverity.info : DataHealthSeverity.warning,
           title: 'Cloud upload backlog',
           body: lastSyncFailure.isEmpty
-              ? '$pendingSyncOperations local change${pendingSyncOperations == 1 ? '' : 's'} are queued and Koinly will retry automatically.'
+              ? '$pendingSyncOperations local change${pendingSyncOperations == 1 ? '' : 's'} are queued and Yutaka will retry automatically.'
               : '$pendingSyncOperations local change${pendingSyncOperations == 1 ? '' : 's'} are queued. Last sync attempt: ${redactSyncSecrets(lastSyncFailure)}',
         ));
       }
@@ -3153,7 +3159,7 @@ class AppController extends ChangeNotifier {
   Future<String> buildDiagnosticsReport() async {
     final report = await checkDataHealth();
     final buffer = StringBuffer()
-      ..writeln('Koinly diagnostics')
+      ..writeln('Yutaka diagnostics')
       ..writeln('Generated: ${DateTime.now().toIso8601String()}')
       ..writeln('Installed version: $appVersion')
       ..writeln('Platform: ${_platformName()}')
@@ -3455,7 +3461,7 @@ class AppController extends ChangeNotifier {
     }
 
     updateCheckBusy = true;
-    updateStatusMessage = manual ? 'Checking Koinly releases now...' : 'Checking Koinly releases...';
+    updateStatusMessage = manual ? 'Checking Yutaka releases now...' : 'Checking Yutaka releases...';
     notifyListeners();
     final result = await updateService.check(installedVersion: appVersion);
     updateCheckBusy = false;
@@ -3545,7 +3551,7 @@ class AppController extends ChangeNotifier {
       case UpdateCheckOutcome.rateLimited:
         return 'GitHub API rate limit reached. Please try again later.';
       case UpdateCheckOutcome.malformedData:
-        return 'GitHub returned release data that Koinly could not read.';
+        return 'GitHub returned release data that Yutaka could not read.';
       case UpdateCheckOutcome.httpError:
         return 'GitHub update check failed.';
     }
@@ -3602,7 +3608,7 @@ class AppController extends ChangeNotifier {
     IOSink? sink;
     try {
       final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
-        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Yutaka-Updater'});
       final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('HTTP ${response.statusCode}');
@@ -3675,7 +3681,7 @@ class AppController extends ChangeNotifier {
     if (!Platform.isAndroid || kIsGooglePlayBuild) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
-      updateStatusMessage = 'Koinly is already updated.';
+      updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
@@ -3688,13 +3694,13 @@ class AppController extends ChangeNotifier {
     try {
       final allowed = await AndroidUpdateInstaller.canInstallPackages();
       if (!allowed) {
-        updateStatusMessage = 'Allow Koinly to install unknown apps, then return here to continue.';
+        updateStatusMessage = 'Allow Yutaka to install unknown apps, then return here to continue.';
         notifyListeners();
         await AndroidUpdateInstaller.openInstallPermissionSettings();
         return;
       }
       final opened = await AndroidUpdateInstaller.installApk(pendingAndroidUpdatePath);
-      updateStatusMessage = opened ? 'Android installer opened. Complete installation to update Koinly.' : 'Could not open Android installer.';
+      updateStatusMessage = opened ? 'Android installer opened. Complete installation to update Yutaka.' : 'Could not open Android installer.';
       notifyListeners();
     } catch (_) {
       updateStatusMessage = 'Could not open Android installer. Please try again.';
@@ -3706,7 +3712,7 @@ class AppController extends ChangeNotifier {
     if (!Platform.isAndroid || kIsGooglePlayBuild || pendingAndroidUpdatePath.isEmpty || updateDownloadBusy) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
       await _clearPendingAndroidUpdate(deleteFile: true);
-      updateStatusMessage = 'Koinly is already updated.';
+      updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
@@ -3776,7 +3782,7 @@ class AppController extends ChangeNotifier {
     IOSink? sink;
     try {
       final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
-        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Yutaka-Updater'});
       final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('HTTP ${response.statusCode}');
@@ -3839,7 +3845,7 @@ class AppController extends ChangeNotifier {
     if (!Platform.isWindows) return;
     if (_isPendingWindowsUpdateAlreadyInstalled()) {
       await _clearPendingWindowsUpdate(deleteFile: true);
-      updateStatusMessage = 'Koinly is already updated.';
+      updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
@@ -3851,7 +3857,7 @@ class AppController extends ChangeNotifier {
     }
     final opened = await WindowsUpdateInstaller.install(pendingWindowsUpdatePath);
     updateStatusMessage = opened
-        ? 'Windows installer opened. Complete installation to update Koinly.'
+        ? 'Windows installer opened. Complete installation to update Yutaka.'
         : 'Could not open the downloaded Windows installer. Please try again.';
     notifyListeners();
   }
@@ -3944,7 +3950,7 @@ class AppController extends ChangeNotifier {
     IOSink? sink;
     try {
       final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
-        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Yutaka-Updater'});
       final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('HTTP ${response.statusCode}');
@@ -4007,7 +4013,7 @@ class AppController extends ChangeNotifier {
     if (!Platform.isLinux) return;
     if (_isPendingLinuxUpdateAlreadyInstalled()) {
       await _clearPendingLinuxUpdate(deleteFile: true);
-      updateStatusMessage = 'Koinly is already updated.';
+      updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
@@ -4019,7 +4025,7 @@ class AppController extends ChangeNotifier {
     }
     final opened = await LinuxUpdateInstaller.install(pendingLinuxUpdatePath);
     updateStatusMessage = opened
-        ? 'Linux update package opened. Complete the update to use the latest Koinly build.'
+        ? 'Linux update package opened. Complete the update to use the latest Yutaka build.'
         : 'Could not open the downloaded Linux update package. Please try again.';
     notifyListeners();
   }
@@ -4112,7 +4118,7 @@ class AppController extends ChangeNotifier {
     IOSink? sink;
     try {
       final request = http.Request('GET', Uri.parse(asset.browserDownloadUrl))
-        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Koinly-Updater'});
+        ..headers.addAll(const {'Accept': 'application/octet-stream', 'User-Agent': 'Yutaka-Updater'});
       final response = await _updateDownloadClient!.send(request).timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('HTTP ${response.statusCode}');
@@ -4175,7 +4181,7 @@ class AppController extends ChangeNotifier {
     if (!Platform.isMacOS) return;
     if (_isPendingMacOsUpdateAlreadyInstalled()) {
       await _clearPendingMacOsUpdate(deleteFile: true);
-      updateStatusMessage = 'Koinly is already updated.';
+      updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
@@ -4187,7 +4193,7 @@ class AppController extends ChangeNotifier {
     }
     final opened = await MacOsUpdateInstaller.install(pendingMacOsUpdatePath);
     updateStatusMessage = opened
-        ? 'macOS installer opened. Complete installation to update Koinly.'
+        ? 'macOS installer opened. Complete installation to update Yutaka.'
         : 'Could not open the downloaded macOS installer. Please try again.';
     notifyListeners();
   }
@@ -4278,7 +4284,7 @@ class AppController extends ChangeNotifier {
     var changed = false;
     if (cloudSyncId.trim().isEmpty) {
       final shortId = _uuid.v4().split('-').first.toLowerCase();
-      cloudSyncId = CloudSyncService.normalizeSyncId('koinly-$shortId');
+      cloudSyncId = CloudSyncService.normalizeSyncId('yutaka-$shortId');
       changed = true;
     }
     if (cloudSyncPin.trim().isEmpty) {
@@ -4538,14 +4544,14 @@ class AppController extends ChangeNotifier {
     await performMultiDeviceSync(pushLocalChanges: true, pullFullCloudCopy: true);
   }
 
-  Future<T> _withSelfHostedSyncToken<T>(Future<T> Function(KoinlySyncApi api, String accessToken) action) async {
+  Future<T> _withSelfHostedSyncToken<T>(Future<T> Function(YutakaSyncApi api, String accessToken) action) async {
     if (selfHostedSyncApiBaseUrl.isEmpty) {
       throw StateError('Validate your self-hosted Sync Worker first.');
     }
     if (!cloudSyncEnabled || syncAccessToken.isEmpty || syncRefreshToken.isEmpty) {
       throw StateError('Sign in to the self-hosted Sync Worker first.');
     }
-    final api = KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl);
+    final api = YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl);
     try {
       return await action(api, syncAccessToken);
     } catch (error) {
@@ -4756,7 +4762,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> configureSelfHostedSyncEndpoint(String apiBaseUrl) async {
     final nextApiBaseUrl = CloudSyncService.validateApiBaseUrl(apiBaseUrl);
-    await KoinlySyncApi(baseUrl: nextApiBaseUrl).validateBackend();
+    await YutakaSyncApi(baseUrl: nextApiBaseUrl).validateBackend();
     final endpointChanged = CloudSyncService.normalizeApiBaseUrl(cloudSyncApiBaseUrl) != nextApiBaseUrl;
     final worker = await _ensureSavedWorker(nextApiBaseUrl);
     if (endpointChanged && cloudSyncEnabled) {
@@ -4835,7 +4841,7 @@ class AppController extends ChangeNotifier {
       if (cloudSyncApiBaseUrl.isEmpty) {
         throw StateError('Validate your self-hosted Sync Worker first.');
       }
-      final api = KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl);
+      final api = YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl);
       final session = register
           ? await api.register(
               username: username,
@@ -4929,7 +4935,7 @@ class AppController extends ChangeNotifier {
     _cloudRealtimePullPending = false;
     if (!hadActiveSync) return;
 
-    KoinlySyncApi.cancelPendingRequests();
+    YutakaSyncApi.cancelPendingRequests();
 
     // Wait for any local database work already in progress to reach a safe
     // boundary before replacing or clearing account data. Closing the HTTP
@@ -4966,7 +4972,7 @@ class AppController extends ChangeNotifier {
           // The Worker logout endpoint revokes only this refresh token. It never
           // deletes the user's cloud rows, so either local sign-out choice keeps
           // the server-side account data safe.
-          await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).logout(
+          await YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl).logout(
             accessToken: syncAccessToken,
             refreshToken: syncRefreshToken,
           );
@@ -5176,13 +5182,13 @@ class AppController extends ChangeNotifier {
 
   Future<void> _refreshSyncSession() async {
     if (syncRefreshToken.isEmpty) throw StateError('Sign in to sync first.');
-    final session = await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).refresh(refreshToken: syncRefreshToken, deviceId: syncDeviceId, username: syncAccountUsername);
+    final session = await YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl).refresh(refreshToken: syncRefreshToken, deviceId: syncDeviceId, username: syncAccountUsername);
     await _saveSyncSession(session);
     _restartCloudLiveConnection();
   }
 
   Future<_FullCloudSnapshot> _downloadFullCloudSnapshot({
-    required KoinlySyncApi api,
+    required YutakaSyncApi api,
     required String accessToken,
   }) async {
     var cursor = 0;
@@ -5214,7 +5220,7 @@ class AppController extends ChangeNotifier {
     final selected = target;
     final tokens = await syncProfiles.readAccountTokens(selected.id);
     if (tokens.refreshToken.trim().isEmpty) throw StateError('Sign in to this account again before switching.');
-    final api = KoinlySyncApi(baseUrl: selected.workerUrl);
+    final api = YutakaSyncApi(baseUrl: selected.workerUrl);
     syncAuthBusy = true;
     _syncAccountTransitionInProgress = true;
     cloudSyncError = null;
@@ -5266,7 +5272,7 @@ class AppController extends ChangeNotifier {
     final normalizedUsername = username.trim().toLowerCase();
     final usernameError = _syncUsernameValidationError(normalizedUsername);
     if (usernameError != null) throw StateError(usernameError);
-    final api = KoinlySyncApi(baseUrl: normalizedWorkerUrl);
+    final api = YutakaSyncApi(baseUrl: normalizedWorkerUrl);
     syncAuthBusy = true;
     _syncAccountTransitionInProgress = true;
     cloudSyncError = null;
@@ -5348,7 +5354,7 @@ class AppController extends ChangeNotifier {
     );
     await _replaceRemotePreferences((preferenceChange['payload'] as Map?)?.cast<String, dynamic>());
     if (preferenceChange.isNotEmpty) {
-      await database.saveEntityVersion('preferences', 'koinly', (preferenceChange['version'] as num? ?? 0).toInt());
+      await database.saveEntityVersion('preferences', 'yutaka', (preferenceChange['version'] as num? ?? 0).toInt());
     }
     await _clearLocalProfileMedia(clearRemoteTracking: true);
 
@@ -5385,7 +5391,7 @@ class AppController extends ChangeNotifier {
     cloudSyncLastAt = DateTime.now();
     await prefs.setString('cloudSyncLastAt', cloudSyncLastAt!.toIso8601String());
     await reload(queueSync: false);
-    await _syncProfileMediaCloudState(api: KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl));
+    await _syncProfileMediaCloudState(api: YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl));
     _startCloudAutoPull();
     syncStatus = 'Switched account';
     cloudSyncError = null;
@@ -5478,7 +5484,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      final api = KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl);
+      final api = YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl);
       final conflictedLocalOperations = <String, Map<String, dynamic>>{};
       if (pushLocalChanges) {
         await database.enqueueLegacyNotesForCloudSync(
@@ -5789,7 +5795,7 @@ class AppController extends ChangeNotifier {
         queued = true;
         continue;
       }
-      if (!KoinlyDatabase.syncTables.contains(entityType)) continue;
+      if (!YutakaDatabase.syncTables.contains(entityType)) continue;
       // A stale legacy copy must not resurrect a note that another device
       // explicitly deleted while this device was offline.
       if (entityType == 'notes' && serverVersion > 0 && remotelyDeletedNoteIds.contains(entityId)) continue;
@@ -5849,11 +5855,11 @@ class AppController extends ChangeNotifier {
       cloudSyncEnabled && cloudSyncApiBaseUrl.trim().isNotEmpty && syncAccessToken.trim().isNotEmpty && syncRefreshToken.trim().isNotEmpty;
 
   String _deviceName() {
-    if (kIsWeb) return 'Koinly Web';
+    if (kIsWeb) return 'Yutaka Web';
     try {
-      return Platform.localHostname.isEmpty ? 'Koinly device' : Platform.localHostname;
+      return Platform.localHostname.isEmpty ? 'Yutaka device' : Platform.localHostname;
     } catch (_) {
-      return 'Koinly device';
+      return 'Yutaka device';
     }
   }
 
@@ -5933,7 +5939,7 @@ class AppController extends ChangeNotifier {
     if (!_hasConfiguredSyncTarget() || _cloudSyncLiveConnecting || _cloudSyncLiveSocket != null) return;
     _cloudSyncLiveConnecting = true;
     try {
-      final socket = await KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl).connectLive(accessToken: syncAccessToken);
+      final socket = await YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl).connectLive(accessToken: syncAccessToken);
       if (!_hasConfiguredSyncTarget()) {
         await socket.close();
         return;
@@ -6049,7 +6055,7 @@ class AppController extends ChangeNotifier {
     final text = error.toString().replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '').trim();
     final lower = text.toLowerCase();
     if (error is TimeoutException || lower.contains('timeoutexception') || lower.contains('future not completed')) {
-      return 'Upload timed out. Keep Koinly open on a stronger connection and try again.';
+      return 'Upload timed out. Keep Yutaka open on a stronger connection and try again.';
     }
     final redacted = redactSyncSecrets(text);
     return redacted.isEmpty ? 'Sync failed. Check your database configuration.' : redacted;
@@ -6512,10 +6518,10 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _syncProfileMediaCloudState({KoinlySyncApi? api}) async {
+  Future<void> _syncProfileMediaCloudState({YutakaSyncApi? api}) async {
     if (_profileMediaCloudSyncInFlight || !_hasConfiguredSyncTarget()) return;
     _profileMediaCloudSyncInFlight = true;
-    final syncApi = api ?? KoinlySyncApi(baseUrl: cloudSyncApiBaseUrl);
+    final syncApi = api ?? YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl);
     try {
       if (profileMediaCloudDeletePending) {
         await syncApi.deleteProfileMedia(accessToken: syncAccessToken);
@@ -6549,7 +6555,7 @@ class AppController extends ChangeNotifier {
       await _setCloudSyncPending(true);
       _schedulePendingSyncRetry();
       if (error.code == 'HTTP_404') {
-        cloudSyncError = 'Profile media sync needs the latest self-hosted Worker. Redeploy the Worker, then keep Koinly open briefly on both devices.';
+        cloudSyncError = 'Profile media sync needs the latest self-hosted Worker. Redeploy the Worker, then keep Yutaka open briefly on both devices.';
         cloudSyncErrorCode = 'PROFILE_MEDIA_WORKER_UPDATE_REQUIRED';
       } else {
         cloudSyncError = 'Profile media sync: ${_cleanSyncError(error)}';
@@ -6570,7 +6576,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _uploadProfileMediaToCloud(KoinlySyncApi api) async {
+  Future<void> _uploadProfileMediaToCloud(YutakaSyncApi api) async {
     if (!hasProfileMedia) return;
     final file = File(profileMediaPath);
     final fileSize = await file.length();
@@ -6629,7 +6635,7 @@ class AppController extends ChangeNotifier {
     await _persistProfileMediaCloudState();
   }
 
-  Future<void> _pullProfileMediaFromCloud(KoinlySyncApi api) async {
+  Future<void> _pullProfileMediaFromCloud(YutakaSyncApi api) async {
     if (profileMediaCloudUploadPending || profileMediaCloudDeletePending) return;
     final remote = await api.profileMediaMetadata(accessToken: syncAccessToken);
     if (remote == null) {
@@ -6673,7 +6679,7 @@ class AppController extends ChangeNotifier {
     }
 
     final temporaryDirectory = await getTemporaryDirectory();
-    final temporaryFile = File(p.join(temporaryDirectory.path, 'koinly_profile_${remote.version}.part'));
+    final temporaryFile = File(p.join(temporaryDirectory.path, 'yutaka_profile_${remote.version}.part'));
     IOSink? sink;
     try {
       if (await temporaryFile.exists()) await temporaryFile.delete();
@@ -7096,7 +7102,7 @@ class AppController extends ChangeNotifier {
     await reload(queueSync: true);
   }
 
-  Future<void> saveNote(KoinlyNote note) async {
+  Future<void> saveNote(YutakaNote note) async {
     await database.upsertNote(note);
     await database.enqueueTableRow('notes', note.id);
     await reload(queueSync: true);
@@ -7105,7 +7111,7 @@ class AppController extends ChangeNotifier {
   /// Fast path used by the full-screen Note editor. It persists every edit to
   /// SQLite immediately without reloading every finance table on each
   /// keystroke. The note row and cloud outbox mutation are committed atomically.
-  Future<void> autosaveNote(KoinlyNote note) async {
+  Future<void> autosaveNote(YutakaNote note) async {
     await database.upsertAutosavedNote(note);
 
     final existingIndex = notes.indexWhere((item) => item.id == note.id);
@@ -7126,11 +7132,11 @@ class AppController extends ChangeNotifier {
 
   void publishAutosavedNotes() => notifyListeners();
 
-  Future<void> toggleNoteBookmark(KoinlyNote note) async {
+  Future<void> toggleNoteBookmark(YutakaNote note) async {
     await saveNote(note.copyWith(bookmarked: !note.bookmarked, updatedOn: DateTime.now()));
   }
 
-  Future<void> toggleNoteDraft(KoinlyNote note) async {
+  Future<void> toggleNoteDraft(YutakaNote note) async {
     await saveNote(note.copyWith(draft: !note.draft, updatedOn: DateTime.now()));
   }
 
@@ -7295,15 +7301,15 @@ class AppController extends ChangeNotifier {
 // -----------------------------------------------------------------------------
 
 
-class KoinlyApp extends StatelessWidget {
-  const KoinlyApp({super.key});
+class YutakaApp extends StatelessWidget {
+  const YutakaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final themeMode = context.select<AppController, ThemeMode>((state) => state.themeMode);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      scrollBehavior: const KoinlyScrollBehavior(),
+      scrollBehavior: const YutakaScrollBehavior(),
       title: appTitle,
       themeMode: themeMode,
       theme: _theme(Brightness.light),
@@ -7378,7 +7384,7 @@ class KoinlyApp extends StatelessWidget {
       bodyColor: scheme.onSurface,
     );
 
-    final pageTransitionBuilder = const KoinlyPageTransitionsBuilder();
+    final pageTransitionBuilder = const YutakaPageTransitionsBuilder();
 
     WidgetStateProperty<T> states<T>({required T normal, T? selected, T? hovered, T? pressed, T? disabled}) {
       return WidgetStateProperty.resolveWith((state) {
@@ -7920,7 +7926,7 @@ class SplashScreen extends StatelessWidget {
               width: 88,
               height: 104,
               child: Image.asset(
-                'assets/icons/koinly_mark.png',
+                'assets/icons/yutaka_mark.png',
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
               ),
@@ -7928,7 +7934,7 @@ class SplashScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Text(appTitle, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 16),
-            const KoinlyInlineLoader(size: 28),
+            const YutakaInlineLoader(size: 28),
           ],
         ),
       ),
@@ -8425,7 +8431,7 @@ class _SideRailNavigation extends StatelessWidget {
                       width: 46,
                       height: 46,
                       child: Image.asset(
-                        'assets/icons/koinly_mark.png',
+                        'assets/icons/yutaka_mark.png',
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
                       ),
@@ -8757,15 +8763,15 @@ class PageScaffold extends StatelessWidget {
                   ))
               .toList(),
         ),
-        body: KoinlyAtmosphere(child: SafeArea(top: false, child: child)),
+        body: YutakaAtmosphere(child: SafeArea(top: false, child: child)),
         floatingActionButton: floatingActionButton,
       ),
     );
   }
 }
 
-class KoinlyAtmosphere extends StatelessWidget {
-  const KoinlyAtmosphere({super.key, required this.child});
+class YutakaAtmosphere extends StatelessWidget {
+  const YutakaAtmosphere({super.key, required this.child});
 
   final Widget child;
 
@@ -8920,8 +8926,8 @@ class ResponsiveListContent extends StatelessWidget {
 }
 
 
-class _KoinlySlidableAction extends StatelessWidget {
-  const _KoinlySlidableAction({
+class _YutakaSlidableAction extends StatelessWidget {
+  const _YutakaSlidableAction({
     required this.onPressed,
     required this.backgroundColor,
     required this.foregroundColor,
@@ -9375,7 +9381,7 @@ class AppleSelectionField extends StatelessWidget {
   }
 }
 
-const String _selectionAddActionResult = '__koinly_add_selection_option__';
+const String _selectionAddActionResult = '__yutaka_add_selection_option__';
 
 Future<String?> showAppleWheelSelectionSheet(
   BuildContext context, {
@@ -9404,7 +9410,7 @@ Future<String?> showAppleWheelSelectionSheet(
   final listController = ScrollController(initialScrollOffset: initialOffset);
   final hasAddAction = onAdd != null && addActionLabel != null && addActionLabel.trim().isNotEmpty;
 
-  final result = await showKoinlyPopup<String>(
+  final result = await showYutakaPopup<String>(
     context,
     maxWidth: 520,
     maxHeight: math.min(680.0, (hasAddAction ? 250.0 : 184.0) + listHeight),
@@ -9616,7 +9622,7 @@ Future<TransactionDateSelection?> pickTransactionDateSelection(
   final startDate = DateTime(start.year, start.month, start.day);
   final requestedEnd = DateTime(end.year, end.month, end.day);
   final endDate = requestedEnd.isBefore(startDate) ? startDate : requestedEnd;
-  return showKoinlyPopup<TransactionDateSelection>(
+  return showYutakaPopup<TransactionDateSelection>(
     context,
     maxWidth: 470,
     maxHeight: 700,
@@ -9629,7 +9635,7 @@ Future<TransactionDateSelection?> pickTransactionDateSelection(
   );
 }
 
-/// Global custom-range picker used by every Koinly date filter.
+/// Global custom-range picker used by every Yutaka date filter.
 ///
 /// It deliberately reuses the same centered start/end calendar interaction as
 /// the transaction editor's `Use range` mode so custom ranges behave
@@ -9646,7 +9652,7 @@ Future<DateTimeRange?> pickCustomDateRange(
   final initialEndRaw = end ?? initialStart;
   final normalizedEnd = DateTime(initialEndRaw.year, initialEndRaw.month, initialEndRaw.day);
   final initialEnd = normalizedEnd.isBefore(initialStart) ? initialStart : normalizedEnd;
-  final selection = await showKoinlyPopup<TransactionDateSelection>(
+  final selection = await showYutakaPopup<TransactionDateSelection>(
     context,
     maxWidth: 470,
     maxHeight: 700,
@@ -9801,7 +9807,7 @@ class _CenteredDateRangePickerState extends State<_CenteredDateRangePicker> {
           ),
         ),
         Expanded(
-          child: KoinlyPopupContent(
+          child: YutakaPopupContent(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -10149,7 +10155,7 @@ Future<TransactionTimeSelection?> pickTransactionTimeSelection(
   required bool useRange,
   required bool datesSpanMultipleDays,
 }) {
-  return showKoinlyPopup<TransactionTimeSelection>(
+  return showYutakaPopup<TransactionTimeSelection>(
     context,
     maxWidth: 470,
     maxHeight: 560,
@@ -10272,7 +10278,7 @@ class _CenteredTimeRangePickerState extends State<_CenteredTimeRangePicker> {
           ),
         ),
         Expanded(
-          child: KoinlyPopupContent(
+          child: YutakaPopupContent(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -10414,22 +10420,22 @@ class _RangeEndpointButton extends StatelessWidget {
 
 Future<TimeOfDay?> pickTime(BuildContext context, TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
-OverlayEntry? _activeKoinlySnackEntry;
+OverlayEntry? _activeYutakaSnackEntry;
 
-enum _KoinlySnackKind { success, failure, warning, info }
+enum _YutakaSnackKind { success, failure, warning, info }
 
-_KoinlySnackKind _snackKindFor(String message) {
+_YutakaSnackKind _snackKindFor(String message) {
   final lower = message.toLowerCase();
   const failures = ['failed', 'failure', 'error', 'could not', "couldn't", 'malformed', 'unavailable'];
   const successes = ['saved', 'added', 'created', 'updated', 'deleted', 'removed', 'recorded', 'copied', 'recovered', 'connected', 'uploaded', 'complete', 'completed', 'restored', 'merged', 'purchased'];
   const warnings = ['cancelled', 'canceled', 'reset', 'already running', 'overdue'];
-  if (failures.any(lower.contains)) return _KoinlySnackKind.failure;
-  if (successes.any(lower.contains)) return _KoinlySnackKind.success;
-  if (warnings.any(lower.contains)) return _KoinlySnackKind.warning;
-  return _KoinlySnackKind.info;
+  if (failures.any(lower.contains)) return _YutakaSnackKind.failure;
+  if (successes.any(lower.contains)) return _YutakaSnackKind.success;
+  if (warnings.any(lower.contains)) return _YutakaSnackKind.warning;
+  return _YutakaSnackKind.info;
 }
 
-void _showRichSnack(BuildContext context, String message, _KoinlySnackKind kind) {
+void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind) {
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (overlay == null) {
@@ -10444,43 +10450,43 @@ void _showRichSnack(BuildContext context, String message, _KoinlySnackKind kind)
     return;
   }
 
-  _activeKoinlySnackEntry?.remove();
-  _activeKoinlySnackEntry = null;
+  _activeYutakaSnackEntry?.remove();
+  _activeYutakaSnackEntry = null;
   messenger?.hideCurrentSnackBar();
   messenger?.hideCurrentMaterialBanner();
 
   final (title, contentType, color) = switch (kind) {
-    _KoinlySnackKind.success => ('Done', ContentType.success, kSleekAccent),
-    _KoinlySnackKind.failure => ('Something went wrong', ContentType.failure, kSleekExpense),
-    _KoinlySnackKind.warning => ('Please note', ContentType.warning, kSleekWarning),
-    _KoinlySnackKind.info => ('Koinly', ContentType.help, kSleekAccent),
+    _YutakaSnackKind.success => ('Done', ContentType.success, kSleekAccent),
+    _YutakaSnackKind.failure => ('Something went wrong', ContentType.failure, kSleekExpense),
+    _YutakaSnackKind.warning => ('Please note', ContentType.warning, kSleekWarning),
+    _YutakaSnackKind.info => ('Yutaka', ContentType.help, kSleekAccent),
   };
-  final duration = kind == _KoinlySnackKind.failure
+  final duration = kind == _YutakaSnackKind.failure
       ? const Duration(seconds: 5)
       : const Duration(milliseconds: 3600);
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
-    builder: (overlayContext) => _KoinlyTopFeedbackBanner(
+    builder: (overlayContext) => _YutakaTopFeedbackBanner(
       title: title,
       message: message,
       color: color,
       contentType: contentType,
       visibleDuration: duration,
       onDismissed: () {
-        if (_activeKoinlySnackEntry == entry) {
-          _activeKoinlySnackEntry = null;
+        if (_activeYutakaSnackEntry == entry) {
+          _activeYutakaSnackEntry = null;
           entry.remove();
         }
       },
     ),
   );
-  _activeKoinlySnackEntry = entry;
+  _activeYutakaSnackEntry = entry;
   overlay.insert(entry);
 }
 
-class _KoinlyTopFeedbackBanner extends StatefulWidget {
-  const _KoinlyTopFeedbackBanner({
+class _YutakaTopFeedbackBanner extends StatefulWidget {
+  const _YutakaTopFeedbackBanner({
     required this.title,
     required this.message,
     required this.color,
@@ -10497,10 +10503,10 @@ class _KoinlyTopFeedbackBanner extends StatefulWidget {
   final VoidCallback onDismissed;
 
   @override
-  State<_KoinlyTopFeedbackBanner> createState() => _KoinlyTopFeedbackBannerState();
+  State<_YutakaTopFeedbackBanner> createState() => _YutakaTopFeedbackBannerState();
 }
 
-class _KoinlyTopFeedbackBannerState extends State<_KoinlyTopFeedbackBanner>
+class _YutakaTopFeedbackBannerState extends State<_YutakaTopFeedbackBanner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   Timer? _hideTimer;
@@ -10684,7 +10690,7 @@ void showSnack(BuildContext context, String message) {
   if (trimmedMessage.isEmpty) return;
 
   final kind = _snackKindFor(trimmedMessage);
-  if (kind != _KoinlySnackKind.info && ScaffoldMessenger.maybeOf(context) != null) {
+  if (kind != _YutakaSnackKind.info && ScaffoldMessenger.maybeOf(context) != null) {
     _showRichSnack(context, trimmedMessage, kind);
     return;
   }
@@ -10696,37 +10702,37 @@ void showSnack(BuildContext context, String message) {
     return;
   }
 
-  _activeKoinlySnackEntry?.remove();
-  _activeKoinlySnackEntry = null;
+  _activeYutakaSnackEntry?.remove();
+  _activeYutakaSnackEntry = null;
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
-    builder: (overlayContext) => _KoinlyDynamicIslandSnack(
+    builder: (overlayContext) => _YutakaDynamicIslandSnack(
       message: trimmedMessage,
       onDismissed: () {
-        if (_activeKoinlySnackEntry == entry) {
-          _activeKoinlySnackEntry = null;
+        if (_activeYutakaSnackEntry == entry) {
+          _activeYutakaSnackEntry = null;
           entry.remove();
         }
       },
     ),
   );
 
-  _activeKoinlySnackEntry = entry;
+  _activeYutakaSnackEntry = entry;
   overlay.insert(entry);
 }
 
-class _KoinlyDynamicIslandSnack extends StatefulWidget {
-  const _KoinlyDynamicIslandSnack({required this.message, required this.onDismissed});
+class _YutakaDynamicIslandSnack extends StatefulWidget {
+  const _YutakaDynamicIslandSnack({required this.message, required this.onDismissed});
 
   final String message;
   final VoidCallback onDismissed;
 
   @override
-  State<_KoinlyDynamicIslandSnack> createState() => _KoinlyDynamicIslandSnackState();
+  State<_YutakaDynamicIslandSnack> createState() => _YutakaDynamicIslandSnackState();
 }
 
-class _KoinlyDynamicIslandSnackState extends State<_KoinlyDynamicIslandSnack> with SingleTickerProviderStateMixin {
+class _YutakaDynamicIslandSnackState extends State<_YutakaDynamicIslandSnack> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   Timer? _hideTimer;
 
@@ -10888,7 +10894,7 @@ class _KoinlyDynamicIslandSnackState extends State<_KoinlyDynamicIslandSnack> wi
 }
 
 
-Future<T?> showKoinlyPopup<T>(
+Future<T?> showYutakaPopup<T>(
   BuildContext context, {
   required Widget child,
   double maxWidth = 560,
@@ -10902,7 +10908,7 @@ Future<T?> showKoinlyPopup<T>(
     barrierColor: Colors.black.withOpacity(.62),
     transitionDuration: AppMotion.medium,
     pageBuilder: (dialogContext, animation, secondaryAnimation) {
-      return _KoinlyPopupFrame(maxWidth: maxWidth, maxHeight: maxHeight, child: child);
+      return _YutakaPopupFrame(maxWidth: maxWidth, maxHeight: maxHeight, child: child);
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       if (MediaQuery.of(context).disableAnimations) return child;
@@ -10933,7 +10939,7 @@ Future<T?> showKoinlyPopup<T>(
 /// Dedicated responsive surface for the end-of-period financial health review.
 ///
 /// The review is substantially taller than a normal confirmation dialog, so it
-/// must never be pushed through [KoinlyPopupContent]'s scale-down behavior. On
+/// must never be pushed through [YutakaPopupContent]'s scale-down behavior. On
 /// phones and short windows it becomes a true full-screen modal with a fixed
 /// header/footer and independently scrollable report body. On larger screens it
 /// remains a centered desktop-style modal with the same readable content size.
@@ -11030,8 +11036,8 @@ class _FinancialHealthReviewPopupFrame extends StatelessWidget {
   }
 }
 
-class _KoinlyPopupFrame extends StatelessWidget {
-  const _KoinlyPopupFrame({required this.child, required this.maxWidth, required this.maxHeight});
+class _YutakaPopupFrame extends StatelessWidget {
+  const _YutakaPopupFrame({required this.child, required this.maxWidth, required this.maxHeight});
 
   final Widget child;
   final double maxWidth;
@@ -11104,8 +11110,8 @@ class _KoinlyPopupFrame extends StatelessWidget {
 /// viewport is genuinely shorter than the content. Opening the keyboard does
 /// not reduce the popup's sizing viewport, so focused fields no longer make
 /// the entire popup shrink.
-class KoinlyPopupContent extends StatelessWidget {
-  const KoinlyPopupContent({
+class YutakaPopupContent extends StatelessWidget {
+  const YutakaPopupContent({
     super.key,
     required this.child,
     this.padding = EdgeInsets.zero,
@@ -11151,7 +11157,7 @@ Future<InitialSetupChoice?> showInitialSetupChoice(
   BuildContext context, {
   required bool syncAccountCreated,
 }) {
-  return showKoinlyPopup<InitialSetupChoice>(
+  return showYutakaPopup<InitialSetupChoice>(
     context,
     maxWidth: 560,
     maxHeight: 620,
@@ -11233,7 +11239,7 @@ class _InitialSetupChoicePopup extends StatelessWidget {
       );
     }
 
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -11257,8 +11263,8 @@ class _InitialSetupChoicePopup extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             syncAccountCreated
-                ? 'Your sync account is ready. Restore an existing Koinly backup or start with a clean setup on this device.'
-                : 'Restore an existing Koinly backup or start with a clean local setup.',
+                ? 'Your sync account is ready. Restore an existing Yutaka backup or start with a clean setup on this device.'
+                : 'Restore an existing Yutaka backup or start with a clean local setup.',
             style: theme.textTheme.bodyMedium?.copyWith(color: muted, height: 1.35, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
@@ -11266,8 +11272,8 @@ class _InitialSetupChoicePopup extends StatelessWidget {
             icon: Icons.restore_rounded,
             title: 'Restore backup',
             subtitle: syncAccountCreated
-                ? 'Choose a .koinlybackup file. Its finance data will be merged with this device and then merged into your new sync account.'
-                : 'Choose a .koinlybackup file and restore your accounts, categories, transactions, budgets, loans, and preferences.',
+                ? 'Choose a .yutakabackup file. Its finance data will be merged with this device and then merged into your new sync account.'
+                : 'Choose a .yutakabackup file and restore your accounts, categories, transactions, budgets, loans, and preferences.',
             value: InitialSetupChoice.restoreBackup,
             primary: true,
           ),
@@ -11330,7 +11336,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } on FormatException catch (error) {
       if (mounted) showSnack(context, error.message);
     } catch (_) {
-      if (mounted) showSnack(context, 'Could not restore this backup. Please choose a valid Koinly backup file.');
+      if (mounted) showSnack(context, 'Could not restore this backup. Please choose a valid Yutaka backup file.');
     }
     return false;
   }
@@ -11558,7 +11564,7 @@ class _OnboardingPane extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KoinlyAppIcon(size: 112),
+          const YutakaAppIcon(size: 112),
           const SizedBox(height: 28),
           _AnimatedOnboardingGlyph(icon: icon),
           const SizedBox(height: 16),
@@ -11678,7 +11684,7 @@ class CurrencySetupPane extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KoinlyAppIcon(size: 82),
+          const YutakaAppIcon(size: 82),
           const SizedBox(height: 24),
           Text('Currency setup', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
@@ -11702,7 +11708,7 @@ class AccountSetupPane extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KoinlyAppIcon(size: 82),
+          const YutakaAppIcon(size: 82),
           const SizedBox(height: 24),
           Text('Set up your accounts', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
@@ -12385,8 +12391,8 @@ class _DecorativeSparklineState extends State<_DecorativeSparkline> with SingleT
   }
 }
 
-class KoinlyInlineLoader extends StatelessWidget {
-  const KoinlyInlineLoader({super.key, this.size = 18, this.color});
+class YutakaInlineLoader extends StatelessWidget {
+  const YutakaInlineLoader({super.key, this.size = 18, this.color});
 
   final double size;
   final Color? color;
@@ -12400,8 +12406,8 @@ class KoinlyInlineLoader extends StatelessWidget {
   }
 }
 
-class KoinlyPageLoader extends StatelessWidget {
-  const KoinlyPageLoader({super.key, this.size = 38});
+class YutakaPageLoader extends StatelessWidget {
+  const YutakaPageLoader({super.key, this.size = 38});
 
   final double size;
 
@@ -12754,7 +12760,7 @@ Future<String?> showAccountEditor(
   AccountType initialType = AccountType.regular,
   List<AccountType>? allowedTypes,
 }) {
-  return showKoinlyPopup<String>(
+  return showYutakaPopup<String>(
     context,
     maxWidth: 560,
     maxHeight: 720,
@@ -12821,14 +12827,14 @@ class _AccountEditorState extends State<AccountEditor> {
     final state = context.watch<AppController>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(widget.account == null ? 'Create account' : 'Edit account', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 18),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: name, decoration: const InputDecoration(labelText: 'Account name')),
             const SizedBox(height: 12),
@@ -12844,7 +12850,7 @@ class _AccountEditorState extends State<AccountEditor> {
               }),
             ),
             const SizedBox(height: 12),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Balance')),
             if (type == AccountType.savings) ...[
@@ -12856,7 +12862,7 @@ class _AccountEditorState extends State<AccountEditor> {
             ],
             if (type == AccountType.credit) ...[
               const SizedBox(height: 12),
-              TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+              TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: creditLimit, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Credit limit')),
             ],
@@ -13081,7 +13087,7 @@ class ColorSelectionPage extends StatelessWidget {
   Future<String?> _showCustomColorOptions(BuildContext context) async {
     final initial = _normalizeColor(selectedColor).isEmpty ? kSleekAccentHex : _normalizeColor(selectedColor);
 
-    final choice = await showKoinlyPopup<String>(
+    final choice = await showYutakaPopup<String>(
       context,
       maxWidth: 460,
       maxHeight: 420,
@@ -13089,7 +13095,7 @@ class ColorSelectionPage extends StatelessWidget {
         builder: (dialogContext) {
           final dark = Theme.of(dialogContext).brightness == Brightness.dark;
           final handleColor = dark ? const Color(0xFF466057) : const Color(0xFFB7C9BF);
-          return KoinlyPopupContent(
+          return YutakaPopupContent(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -13419,7 +13425,7 @@ class _ColorWheelPickerPageState extends State<ColorWheelPickerPage> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: hexController,
               textAlign: TextAlign.center,
@@ -14003,7 +14009,7 @@ Future<String?> showCategoryEditor(
   CategoryType? initialType,
   CategoryType? fixedType,
 }) {
-  return showKoinlyPopup<String>(
+  return showYutakaPopup<String>(
     context,
     maxWidth: 560,
     maxHeight: 720,
@@ -14046,14 +14052,14 @@ class _CategoryEditorState extends State<CategoryEditor> {
     final state = context.watch<AppController>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(widget.category == null ? 'Create category' : 'Edit category', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 18),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: name, decoration: const InputDecoration(labelText: 'Category name')),
             const SizedBox(height: 12),
@@ -14112,7 +14118,7 @@ class _CategoryEditorState extends State<CategoryEditor> {
 // -----------------------------------------------------------------------------
 // Notes
 
-const _koinlyRichNotePrefix = 'KOINLY_RICH_NOTE_V1:';
+const _yutakaRichNotePrefix = 'YUTAKA_RICH_NOTE_V1:';
 
 enum NoteInlineStyle { bold, italic, underline, strike, highlight, link, code }
 
@@ -14140,11 +14146,11 @@ class NoteRichTextController extends TextEditingController {
   }
 
   factory NoteRichTextController.fromStored(String stored) {
-    if (!stored.startsWith(_koinlyRichNotePrefix)) {
+    if (!stored.startsWith(_yutakaRichNotePrefix)) {
       return NoteRichTextController._(stored, <_NoteStyleRange>[]);
     }
     try {
-      final decoded = jsonDecode(stored.substring(_koinlyRichNotePrefix.length));
+      final decoded = jsonDecode(stored.substring(_yutakaRichNotePrefix.length));
       if (decoded is! Map<String, dynamic>) {
         return NoteRichTextController._(stored, <_NoteStyleRange>[]);
       }
@@ -14183,9 +14189,9 @@ class NoteRichTextController extends TextEditingController {
   bool _restoring = false;
 
   static String plainTextFromStored(String stored) {
-    if (!stored.startsWith(_koinlyRichNotePrefix)) return stored;
+    if (!stored.startsWith(_yutakaRichNotePrefix)) return stored;
     try {
-      final decoded = jsonDecode(stored.substring(_koinlyRichNotePrefix.length));
+      final decoded = jsonDecode(stored.substring(_yutakaRichNotePrefix.length));
       if (decoded is Map) return decoded['text']?.toString() ?? '';
     } catch (_) {}
     return stored;
@@ -14194,7 +14200,7 @@ class NoteRichTextController extends TextEditingController {
   String toStoredBody() {
     final cleanRanges = _normalizedRanges();
     if (cleanRanges.isEmpty) return text;
-    return '$_koinlyRichNotePrefix${jsonEncode({
+    return '$_yutakaRichNotePrefix${jsonEncode({
       'text': text,
       'styles': cleanRanges.map((range) => range.toJson()).toList(),
     })}';
@@ -14455,7 +14461,7 @@ class NoteRichTextController extends TextEditingController {
 }
 // -----------------------------------------------------------------------------
 
-int _compareNotesForList(KoinlyNote a, KoinlyNote b) {
+int _compareNotesForList(YutakaNote a, YutakaNote b) {
   if (a.bookmarked != b.bookmarked) return a.bookmarked ? -1 : 1;
   final updated = b.updatedOn.compareTo(a.updatedOn);
   return updated != 0 ? updated : b.createdOn.compareTo(a.createdOn);
@@ -14511,7 +14517,7 @@ class _NoteScreenState extends State<NoteScreen> {
             TextField(
               controller: search,
               autofocus: true,
-              contextMenuBuilder: koinlyTextFieldContextMenu,
+              contextMenuBuilder: yutakaTextFieldContextMenu,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search_rounded),
@@ -14573,7 +14579,7 @@ class _NoteSectionTitle extends StatelessWidget {
   }
 }
 
-Future<void> _confirmDeleteNote(BuildContext context, KoinlyNote note) async {
+Future<void> _confirmDeleteNote(BuildContext context, YutakaNote note) async {
   final state = context.read<AppController>();
   final confirmed = await showDialog<bool>(
     context: context,
@@ -14598,7 +14604,7 @@ Future<void> _confirmDeleteNote(BuildContext context, KoinlyNote note) async {
 class NoteTile extends StatelessWidget {
   const NoteTile({super.key, required this.note});
 
-  final KoinlyNote note;
+  final YutakaNote note;
 
   @override
   Widget build(BuildContext context) {
@@ -14689,21 +14695,21 @@ class NoteTile extends StatelessWidget {
           openThreshold: .34,
           closeThreshold: .16,
           children: [
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => showNoteEditor(context, note: note),
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
               icon: Icons.edit_rounded,
               label: 'Edit',
             ),
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => state.toggleNoteDraft(note),
               backgroundColor: kSleekAccent,
               foregroundColor: Colors.white,
               icon: note.draft ? Icons.publish_rounded : Icons.edit_note_rounded,
               label: note.draft ? 'Publish' : 'Draft',
             ),
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => _confirmDeleteNote(context, note),
               backgroundColor: kSleekExpense,
               foregroundColor: Colors.white,
@@ -14720,7 +14726,7 @@ class NoteTile extends StatelessWidget {
 
 Future<void> showNoteEditor(
   BuildContext context, {
-  KoinlyNote? note,
+  YutakaNote? note,
 }) async {
   await Navigator.push(context, MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note)));
 }
@@ -14728,7 +14734,7 @@ Future<void> showNoteEditor(
 class NoteEditorScreen extends StatefulWidget {
   const NoteEditorScreen({super.key, this.note});
 
-  final KoinlyNote? note;
+  final YutakaNote? note;
 
   @override
   State<NoteEditorScreen> createState() => _NoteEditorScreenState();
@@ -14748,7 +14754,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
   late final String _noteId;
   AppController? _appController;
   Future<void>? _autosaveFuture;
-  KoinlyNote? _queuedAutosaveNote;
+  YutakaNote? _queuedAutosaveNote;
   String? _queuedAutosaveSignature;
   bool _queuedAutosaveDelete = false;
   bool _noteMayExistLocally = false;
@@ -14815,9 +14821,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
         noteDate.millisecondsSinceEpoch,
       ]);
 
-  KoinlyNote _currentAutosaveNote() {
+  YutakaNote _currentAutosaveNote() {
     final noteTitle = title.text.trim();
-    return KoinlyNote(
+    return YutakaNote(
       id: _noteId,
       title: noteTitle.isEmpty ? 'Untitled note' : noteTitle,
       body: body.toStoredBody(),
@@ -15169,7 +15175,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
             Padding(
               padding: EdgeInsets.fromLTRB(sidePadding, compact ? 8 : 10, sidePadding, 0),
               child: TextField(
-                contextMenuBuilder: koinlyTextFieldContextMenu,
+                contextMenuBuilder: yutakaTextFieldContextMenu,
                 controller: title,
                 textCapitalization: TextCapitalization.sentences,
                 style: theme.textTheme.headlineMedium?.copyWith(
@@ -15237,7 +15243,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                 child: TextField(
                   focusNode: bodyFocus,
                   onTap: () => _selectionBeforeToolbar = null,
-                  contextMenuBuilder: koinlyTextFieldContextMenu,
+                  contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
                   controller: body,
                   expands: true,
@@ -15711,7 +15717,7 @@ class PlannedPurchaseTile extends StatelessWidget {
           openThreshold: .14,
           closeThreshold: .08,
           children: [
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => showPurchasePlannedItemDialog(context, item),
               backgroundColor: kSleekAccent,
               foregroundColor: Colors.white,
@@ -15727,14 +15733,14 @@ class PlannedPurchaseTile extends StatelessWidget {
           openThreshold: .34,
           closeThreshold: .16,
           children: [
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => showPlannedPurchaseEditor(context, item: item),
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
               icon: Icons.edit_rounded,
               label: 'Edit',
             ),
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => _confirmDeletePlannedPurchase(context, item),
               backgroundColor: kSleekExpense,
               foregroundColor: Colors.white,
@@ -15753,7 +15759,7 @@ Future<void> showPlannedPurchaseEditor(
   BuildContext context, {
   PlannedPurchase? item,
 }) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 760,
@@ -15845,7 +15851,7 @@ class _PlannedPurchaseEditorState extends State<PlannedPurchaseEditor> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -15856,7 +15862,7 @@ class _PlannedPurchaseEditorState extends State<PlannedPurchaseEditor> {
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 16),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: name,
               textInputAction: TextInputAction.next,
@@ -15870,7 +15876,7 @@ class _PlannedPurchaseEditorState extends State<PlannedPurchaseEditor> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: amount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -16024,7 +16030,7 @@ Future<void> showPurchasePlannedItemDialog(
     return;
   }
 
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 520,
     maxHeight: 500,
@@ -16177,7 +16183,7 @@ class SubscriptionScreen extends StatelessWidget {
         empty: EmptyCard(
           icon: Icons.autorenew_rounded,
           title: 'No subscriptions yet',
-          body: 'Save a recurring expense with its price, account, category, date and time. Koinly will record it automatically when it is due.',
+          body: 'Save a recurring expense with its price, account, category, date and time. Yutaka will record it automatically when it is due.',
           action: () => showSubscriptionEditor(context),
           actionLabel: 'Add subscription',
           animated: true,
@@ -16336,7 +16342,7 @@ Future<SubscriptionManualEntryChoice?> showSubscriptionManualEntryPopup(
   BuildContext context,
   RecurringSubscription item,
 ) {
-  return showKoinlyPopup<SubscriptionManualEntryChoice>(
+  return showYutakaPopup<SubscriptionManualEntryChoice>(
     context,
     maxWidth: 520,
     maxHeight: 560,
@@ -16383,7 +16389,7 @@ class _SubscriptionManualEntryPopupState extends State<_SubscriptionManualEntryP
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
     final selectedAccount = state.accounts.where((account) => account.id == accountId).firstOrNull;
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -16469,11 +16475,11 @@ Future<SubscriptionFrequency?> showSubscriptionFrequencyPopup(
   SubscriptionFrequency selected,
 ) {
   final scheme = Theme.of(context).colorScheme;
-  return showKoinlyPopup<SubscriptionFrequency>(
+  return showYutakaPopup<SubscriptionFrequency>(
     context,
     maxWidth: 420,
     maxHeight: 430,
-    child: KoinlyPopupContent(
+    child: YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -16528,7 +16534,7 @@ Future<void> showSubscriptionEditor(
   BuildContext context, {
   RecurringSubscription? item,
 }) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 580,
     maxHeight: 820,
@@ -16668,7 +16674,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
     final selectedCategory = expenseCategories.where((category) => category.id == categoryId).firstOrNull;
     final selectedAccount = state.accounts.where((account) => account.id == accountId).firstOrNull;
 
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -16686,7 +16692,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
           ),
           const SizedBox(height: 12),
           TextField(
-            contextMenuBuilder: koinlyTextFieldContextMenu,
+            contextMenuBuilder: yutakaTextFieldContextMenu,
             enableInteractiveSelection: true,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: name,
@@ -16696,7 +16702,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
           ),
           const SizedBox(height: 10),
           TextField(
-            contextMenuBuilder: koinlyTextFieldContextMenu,
+            contextMenuBuilder: yutakaTextFieldContextMenu,
             enableInteractiveSelection: true,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: amount,
@@ -16824,7 +16830,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
           ),
           const SizedBox(height: 10),
           TextField(
-            contextMenuBuilder: koinlyTextFieldContextMenu,
+            contextMenuBuilder: yutakaTextFieldContextMenu,
             enableInteractiveSelection: true,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: notes,
@@ -16929,7 +16935,7 @@ IconData transactionSortModeIcon(TransactionSortMode mode) {
 }
 
 Future<void> showTransactionSortSheet(BuildContext context) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 520,
     maxHeight: 660,
@@ -16945,7 +16951,7 @@ class TransactionSortSheet extends StatelessWidget {
     final state = context.watch<AppController>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -17214,7 +17220,7 @@ class TransactionTile extends StatelessWidget {
                 openThreshold: .14,
                 closeThreshold: .08,
                 children: [
-                  _KoinlySlidableAction(
+                  _YutakaSlidableAction(
                     onPressed: (_) => _duplicateTransaction(context, tx),
                     backgroundColor: kSleekAccent,
                     foregroundColor: Colors.white,
@@ -17230,14 +17236,14 @@ class TransactionTile extends StatelessWidget {
           openThreshold: .34,
           closeThreshold: .16,
           children: [
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => showTransactionEditor(context, transaction: tx),
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
               icon: Icons.edit_rounded,
               label: 'Edit',
             ),
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => _confirmDeleteTransaction(context, tx),
               backgroundColor: kSleekExpense,
               foregroundColor: Colors.white,
@@ -17344,7 +17350,7 @@ Future<TransactionDateTimeConfiguration?> showTransactionDateTimeConfiguration(
   DateTime withDateAndTime(DateTime date, TimeOfDay time) =>
       DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
-  return showKoinlyPopup<TransactionDateTimeConfiguration>(
+  return showYutakaPopup<TransactionDateTimeConfiguration>(
     context,
     maxWidth: 470,
     maxHeight: 520,
@@ -17360,7 +17366,7 @@ Future<TransactionDateTimeConfiguration?> showTransactionDateTimeConfiguration(
         );
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-          child: KoinlyPopupContent(
+          child: YutakaPopupContent(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -17473,7 +17479,7 @@ Future<ServiceChargeConfiguration?> showServiceChargeConfiguration(
   var workingMode = mode;
 
   try {
-    return await showKoinlyPopup<ServiceChargeConfiguration>(
+    return await showYutakaPopup<ServiceChargeConfiguration>(
       context,
       maxWidth: 470,
       maxHeight: 610,
@@ -17499,7 +17505,7 @@ Future<ServiceChargeConfiguration?> showServiceChargeConfiguration(
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-            child: KoinlyPopupContent(
+            child: YutakaPopupContent(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -17531,7 +17537,7 @@ Future<ServiceChargeConfiguration?> showServiceChargeConfiguration(
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      contextMenuBuilder: koinlyTextFieldContextMenu,
+                      contextMenuBuilder: yutakaTextFieldContextMenu,
                       enableInteractiveSelection: true,
                       controller: valueController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -17634,7 +17640,7 @@ class _ServiceChargePreviewRow extends StatelessWidget {
 }
 
 Future<void> showTransactionEditor(BuildContext context, {MoneyTransaction? transaction, Category? lockedCategory}) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 700,
@@ -17735,7 +17741,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
     if (!isLoanTransaction && type == MoneyTransactionType.transfer) categoryId = '';
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -17783,7 +17789,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
               ),
             const SizedBox(height: 12),
             if (type != MoneyTransactionType.transfer) ...[
-              TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+              TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: title,
                 readOnly: isLoanTransaction,
@@ -17799,7 +17805,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
               ),
               const SizedBox(height: 12),
             ],
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: amount,
               focusNode: amountFocus,
@@ -17999,7 +18005,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
               label: const Text('Service charge'),
             ),
             const SizedBox(height: 12),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: notes, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
             const SizedBox(height: 18),
@@ -18094,7 +18100,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
                             if (mounted) setState(() => busy = false);
                           }
                         },
-                  child: busy ? const KoinlyInlineLoader(size: 18, color: Colors.white) : const Text('Save'),
+                  child: busy ? const YutakaInlineLoader(size: 18, color: Colors.white) : const Text('Save'),
                 ),
               ),
             ]),
@@ -18187,7 +18193,7 @@ SelectionOption optionFromDateRangeType(DateRangeType type) {
 }
 
 Future<void> showFilterSheet(BuildContext context) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 700,
@@ -18221,7 +18227,7 @@ class _FilterSheetState extends State<FilterSheet> {
     final state = context.watch<AppController>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -20738,7 +20744,7 @@ class BudgetDetailScreen extends StatelessWidget {
 }
 
 Future<void> showBudgetEditor(BuildContext context, {Budget? budget}) async {
-  await showKoinlyPopup<void>(
+  await showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 700,
@@ -20781,14 +20787,14 @@ class _BudgetEditorState extends State<BudgetEditor> {
     final state = context.watch<AppController>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(widget.budget == null ? 'Create budget' : 'Edit budget', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 16),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Budget amount')),
             const SizedBox(height: 12),
@@ -20975,7 +20981,7 @@ class _BatteryOptimizationSettingsTileState extends State<BatteryOptimizationSet
     try {
       final opened = await AndroidBackgroundPermissionService.openBatteryOptimizationSettings();
       if (!opened && mounted) {
-        showSnack(context, 'Could not open the Android battery optimization permission.');
+        showSnack(context, 'Could not open Android battery settings.');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -20985,14 +20991,15 @@ class _BatteryOptimizationSettingsTileState extends State<BatteryOptimizationSet
   @override
   Widget build(BuildContext context) {
     final granted = _granted == true;
+    final playBuild = kIsGooglePlayBuild;
     final subtitle = switch (_granted) {
-      true => 'Permission granted',
-      false => 'Permission not granted',
-      null => 'Checking permission…',
+      true => playBuild ? 'Unrestricted' : 'Permission granted',
+      false => playBuild ? 'Optimized • tap to review' : 'Permission not granted',
+      null => 'Checking…',
     };
     return SettingsTile(
       icon: granted ? Icons.battery_charging_full_rounded : Icons.battery_alert_rounded,
-      title: 'Ignore Battery Optimization',
+      title: playBuild ? 'Battery optimization' : 'Ignore Battery Optimization',
       subtitle: subtitle,
       subtitleColor: granted ? '#4FBF7F' : null,
       color: granted ? '#86E3CE' : '#FBC879',
@@ -21029,7 +21036,7 @@ class UpdatesScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Koinly updates', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+                            Text('Yutaka updates', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
                             const SizedBox(height: 4),
                             Text(state.updateStatusMessage, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700)),
                           ],
@@ -21064,7 +21071,7 @@ class UpdatesScreen extends StatelessWidget {
                             }
                           },
                     icon: state.updateCheckBusy
-                        ? const KoinlyInlineLoader(size: 18)
+                        ? const YutakaInlineLoader(size: 18)
                         : const Icon(Icons.refresh_rounded),
                     label: Text(state.updateCheckBusy ? 'Checking...' : 'Check for updates'),
                   ),
@@ -21084,8 +21091,8 @@ class UpdatesScreen extends StatelessWidget {
                     title: const Text('Automatic update pop-ups', style: TextStyle(fontWeight: FontWeight.w900)),
                     subtitle: Text(
                       Platform.isAndroid && kIsGooglePlayBuild
-                          ? 'Show an in-app prompt when Google Play reports a newer Koinly version. Google Play remains the only update installer for this build.'
-                          : 'Show update details automatically and send a notification when a newer Koinly release is found. Manual update checks still work when this is off.',
+                          ? 'Show an in-app prompt when Google Play reports a newer Yutaka version. Google Play remains the only update installer for this build.'
+                          : 'Show update details automatically and send a notification when a newer Yutaka release is found. Manual update checks still work when this is off.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -21149,7 +21156,7 @@ Future<void> showUpdateBottomSheet(BuildContext context) {
                     const SizedBox(height: 18),
                     ExpressiveCard(
                       child: Text(
-                        'This Google Play build updates only through Google Play. Koinly will not download or install APK files from GitHub.',
+                        'This Google Play build updates only through Google Play. Yutaka will not download or install APK files from GitHub.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -21955,7 +21962,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
     String? hint,
   }) {
     return TextField(
-      contextMenuBuilder: koinlyTextFieldContextMenu,
+      contextMenuBuilder: yutakaTextFieldContextMenu,
       enableInteractiveSelection: true,
       controller: controller,
       readOnly: _deploying,
@@ -22061,7 +22068,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
     final muted = Theme.of(context).colorScheme.onSurface.withOpacity(.66);
     return PageScaffold(
       title: 'Deploy Database',
-      subtitle: 'Deploy the Koinly Worker directly from this app',
+      subtitle: 'Deploy the Yutaka Worker directly from this app',
       child: ResponsiveContent(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
         child: Column(
@@ -22101,7 +22108,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                 children: [
                   Text('2. Get your Turso values', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  Text('Create or open a Turso database. Copy its libsql://…turso.io Database URL and create a database authentication token. Koinly applies the required tables automatically during deployment.', style: TextStyle(color: muted, fontWeight: FontWeight.w700)),
+                  Text('Create or open a Turso database. Copy its libsql://…turso.io Database URL and create a database authentication token. Yutaka applies the required tables automatically during deployment.', style: TextStyle(color: muted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -22121,10 +22128,10 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                 children: [
                   Text('3. Enter deployment values', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  Text('Koinly can securely save the deployment credentials on this device so the Worker can update automatically after future app updates.', style: TextStyle(color: muted, fontWeight: FontWeight.w700)),
+                  Text('Yutaka can securely save the deployment credentials on this device so the Worker can update automatically after future app updates.', style: TextStyle(color: muted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 14),
                   TextField(
-                    contextMenuBuilder: koinlyTextFieldContextMenu,
+                    contextMenuBuilder: yutakaTextFieldContextMenu,
                     enableInteractiveSelection: true,
                     controller: _workerNameController,
                     readOnly: _deploying,
@@ -22136,7 +22143,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    contextMenuBuilder: koinlyTextFieldContextMenu,
+                    contextMenuBuilder: yutakaTextFieldContextMenu,
                     enableInteractiveSelection: true,
                     controller: _accountIdController,
                     readOnly: _deploying,
@@ -22149,7 +22156,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                   _secretField(controller: _cloudflareTokenController, label: 'Cloudflare API token', icon: Icons.key_rounded, visible: _cloudflareTokenVisible, onToggle: () => setState(() => _cloudflareTokenVisible = !_cloudflareTokenVisible)),
                   const SizedBox(height: 12),
                   TextField(
-                    contextMenuBuilder: koinlyTextFieldContextMenu,
+                    contextMenuBuilder: yutakaTextFieldContextMenu,
                     enableInteractiveSelection: true,
                     controller: _tursoUrlController,
                     readOnly: _deploying,
@@ -22174,7 +22181,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'The first Koinly account created on this Worker automatically becomes the administrator for /profile. When that account signs in again after reinstalling the app, Koinly restores these saved deployment values from the Worker recovery vault.',
+                    'The first Yutaka account created on this Worker automatically becomes the administrator for /profile. When that account signs in again after reinstalling the app, Yutaka restores these saved deployment values from the Worker recovery vault.',
                     style: TextStyle(color: muted, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 10),
@@ -22183,7 +22190,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                     value: _autoUpdateEnabled,
                     onChanged: _deploying || _loadingSavedDeployment ? null : (value) => unawaited(_setAutoUpdateEnabled(value)),
                     title: const Text('Automatic Worker updates', style: TextStyle(fontWeight: FontWeight.w900)),
-                    subtitle: const Text('Securely keep the deployment credentials on this device and redeploy only when the installed Koinly app contains a newer Worker.'),
+                    subtitle: const Text('Securely keep the deployment credentials on this device and redeploy only when the installed Yutaka app contains a newer Worker.'),
                   ),
                   if (_savedDeployment != null) ...[
                     const SizedBox(height: 4),
@@ -22207,7 +22214,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
                   children: [
                     Row(
                       children: [
-                        if (_deploying) const KoinlyInlineLoader(size: 20) else Icon(_error == null ? Icons.check_circle_rounded : Icons.error_rounded, color: _error == null ? kSleekAccent : kSleekExpense),
+                        if (_deploying) const YutakaInlineLoader(size: 20) else Icon(_error == null ? Icons.check_circle_rounded : Icons.error_rounded, color: _error == null ? kSleekAccent : kSleekExpense),
                         const SizedBox(width: 10),
                         Expanded(child: Text(_error == null ? 'Deployment status' : 'Deployment error', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900))),
                       ],
@@ -22230,7 +22237,7 @@ class _WorkerDeploymentScreenState extends State<WorkerDeploymentScreen> {
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _deploying ? null : _deploy,
-              icon: _deploying ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.rocket_launch_rounded),
+              icon: _deploying ? const YutakaInlineLoader(size: 18) : const Icon(Icons.rocket_launch_rounded),
               label: Text(_deploying ? 'Deploying…' : 'Deploy Worker'),
             ),
           ],
@@ -22558,7 +22565,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Switch to ${account.username}?'),
         content: const Text(
-          'Koinly will download and verify this account’s cloud copy first. Then this device’s local account data will be replaced. Your current account remains saved and its cloud data will not be deleted.',
+          'Yutaka will download and verify this account’s cloud copy first. Then this device’s local account data will be replaced. Your current account remains saved and its cloud data will not be deleted.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
@@ -22642,7 +22649,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () async {
                     try {
-                      await KoinlySyncApi(baseUrl: CloudSyncService.validateApiBaseUrl(workerController.text)).validateBackend();
+                      await YutakaSyncApi(baseUrl: CloudSyncService.validateApiBaseUrl(workerController.text)).validateBackend();
                       setDialogState(() => validationMessage = 'Worker validated.');
                     } catch (error) {
                       setDialogState(() => validationMessage = error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', ''));
@@ -22850,7 +22857,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
         return AlertDialog(
           title: const Text('Keep cloud data on this device?'),
           content: const Text(
-            'Do you want to keep this cloud account’s data in Koinly’s local store after signing out? '
+            'Do you want to keep this cloud account’s data in Yutaka’s local store after signing out? '
             'Your data in the cloud will remain safe either way.',
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -22965,7 +22972,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                         children: [
                           Text('Self-hosted Sync Worker', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
                           const SizedBox(height: 12),
-                          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+                          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
                             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                             controller: _workerUrlController,
                             readOnly: busy,
@@ -22983,7 +22990,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                           OutlinedButton.icon(
                             onPressed: busy ? null : _saveSyncEndpoint,
                             icon: _endpointBusy
-                                ? const KoinlyInlineLoader(size: 18)
+                                ? const YutakaInlineLoader(size: 18)
                                 : const Icon(Icons.verified_rounded),
                             label: const Text('Validate and use Worker'),
                           ),
@@ -22991,7 +22998,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                           OutlinedButton.icon(
                             onPressed: busy ? null : _openWorkerDeployment,
                             icon: state.workerAutoUpdateBusy
-                                ? const KoinlyInlineLoader(size: 18)
+                                ? const YutakaInlineLoader(size: 18)
                                 : const Icon(Icons.rocket_launch_rounded),
                             label: Text(state.workerAutoUpdateBusy ? 'Updating Worker…' : 'Deploy Database'),
                           ),
@@ -23065,7 +23072,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: _usernameController,
               readOnly: busy || signedIn,
@@ -23077,7 +23084,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
             ),
             const SizedBox(height: 12),
             if (!signedIn)
-              TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+              TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: _passwordController,
                 readOnly: busy,
@@ -23094,7 +23101,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
             const SizedBox(height: 16),
             if (!signedIn) ...[
               Text(
-                _registerMode ? 'Create your Koinly sync account' : 'Login to your Koinly sync account',
+                _registerMode ? 'Create your Yutaka sync account' : 'Login to your Yutaka sync account',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 10),
@@ -23109,7 +23116,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                         child: FilledButton.icon(
                           onPressed: busy ? null : _restoreCloudCopy,
                           icon: busy
-                              ? const KoinlyInlineLoader(size: 18)
+                              ? const YutakaInlineLoader(size: 18)
                               : const Icon(Icons.cloud_download_rounded),
                           label: const Text('Restore cloud copy'),
                         ),
@@ -23153,7 +23160,7 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                   FilledButton.icon(
                     onPressed: busy || !backendConfigured ? null : () => _login(register: _registerMode),
                     icon: busy
-                        ? const KoinlyInlineLoader(size: 18)
+                        ? const YutakaInlineLoader(size: 18)
                         : Icon(_registerMode ? Icons.person_add_alt_rounded : Icons.login_rounded),
                     label: Text(_registerMode ? 'Create account' : 'Login'),
                   ),
@@ -23499,7 +23506,7 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
       return const PageScaffold(
         title: 'Cloud',
         subtitle: 'Archive',
-        child: KoinlyPageLoader(),
+        child: YutakaPageLoader(),
       );
     }
 
@@ -23554,7 +23561,7 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _busy ? null : _saveTelegram,
-              icon: _busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.save_rounded),
+              icon: _busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.save_rounded),
               label: const Text('Save Telegram backup schedule'),
             ),
             const SizedBox(height: 22),
@@ -23601,7 +23608,7 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _busy ? null : _saveDrive,
-              icon: _busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.save_rounded),
+              icon: _busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.save_rounded),
               label: const Text('Save Google Drive backup schedule'),
             ),
           ],
@@ -23758,7 +23765,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: _syncIdController,
               textInputAction: TextInputAction.next,
@@ -23769,7 +23776,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: _pinController,
               obscureText: _obscurePin,
@@ -23791,7 +23798,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             FilledButton.icon(
               onPressed: state.cloudSyncBusy || state.syncDatabaseProvider == SyncDatabaseProvider.local ? null : _syncNow,
               icon: state.cloudSyncBusy
-                  ? const KoinlyInlineLoader(size: 18)
+                  ? const YutakaInlineLoader(size: 18)
                   : const Icon(Icons.cloud_sync_rounded),
               label: const Text('Sync'),
             ),
@@ -24101,7 +24108,7 @@ class _SyncDatabaseProviderConfigScreenState extends State<SyncDatabaseProviderC
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _testing || state.cloudSyncBusy ? null : _testConnection,
-                    icon: _testing ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.network_check_rounded),
+                    icon: _testing ? const YutakaInlineLoader(size: 18) : const Icon(Icons.network_check_rounded),
                     label: const Text('Test'),
                   ),
                 ),
@@ -24135,12 +24142,12 @@ class _SyncDatabaseProviderConfigScreenState extends State<SyncDatabaseProviderC
       key: ValueKey('${enumName(provider)}-method-page'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+        TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           controller: _apiBaseUrlController,
           decoration: InputDecoration(
             labelText: '$label API URL',
-            hintText: 'https://your-koinly-sync-worker.workers.dev',
+            hintText: 'https://your-yutaka-sync-worker.workers.dev',
             prefixIcon: Icon(syncDatabaseProviderIcon(provider)),
           ),
         ),
@@ -24148,7 +24155,7 @@ class _SyncDatabaseProviderConfigScreenState extends State<SyncDatabaseProviderC
         ExpressiveCard(
           padding: const EdgeInsets.all(16),
           child: Text(
-            '$label uses your Koinly sync backend API. Configure that backend to store snapshots in $label, then paste the API URL here. Sync ID and Sync PIN stay on this database method page.',
+            '$label uses your Yutaka sync backend API. Configure that backend to store snapshots in $label, then paste the API URL here. Sync ID and Sync PIN stay on this database method page.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
           ),
         ),
@@ -24178,13 +24185,13 @@ class _SyncDatabaseProviderConfigScreenState extends State<SyncDatabaseProviderC
           key: const ValueKey('mongodb-method-page'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: _mongoUrlController,
               obscureText: _obscureMongoUrl,
               decoration: InputDecoration(
                 labelText: 'MongoDB URL',
-                hintText: 'mongodb+srv://user:password@cluster.mongodb.net/koinly',
+                hintText: 'mongodb+srv://user:password@cluster.mongodb.net/yutaka',
                 prefixIcon: const Icon(Icons.link_rounded),
                 suffixIcon: IconButton(
                   onPressed: () => setState(() => _obscureMongoUrl = !_obscureMongoUrl),
@@ -24194,7 +24201,7 @@ class _SyncDatabaseProviderConfigScreenState extends State<SyncDatabaseProviderC
             ),
             const SizedBox(height: 8),
             Text(
-              'Use your own MongoDB database. Koinly stores one latest app snapshot in its internal collection.',
+              'Use your own MongoDB database. Yutaka stores one latest app snapshot in its internal collection.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
             ),
           ],
@@ -24257,7 +24264,7 @@ class _ProviderSyncActions extends StatelessWidget {
           const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: disabled ? null : onSync,
-            icon: busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.sync_rounded),
+            icon: busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.sync_rounded),
             label: const Text('Sync'),
           ),
           const SizedBox(height: 10),
@@ -24360,7 +24367,7 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -24380,7 +24387,7 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Choose where Koinly stores online sync snapshots. Credentials are saved with platform secure storage and are not included in backups.',
+              'Choose where Yutaka stores online sync snapshots. Credentials are saved with platform secure storage and are not included in backups.',
               style: theme.textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
@@ -24406,7 +24413,7 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _testing ? null : _testConnection,
-                    icon: _testing ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.network_check_rounded),
+                    icon: _testing ? const YutakaInlineLoader(size: 18) : const Icon(Icons.network_check_rounded),
                     label: const Text('Test Connection'),
                   ),
                 ),
@@ -24433,12 +24440,12 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
       key: ValueKey('${enumName(provider)}-advanced'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+        TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           controller: _apiBaseUrlController,
           decoration: InputDecoration(
             labelText: '$label API URL',
-            hintText: 'https://your-koinly-sync-worker.workers.dev',
+            hintText: 'https://your-yutaka-sync-worker.workers.dev',
             prefixIcon: Icon(syncDatabaseProviderIcon(provider)),
           ),
         ),
@@ -24446,7 +24453,7 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
         ExpressiveCard(
           padding: const EdgeInsets.all(16),
           child: Text(
-            '$label uses your Koinly sync backend API. Configure that backend to store snapshots in $label, then paste the API URL here. Sync ID and Sync PIN stay on this database method page.',
+            '$label uses your Yutaka sync backend API. Configure that backend to store snapshots in $label, then paste the API URL here. Sync ID and Sync PIN stay on this database method page.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
           ),
         ),
@@ -24475,13 +24482,13 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
           key: const ValueKey('mongodb'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: _mongoUrlController,
               obscureText: _obscureMongoUrl,
               decoration: InputDecoration(
                 labelText: 'MongoDB URL',
-                hintText: 'mongodb+srv://user:password@cluster.mongodb.net/koinly',
+                hintText: 'mongodb+srv://user:password@cluster.mongodb.net/yutaka',
                 prefixIcon: const Icon(Icons.link_rounded),
                 suffixIcon: IconButton(
                   onPressed: () => setState(() => _obscureMongoUrl = !_obscureMongoUrl),
@@ -24491,7 +24498,7 @@ class _SyncAdvancedDatabasePopupState extends State<SyncAdvancedDatabasePopup> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Use your own MongoDB database. Koinly stores one latest app snapshot in its internal collection.',
+              'Use your own MongoDB database. Yutaka stores one latest app snapshot in its internal collection.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
             ),
           ],
@@ -24720,13 +24727,13 @@ String _dateRangeLabel(DateRangeType type) {
 
 void showCurrencySheet(BuildContext context) {
   final state = context.read<AppController>();
-  showKoinlyPopup<void>(
+  showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 720,
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: CurrencyForm(initialSymbol: state.currencySymbol, initialCode: state.currencyCode, initialPosition: state.currencyPosition, initialSeparators: state.useSeparators, closeAfterSave: true),
       ),
     ),
@@ -24980,11 +24987,11 @@ class _CurrencyFormState extends State<CurrencyForm> {
         ),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          Expanded(child: TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: symbol, decoration: const InputDecoration(labelText: 'Symbol'))),
           const SizedBox(width: 10),
-          Expanded(child: TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          Expanded(child: TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: code, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Code'))),
         ]),
@@ -25113,7 +25120,7 @@ Future<List<String>?> showCurrencyWheelPickerSheet(
     ),
   );
 
-  final result = await showKoinlyPopup<List<String>>(
+  final result = await showYutakaPopup<List<String>>(
     context,
     maxWidth: 560,
     maxHeight: 660,
@@ -25137,7 +25144,7 @@ Future<List<String>?> showCurrencyWheelPickerSheet(
         final innerBorderColor = dark ? kSleekOutlineVariant : kSleekLightOutlineVariant;
         final handleColor = dark ? const Color(0xFF466057) : const Color(0xFFB7C9BF);
 
-        return KoinlyPopupContent(
+        return YutakaPopupContent(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -25154,7 +25161,7 @@ Future<List<String>?> showCurrencyWheelPickerSheet(
                 style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 12),
-              TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+              TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 autofocus: false,
                 decoration: const InputDecoration(
@@ -25339,7 +25346,7 @@ class _CurrencySymbolBubble extends StatelessWidget {
 
 
 void showReminderSheet(BuildContext context) {
-  showKoinlyPopup<void>(context, maxWidth: 520, maxHeight: 520, child: const ReminderSheet());
+  showYutakaPopup<void>(context, maxWidth: 520, maxHeight: 520, child: const ReminderSheet());
 }
 
 class ReminderSheet extends StatefulWidget {
@@ -25378,7 +25385,7 @@ class _ReminderSheetState extends State<ReminderSheet> {
 }
 
 void showAutomaticBackupSheet(BuildContext context) {
-  showKoinlyPopup<void>(
+  showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 760,
@@ -25474,9 +25481,9 @@ class _AutomaticBackupSheetState extends State<_AutomaticBackupSheet> {
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
     final locationText = directoryUri.trim().isNotEmpty
-        ? (directoryLabel.trim().isEmpty ? 'Koinly/Backup' : directoryLabel.trim())
+        ? (directoryLabel.trim().isEmpty ? 'Yutaka/Backup' : directoryLabel.trim())
         : (directoryPath.trim().isEmpty ? 'No backup folder selected' : directoryPath.trim());
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -25842,7 +25849,7 @@ class _DataHealthScreenState extends State<DataHealthScreen> {
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: busy ? null : () => context.read<AppController>().checkDataHealth(),
-                    icon: busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.refresh_rounded),
+                    icon: busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.refresh_rounded),
                     label: Text(busy ? 'Checking...' : 'Check again'),
                   ),
                   const SizedBox(height: 10),
@@ -26079,7 +26086,7 @@ class PrivacyAndDataScreen extends StatelessWidget {
                         Text('Your finance data stays on this device by default', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
                         const SizedBox(height: 6),
                         Text(
-                          'Koinly only sends finance data off-device when you enable a network feature such as self-hosted sync, Telegram or Google Drive delivery, or optional diagnostics below.',
+                          'Yutaka only sends finance data off-device when you enable a network feature such as self-hosted sync, Telegram or Google Drive delivery, or optional diagnostics below.',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.45),
                         ),
                       ],
@@ -26096,7 +26103,7 @@ class PrivacyAndDataScreen extends StatelessWidget {
                 onChanged: (value) => context.read<AppController>().setPrivacyTelemetryEnabled(value),
                 title: const Text('Usage analytics & crash reports', style: TextStyle(fontWeight: FontWeight.w900)),
                 subtitle: Text(
-                  'Off by default. When enabled, Firebase may receive app-interaction, crash, diagnostic, and device/app-instance information. Koinly does not intentionally attach transaction titles, notes, balances, account names, passwords, or sync credentials to telemetry.',
+                  'Off by default. When enabled, Firebase may receive app-interaction, crash, diagnostic, and device/app-instance information. Yutaka does not intentionally attach transaction titles, notes, balances, account names, passwords, or sync credentials to telemetry.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700, height: 1.4),
                 ),
               ),
@@ -26105,7 +26112,7 @@ class PrivacyAndDataScreen extends StatelessWidget {
             SettingsTile(
               icon: Icons.policy_rounded,
               title: 'Privacy Policy',
-              subtitle: 'Read the complete policy inside Koinly',
+              subtitle: 'Read the complete policy inside Yutaka',
               color: kSleekAccentHex,
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
             ),
@@ -26165,23 +26172,23 @@ class PrivacyPolicyScreen extends StatelessWidget {
   static const _sections = <(String, String)>[
     (
       '1. Local-first operation',
-      'Koinly stores finance data locally on your device first. You can use the app without creating a Koinly sync account. Local data can include accounts, balances, transactions, categories, budgets, loans and repayments, plans, subscriptions, notes, preferences, and locally selected profile media.',
+      'Yutaka stores finance data locally on your device first. You can use the app without creating a Yutaka sync account. Local data can include accounts, balances, transactions, categories, budgets, loans and repayments, plans, subscriptions, notes, preferences, and locally selected profile media.',
     ),
     (
       '2. Self-hosted sync',
-      'If you enable multi-device sync, Koinly sends the data required for synchronization to the Cloudflare Worker URL you configure and the database connected to that Worker. This infrastructure is controlled by you or the Worker administrator, not by a Koinly-operated central finance-data server. Sync authentication uses a username, password-derived server verifier, access/refresh tokens, and device/session records.',
+      'If you enable multi-device sync, Yutaka sends the data required for synchronization to the Cloudflare Worker URL you configure and the database connected to that Worker. This infrastructure is controlled by you or the Worker administrator, not by a Yutaka-operated central finance-data server. Sync authentication uses a username, password-derived server verifier, access/refresh tokens, and device/session records.',
     ),
     (
       '3. Profile media and files',
-      'Profile photos, GIFs, or short videos are only processed after you choose them. A local copy is stored in Koinly app storage. If self-hosted sync is enabled, the selected profile media can also be uploaded to your configured Worker so it can appear on your other devices. Files you export or save remain under the control of the destination you select.',
+      'Profile photos, GIFs, or short videos are only processed after you choose them. A local copy is stored in Yutaka app storage. If self-hosted sync is enabled, the selected profile media can also be uploaded to your configured Worker so it can appear on your other devices. Files you export or save remain under the control of the destination you select.',
     ),
     (
       '4. Telegram and Google Drive',
-      'Telegram backup/report delivery and Google Drive backup/report delivery are optional. When you configure these integrations, Koinly or your self-hosted Worker sends the files and credentials needed to provide the feature to Telegram or Google. Google OAuth refresh tokens, configured Google client secrets, and Telegram bot tokens stored by the Worker are encrypted with Worker-side keys. Files already delivered to an external service are governed by that service and are not removed automatically when a Koinly account is deleted.',
+      'Telegram backup/report delivery and Google Drive backup/report delivery are optional. When you configure these integrations, Yutaka or your self-hosted Worker sends the files and credentials needed to provide the feature to Telegram or Google. Google OAuth refresh tokens, configured Google client secrets, and Telegram bot tokens stored by the Worker are encrypted with Worker-side keys. Files already delivered to an external service are governed by that service and are not removed automatically when a Yutaka account is deleted.',
     ),
     (
       '5. Analytics and crash reporting',
-      'Usage analytics and crash reporting are off by default. If you enable them in Settings > Privacy & data, Firebase may receive app-interaction events, crash logs, diagnostics, app/device information, and an app-instance identifier. Koinly does not intentionally attach transaction titles, notes, balances, account names, passwords, Worker tokens, Telegram tokens, Google OAuth secrets, or backup contents to telemetry.',
+      'Usage analytics and crash reporting are off by default. If you enable them in Settings > Privacy & data, Firebase may receive app-interaction events, crash logs, diagnostics, app/device information, and an app-instance identifier. Yutaka does not intentionally attach transaction titles, notes, balances, account names, passwords, Worker tokens, Telegram tokens, Google OAuth secrets, or backup contents to telemetry.',
     ),
     (
       '6. Updates and network requests',
@@ -26189,23 +26196,23 @@ class PrivacyPolicyScreen extends StatelessWidget {
     ),
     (
       '7. Permissions',
-      'Koinly uses network access for optional online features, notification/alarm permissions for reminders, boot/background capabilities for scheduled work, battery-optimization access when you choose that flow, and media/storage access for files that you choose to import, export, or use as profile media. Koinly does not request contacts, SMS, call logs, microphone, or precise location access.',
+      'Yutaka uses network access for optional online features, notification/alarm permissions for reminders, boot/background capabilities for scheduled work, battery-optimization access when you choose that flow, and media/storage access for files that you choose to import, export, or use as profile media. Yutaka does not request contacts, SMS, call logs, microphone, or precise location access.',
     ),
     (
       '8. Retention and deletion',
-      'Local data remains until you delete it, clear app storage, or uninstall the app subject to platform backup behavior. Self-hosted data remains in your Worker/database until it is deleted there. Koinly provides authenticated self-deletion in the app and a /delete-account page on each current self-hosted Worker. Account deletion removes the account and its Worker-side synchronized data, sessions, profile media, schedules, and stored integration credentials. Local copies and files already exported to Telegram or Google Drive must be removed separately.',
+      'Local data remains until you delete it, clear app storage, or uninstall the app subject to platform backup behavior. Self-hosted data remains in your Worker/database until it is deleted there. Yutaka provides authenticated self-deletion in the app and a /delete-account page on each current self-hosted Worker. Account deletion removes the account and its Worker-side synchronized data, sessions, profile media, schedules, and stored integration credentials. Local copies and files already exported to Telegram or Google Drive must be removed separately.',
     ),
     (
       '9. Security',
-      'Koinly uses HTTPS for supported remote services and platform secure storage for supported authentication/deployment secrets. Worker-stored integration credentials use encrypted storage as described above. Local finance data is stored in app-private storage, but no software or storage system can guarantee absolute security. Keep your device, Worker, database, OAuth credentials, and exported backup/report files secure.',
+      'Yutaka uses HTTPS for supported remote services and platform secure storage for supported authentication/deployment secrets. Worker-stored integration credentials use encrypted storage as described above. Local finance data is stored in app-private storage, but no software or storage system can guarantee absolute security. Keep your device, Worker, database, OAuth credentials, and exported backup/report files secure.',
     ),
     (
       '10. Data sale and advertising',
-      'Koinly does not sell your personal or financial data and does not include an advertising SDK. The Android manifest explicitly removes the advertising-ID permission. Optional third-party services are used only for the features described in this policy.',
+      'Yutaka does not sell your personal or financial data and does not include an advertising SDK. The Android manifest explicitly removes the advertising-ID permission. Optional third-party services are used only for the features described in this policy.',
     ),
     (
       '11. Changes and contact',
-      'This policy may be updated when Koinly changes how data is handled. The current public copy is linked from the app. For privacy questions, contact Siam Chowdhury at ssiam4235@gmail.com.',
+      'This policy may be updated when Yutaka changes how data is handled. The current public copy is linked from the app. For privacy questions, contact Siam Chowdhury at ssiam4235@gmail.com.',
     ),
   ];
 
@@ -26228,11 +26235,11 @@ class PrivacyPolicyScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Koinly Privacy Policy', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                  Text('Yutaka Privacy Policy', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
                   Text('Effective and last updated: 30 September 2026', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
-                  const Text('Koinly is a local-first personal finance application. This policy explains what data the app handles, when data leaves your device, and the controls available to you.'),
+                  const Text('Yutaka is a local-first personal finance application. This policy explains what data the app handles, when data leaves your device, and the controls available to you.'),
                 ],
               ),
             ),
@@ -26265,7 +26272,7 @@ class AboutScreen extends StatelessWidget {
   static const links = [
     _AboutLink('Telegram', 'Telegram', Icons.near_me_rounded, 'https://t.me/Ch0wdhury_Siam'),
     _AboutLink('Telegram backup', 'Telegram 2', Icons.send_rounded, 'https://t.me/Chowdhury_Siam'),
-    _AboutLink('GitHub', 'GitHub', Icons.code_rounded, 'https://github.com/Chowdhury-Siam/Koinly'),
+    _AboutLink('GitHub', 'GitHub', Icons.code_rounded, 'https://github.com/Chowdhury-Siam/Yutaka'),
     _AboutLink('MyAnimeList', 'MAL', Icons.format_list_bulleted_rounded, 'https://myanimelist.net/profile/Siam_Chowdhury'),
     _AboutLink('AniList', 'AniList', Icons.analytics_rounded, 'https://anilist.co/user/SiamChowdhury/'),
     _AboutLink('YouTube', 'YouTube', Icons.play_circle_fill_rounded, 'https://www.youtube.com/@SCS_Otaku'),
@@ -26299,9 +26306,9 @@ class AboutScreen extends StatelessWidget {
               ]),
             ),
             const SectionHeader('Legal'),
-            SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'How Koinly handles and transfers data', color: kSleekAccentHex, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()))),
+            SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'How Yutaka handles and transfers data', color: kSleekAccentHex, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()))),
             SettingsTile(icon: Icons.description_rounded, title: 'Terms and conditions', subtitle: 'Usage terms', color: '#A6E3A1', onTap: () => _showLegal(context, 'Terms and conditions')),
-            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3.0 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
+            SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3.0 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YutakaLicenseScreen()))),
           ],
         ),
       ),
@@ -26313,7 +26320,7 @@ class AboutScreen extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(title),
-        content: const Text('Koinly is provided under the terms distributed with this release and the GNU GPL v3.0 license. Do not use the app to violate applicable laws or third-party service terms.'),
+        content: const Text('Yutaka is provided under the terms distributed with this release and the GNU GPL v3.0 license. Do not use the app to violate applicable laws or third-party service terms.'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
       ),
     );
@@ -26375,14 +26382,14 @@ class _LicensePackageSummary {
   final int entries;
 }
 
-class KoinlyLicenseScreen extends StatefulWidget {
-  const KoinlyLicenseScreen({super.key});
+class YutakaLicenseScreen extends StatefulWidget {
+  const YutakaLicenseScreen({super.key});
 
   @override
-  State<KoinlyLicenseScreen> createState() => _KoinlyLicenseScreenState();
+  State<YutakaLicenseScreen> createState() => _YutakaLicenseScreenState();
 }
 
-class _KoinlyLicenseScreenState extends State<KoinlyLicenseScreen> {
+class _YutakaLicenseScreenState extends State<YutakaLicenseScreen> {
   late final Future<List<_LicensePackageSummary>> _licensesFuture = _loadLicenseSummaries();
 
   Future<List<_LicensePackageSummary>> _loadLicenseSummaries() async {
@@ -26409,7 +26416,7 @@ class _KoinlyLicenseScreenState extends State<KoinlyLicenseScreen> {
         future: _licensesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const KoinlyPageLoader();
+            return const YutakaPageLoader();
           }
           if (snapshot.hasError) {
             return Center(
@@ -26511,7 +26518,7 @@ class _KoinlyLicenseScreenState extends State<KoinlyLicenseScreen> {
                             trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                             onTap: () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => KoinlyLicenseDetailScreen(packageName: item.name, licenseCount: item.entries)),
+                              MaterialPageRoute(builder: (_) => YutakaLicenseDetailScreen(packageName: item.name, licenseCount: item.entries)),
                             ),
                           ),
                         ),
@@ -26528,17 +26535,17 @@ class _KoinlyLicenseScreenState extends State<KoinlyLicenseScreen> {
   }
 }
 
-class KoinlyLicenseDetailScreen extends StatefulWidget {
-  const KoinlyLicenseDetailScreen({super.key, required this.packageName, required this.licenseCount});
+class YutakaLicenseDetailScreen extends StatefulWidget {
+  const YutakaLicenseDetailScreen({super.key, required this.packageName, required this.licenseCount});
 
   final String packageName;
   final int licenseCount;
 
   @override
-  State<KoinlyLicenseDetailScreen> createState() => _KoinlyLicenseDetailScreenState();
+  State<YutakaLicenseDetailScreen> createState() => _YutakaLicenseDetailScreenState();
 }
 
-class _KoinlyLicenseDetailScreenState extends State<KoinlyLicenseDetailScreen> {
+class _YutakaLicenseDetailScreenState extends State<YutakaLicenseDetailScreen> {
   late final Future<List<LicenseEntry>> _entriesFuture = _loadEntries();
 
   Future<List<LicenseEntry>> _loadEntries() async {
@@ -26561,7 +26568,7 @@ class _KoinlyLicenseDetailScreenState extends State<KoinlyLicenseDetailScreen> {
         future: _entriesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const KoinlyPageLoader();
+            return const YutakaPageLoader();
           }
           final entries = snapshot.data ?? const <LicenseEntry>[];
           return LayoutBuilder(

@@ -11,19 +11,19 @@ import 'subscription_background_service.dart';
 import 'update_service.dart';
 
 // Kept only so upgrades can cancel the older headless-Flutter periodic task.
-const _legacyBackgroundUpdateUniqueName = 'koinly-periodic-update-check';
-const _backgroundUpdateTaskName = 'koinlyUpdateCheck';
-const _backgroundSubscriptionUniqueName = 'koinly-periodic-subscription-check';
-const _backgroundSubscriptionTaskName = 'koinlySubscriptionCheck';
+const _legacyBackgroundUpdateUniqueName = 'yutaka-periodic-update-check';
+const _backgroundUpdateTaskName = 'yutakaUpdateCheck';
+const _backgroundSubscriptionUniqueName = 'yutaka-periodic-subscription-check';
+const _backgroundSubscriptionTaskName = 'yutakaSubscriptionCheck';
 const _automaticUpdatePreferenceKey = 'automaticUpdatePopupEnabled';
 const _lastNotifiedUpdateVersionKey = 'lastNotifiedUpdateVersion';
-const _nativeUpdateChannel = MethodChannel('com.koinly.siam/update_background');
+const _nativeUpdateChannel = MethodChannel('com.yutaka.siam/update_background');
 
 @pragma('vm:entry-point')
-void koinlyBackgroundUpdateDispatcher() {
+void yutakaBackgroundUpdateDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     WidgetsFlutterBinding.ensureInitialized();
-    // Compatibility for an already-enqueued task from older Koinly builds.
+    // Compatibility for an already-enqueued task from older Yutaka builds.
     if (taskName == _backgroundUpdateTaskName) {
       return UpdateBackgroundService.runBackgroundCheck();
     }
@@ -42,8 +42,8 @@ class UpdateBackgroundService {
     if (!Platform.isAndroid) return;
     // Workmanager remains used for subscription processing. App-update checks
     // are scheduled natively so they do not depend on a headless Flutter
-    // isolate while Koinly is closed.
-    await Workmanager().initialize(koinlyBackgroundUpdateDispatcher);
+    // isolate while Yutaka is closed.
+    await Workmanager().initialize(yutakaBackgroundUpdateDispatcher);
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool(_automaticUpdatePreferenceKey) ?? true;
     await setEnabled(enabled);
@@ -52,7 +52,7 @@ class UpdateBackgroundService {
       _backgroundSubscriptionTaskName,
       frequency: const Duration(minutes: 15),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
-      tag: 'koinly-subscriptions',
+      tag: 'yutaka-subscriptions',
     );
   }
 

@@ -26,11 +26,11 @@ void main() {
     final loans = File('lib/loans/loan_sheets.dart').readAsStringSync();
     final profile = File('lib/profile/profile_ui.dart').readAsStringSync();
 
-    expect(app, contains('class KoinlyPopupContent extends StatelessWidget'));
+    expect(app, contains('class YutakaPopupContent extends StatelessWidget'));
     expect(app, contains('fit: BoxFit.scaleDown'));
 
     // The only remaining SingleChildScrollView in main.dart belongs to the
-    // full onboarding page, not a showKoinlyPopup center dialog.
+    // full onboarding page, not a showYutakaPopup center dialog.
     expect(RegExp(r'SingleChildScrollView\(').allMatches(app).length, 1);
     expect(loans, isNot(contains('SingleChildScrollView(')));
     expect(profile, isNot(contains('SingleChildScrollView(')));

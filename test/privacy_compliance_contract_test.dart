@@ -4,9 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('privacy policy and Play data safety artifacts are shipped', () {
-    expect(File('PRIVACY_POLICY.md').readAsStringSync(), contains('Koinly Privacy Policy'));
+    expect(File('PRIVACY_POLICY.md').readAsStringSync(), contains('Yutaka Privacy Policy'));
     expect(File('docs/PLAY_DATA_SAFETY.md').readAsStringSync(), contains('Google Play Data Safety checklist'));
-    expect(File('docs/privacy-policy.html').readAsStringSync(), contains('<title>Koinly Privacy Policy</title>'));
+    expect(File('docs/privacy-policy.html').readAsStringSync(), contains('<title>Yutaka Privacy Policy</title>'));
   });
 
   test('Firebase telemetry is opt-in and advertising ID is removed', () {

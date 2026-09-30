@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/models.dart';
+import 'package:yutaka/models.dart';
 
 void main() {
   test('service charge metadata survives transaction map round trips', () {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/main.dart';
+import 'package:yutaka/main.dart';
 import 'package:provider/provider.dart';
 
 Future<void> pumpSettingsScreen(WidgetTester tester, Widget screen) async {

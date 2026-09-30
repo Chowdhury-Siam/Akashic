@@ -11,7 +11,7 @@ void main() {
     expect(app, contains("groupTag: 'transactions'"));
     expect(app, contains("groupTag: 'planned-purchases'"));
     expect(loans, contains("groupTag: 'loans'"));
-    expect(app, contains('class _KoinlySlidableAction extends StatelessWidget'));
+    expect(app, contains('class _YutakaSlidableAction extends StatelessWidget'));
     expect(app, contains('motion: const ScrollMotion()'));
     expect(app, contains('dragDismissible: false'));
     expect(app, contains('return SlidableAction('));

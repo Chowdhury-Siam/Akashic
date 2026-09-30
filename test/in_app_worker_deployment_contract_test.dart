@@ -15,8 +15,8 @@ void main() {
     expect(main, contains("label: Text(_deploying ? 'Deploying…' : 'Deploy Worker')"));
     expect(main, contains('final _workerNameController = TextEditingController();'));
     expect(main, isNot(contains('final _adminUsernameController = TextEditingController();')));
-    expect(main, contains('The first Koinly account created on this Worker automatically becomes the administrator for /profile.'));
-    expect(main, isNot(contains("TextEditingController(text: 'koinly-sync')")));
+    expect(main, contains('The first Yutaka account created on this Worker automatically becomes the administrator for /profile.'));
+    expect(main, isNot(contains("TextEditingController(text: 'yutaka-sync')")));
     expect(main, isNot(contains("TextEditingController(text: 'worker-admin')")));
   });
 
@@ -24,7 +24,7 @@ void main() {
     final service = File('lib/worker_deployment.dart').readAsStringSync();
 
     expect(service, contains(r'_tursoHttpBase(c.tursoDatabaseUrl)}/v2/pipeline'));
-    expect(service, contains('SELECT 1 AS koinly_connection_test'));
+    expect(service, contains('SELECT 1 AS yutaka_connection_test'));
     expect(service, contains("'baton': null"));
     expect(service, contains("'want_rows': true"));
     expect(service, isNot(contains("_tursoHttpBase(c.tursoDatabaseUrl)}/version")));
@@ -43,7 +43,7 @@ void main() {
     expect(service, contains("data['analyticsUploadAvailable'] == true"));
     expect(service, contains("data['profileMediaSyncAvailable'] == true"));
     expect(service, contains("data['workerVersion'] == appVersion"));
-    expect(service, contains("'KOINLY_WORKER_VERSION'"));
+    expect(service, contains("'YUTAKA_WORKER_VERSION'"));
     expect(service, contains('const maxAttempts = 24'));
     expect(service, contains(r'Worker health check $attempt/$maxAttempts'));
     expect(service, contains('_healthDiagnostic('));
@@ -59,7 +59,7 @@ void main() {
     expect(service, isNot(contains("'ADMIN_PASSWORD_HASH'")));
     expect(service, isNot(contains('_pbkdf2HmacSha256')));
     expect(service, contains('FlutterSecureStorage'));
-    expect(service, contains('koinly_worker_auto_deployment_profile_v1'));
+    expect(service, contains('yutaka_worker_auto_deployment_profile_v1'));
     expect(service, contains('WorkerAutoUpdateService'));
     expect(service, contains("decoded['workerVersion']"));
     expect(main, contains("title: const Text('Automatic Worker updates'"));
@@ -97,11 +97,11 @@ void main() {
 
     expect(workflow, contains('prepare-worker-bundle:'));
     expect(workflow, contains('npm run bundle:app'));
-    expect(workflow, contains('koinly-worker-deploy-bundle'));
+    expect(workflow, contains('yutaka-worker-deploy-bundle'));
     expect(workflow, contains('      - "cloud/worker/**"'));
     expect(package, contains('"bundle:app"'));
     expect(builder, contains('wrangler.self-hosted.toml'));
-    expect(builder, contains('koinly_sync_worker.js'));
+    expect(builder, contains('yutaka_sync_worker.js'));
     expect(pubspec, contains('    - assets/worker/'));
     expect(pubspec, contains('    - cloud/worker/schema.sql'));
     expect(workflow, contains("'cloud/worker/wrangler.self-hosted.toml'"));

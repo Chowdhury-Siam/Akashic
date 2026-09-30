@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/profile/profile_media.dart';
+import 'package:yutaka/profile/profile_media.dart';
 
 void main() {
   test('profile media accepts exactly 50 MB', () {

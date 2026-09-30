@@ -10,7 +10,7 @@ void main() {
 
     expect(modelSource, contains('class SavedSyncWorker'));
     expect(modelSource, contains('class SavedSyncAccount'));
-    expect(storeSource, contains('koinly_sync_profile_refresh_v1_'));
+    expect(storeSource, contains('yutaka_sync_profile_refresh_v1_'));
 
     expect(mainSource, contains('Future<void> switchToSavedSyncAccount(String profileId)'));
     expect(mainSource, contains('Future<void> loginAndSwitchSyncAccount({'));
@@ -42,7 +42,7 @@ void main() {
     final workerSource = File('lib/worker_deployment.dart').readAsStringSync();
     final mainSource = File('lib/main.dart').readAsStringSync();
 
-    expect(workerSource, contains('koinly_worker_auto_deployment_profile_v2_'));
+    expect(workerSource, contains('yutaka_worker_auto_deployment_profile_v2_'));
     expect(workerSource, contains('read({String workerUrl = \'\'}'));
     expect(workerSource, contains('clear({String workerUrl = \'\'}'));
     expect(workerSource, contains('read(workerUrl: activeWorkerUrl)'));
@@ -64,7 +64,7 @@ void main() {
     expect(mainSource, contains('onPressed: accountActionBusy ? null : _openAccountSwitcher'));
     expect(mainSource, contains('onPressed: accountActionBusy ? null : _confirmSignOut'));
     expect(mainSource, contains('Future<void> _cancelActiveCloudSyncForAccountTransition()'));
-    expect(mainSource, contains('KoinlySyncApi.cancelPendingRequests();'));
+    expect(mainSource, contains('YutakaSyncApi.cancelPendingRequests();'));
     expect(mainSource, contains('_throwIfCloudSyncCancelled(cancellationSerial);'));
     expect(syncSource, contains('static void cancelPendingRequests() => _resetHttpClient();'));
   });

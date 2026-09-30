@@ -17,7 +17,7 @@ void main() {
     for (final file in files) {
       final source = file.readAsStringSync();
       fields += RegExp(r'\bTextField\(').allMatches(source).length;
-      contextMenus += RegExp(r'contextMenuBuilder:\s*koinlyTextFieldContextMenu').allMatches(source).length;
+      contextMenus += RegExp(r'contextMenuBuilder:\s*yutakaTextFieldContextMenu').allMatches(source).length;
       interactiveSelections += RegExp(r'enableInteractiveSelection:\s*true').allMatches(source).length;
     }
 
@@ -28,7 +28,7 @@ void main() {
 
   test('shared context menu uses Flutter adaptive copy/paste controls', () {
     final source = File('lib/ui_foundation.dart').readAsStringSync();
-    expect(source, contains('Widget koinlyTextFieldContextMenu('));
+    expect(source, contains('Widget yutakaTextFieldContextMenu('));
     expect(source, contains('AdaptiveTextSelectionToolbar.buttonItems('));
     expect(source, contains('editableTextState.contextMenuButtonItems'));
   });

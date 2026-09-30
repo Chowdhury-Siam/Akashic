@@ -12,7 +12,7 @@ void main() {
     );
 
     final comparator = source
-        .split('int _compareNotesForList(KoinlyNote a, KoinlyNote b) {')[1]
+        .split('int _compareNotesForList(YutakaNote a, YutakaNote b) {')[1]
         .split('class NoteScreen')[0];
     expect(
       comparator,
@@ -21,7 +21,7 @@ void main() {
     expect(comparator, contains('b.updatedOn.compareTo(a.updatedOn)'));
 
     final autosave = source
-        .split('Future<void> autosaveNote(KoinlyNote note) async {')[1]
+        .split('Future<void> autosaveNote(YutakaNote note) async {')[1]
         .split('Future<void> deleteAutosavedNote')[0];
     expect(autosave, contains('notes.sort(_compareNotesForList);'));
 

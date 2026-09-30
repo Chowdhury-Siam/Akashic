@@ -23,7 +23,7 @@ void main() {
   test('reminders use the device time zone and exact scheduling with safe fallback', () {
     final reminders = File('lib/reminder_service.dart').readAsStringSync();
     final bridge = File('lib/android_background_permission_service.dart').readAsStringSync();
-    final activity = File('android/app/src/main/kotlin/com/koinly/siam/MainActivity.kt').readAsStringSync();
+    final activity = File('android/app/src/main/kotlin/com/yutaka/siam/MainActivity.kt').readAsStringSync();
 
     expect(bridge, contains("invokeMethod<String>('deviceTimeZoneId')"));
     expect(activity, contains('TimeZone.getDefault().id'));

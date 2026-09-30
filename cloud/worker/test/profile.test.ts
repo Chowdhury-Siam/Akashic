@@ -12,7 +12,7 @@ const origin = 'https://worker.example';
 const schema = fs.readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
 
 test('first sync account owns the profile portal and account lifecycle', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'koinly-profile-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yutaka-profile-'));
   const databaseUrl = 'file:' + path.join(directory, 'test.db').replaceAll('\\', '/');
   const connect = () => createClient({ url: databaseUrl });
   const db = connect();
@@ -40,7 +40,7 @@ test('first sync account owns the profile portal and account lifecycle', async t
     const page = await call('/profile');
     assert.equal(page.status, 503);
     const html = await page.text();
-    assert.match(html, /first Koinly account/i);
+    assert.match(html, /first Yutaka account/i);
     assert.match(html, /automatically becomes the Worker administrator/i);
     assert.match(html, /#0F1216/i);
     assert.match(html, /#00BD91/i);
@@ -72,7 +72,7 @@ test('first sync account owns the profile portal and account lifecycle', async t
     const response = await call('/profile/api/login', 'POST', credentials);
     assert.equal(response.status, 200);
     const setCookie = response.headers.get('set-cookie')!;
-    assert.match(setCookie, /^__Host-koinly-admin=/);
+    assert.match(setCookie, /^__Host-yutaka-admin=/);
     for (const flag of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/', 'Max-Age=3600']) assert.ok(setCookie.includes(flag));
     cookie = setCookie.split(';')[0];
 
@@ -170,7 +170,7 @@ test('first sync account owns the profile portal and account lifecycle', async t
 });
 
 test('existing database migration preserves account data and is repeatable', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'koinly-migrate-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yutaka-migrate-'));
   const url = 'file:' + path.join(directory, 'legacy.db').replaceAll('\\', '/');
   let db = createClient({ url });
   t.after(async () => { db.close(); await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });

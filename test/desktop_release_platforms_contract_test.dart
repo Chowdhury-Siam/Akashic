@@ -21,7 +21,7 @@ void main() {
     expect(
       workflow,
       contains(
-        r'Koinly-v${KOINLY_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz',
+        r'Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz',
       ),
     );
 
@@ -41,8 +41,8 @@ void main() {
     expect(workflow, contains('macos-universal.zip'));
     expect(workflow, contains('xcrun notarytool submit'));
 
-    expect(workflow, contains('pattern: koinly-linux-*'));
-    expect(workflow, contains('pattern: koinly-macos-*'));
+    expect(workflow, contains('pattern: yutaka-linux-*'));
+    expect(workflow, contains('pattern: yutaka-macos-*'));
   });
 
 
@@ -54,13 +54,13 @@ void main() {
       workflow,
       isNot(
         contains(
-          "github.event_name == 'workflow_dispatch' || github.repository == 'Chowdhury-Siam/Koinly'",
+          "github.event_name == 'workflow_dispatch' || github.repository == 'Chowdhury-Siam/Yutaka'",
         ),
       ),
     );
     expect(
       RegExp(
-        r"^    if: github\.repository == 'Chowdhury-Siam/Koinly'\s*$",
+        r"^    if: github\.repository == 'Chowdhury-Siam/Yutaka'\s*$",
         multiLine: true,
       ).allMatches(workflow).length,
       5,
@@ -73,12 +73,12 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1220+264'));
-    expect(config, contains("defaultValue: '1.0.1220'"));
-    expect(androidGradle, contains('versionCode = 264'));
-    expect(androidGradle, contains('versionName = "1.0.1220"'));
+    expect(pubspec, contains('version: 1.0.1223+267'));
+    expect(config, contains("defaultValue: '1.0.1223'"));
+    expect(androidGradle, contains('versionCode = 267'));
+    expect(androidGradle, contains('versionName = "1.0.1223"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
-    expect(File('tools/linux/koinly.desktop').existsSync(), isTrue);
+    expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);
   });
 }

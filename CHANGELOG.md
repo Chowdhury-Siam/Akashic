@@ -1,3 +1,29 @@
+## [1.0.1223] - 2026-10-01
+
+- Fully rebranded the application, source package, self-hosted Worker, release artifacts, documentation, repository links, desktop metadata, notification channels, backup/report naming, and user-facing copy from **Koinly** to **Yutaka**.
+- Renamed the Android application ID/namespace to `com.yutaka.siam`, Dart package to `yutaka`, release artifacts to `Yutaka-*`, and GitHub workflow guards/links to `Chowdhury-Siam/Yutaka`.
+- Replaced the old K-shaped app/launcher/splash/notification branding with a new Y-shaped Yutaka mark while retaining the existing multicolor visual language.
+- New backups use `.yutakabackup` and Yutaka filenames/folders. Restore remains backward-compatible with existing `.koinlybackup` files, and the client can recognize an already-deployed legacy sync Worker long enough to migrate/redeploy it.
+- Kept the existing Firebase backend resource identifiers in `google-services.json` because those IDs are allocated by Firebase and cannot be renamed safely in source; the Android client package entry now matches `com.yutaka.siam`.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1223+267`.
+
+## [1.0.1222] - 2026-10-01
+
+- Disabled Android OS-managed Auto Backup for Yutaka app-private data so financial records, credentials, preferences, databases, and local files are not silently copied by the platform backup service.
+- Added explicit Android 11-and-lower full-backup exclusions and Android 12+ cloud-backup/device-transfer exclusions for every supported app-private backup domain, covering OEM/device-transfer cases where `allowBackup=false` alone may not be sufficient.
+- Kept Yutaka's user-controlled Local backup file, restore, Telegram, Google Drive, and report/export workflows unchanged.
+- Added regression and CI guards so Android platform backup cannot be accidentally re-enabled in a future release.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1222+266`.
+
+## [1.0.1221] - 2026-10-01
+
+- Removed broad Android photo/video and legacy storage permissions; profile media now relies on the scoped system file picker and receives access only to the user-selected item.
+- Added a Play-flavor manifest guard that strips media/storage permissions even if a transitive plugin declares them.
+- Removed `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` from the common/Play manifest. Google Play builds now open Android's general battery-optimization settings instead of requesting direct exemption.
+- Kept the app-specific battery exemption only in the direct-distribution flavor, preserving background-worker controls for sideloaded builds without exposing the restricted permission to Google Play.
+- Added regression coverage for Play/direct permission separation and scoped profile-media selection.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1221+265`.
+
 ## [1.0.1220] - 2026-10-01
 
 - Rebuilt the end-of-period financial health review as a responsive full-screen modal on phones/short windows so the monthly/yearly report is never scaled down to unreadable text.
@@ -8,7 +34,7 @@
 ## [1.0.1219] - 2026-10-01
 
 - Fixed Android release builds failing in `:file_picker:checkReleaseAarMetadata` because the old `file_picker` Android module compiled against API 34 while `flutter_plugin_android_lifecycle` requires API 36.
-- Upgraded `file_picker` to `10.3.10`, which inherits Flutter's `compileSdkVersion`, supports Gradle 9, preserves Koinly's existing `FilePicker.platform` API, and includes the maintained Android security fixes from the 10.3.x line.
+- Upgraded `file_picker` to `10.3.10`, which inherits Flutter's `compileSdkVersion`, supports Gradle 9, preserves Yutaka's existing `FilePicker.platform` API, and includes the maintained Android security fixes from the 10.3.x line.
 - Added a CI compatibility guard that verifies the resolved `file_picker` Android module inherits Flutter's compile SDK before building the Play AAB or direct APKs.
 - Updated dependency-cache invalidation so changes to either `pubspec.yaml` or `pubspec.lock` refresh the cached packages.
 - Bumped synchronized app/Android/Worker release metadata to `1.0.1219+263`.
@@ -18,14 +44,14 @@
 - Fixed direct ARM32/ARM64 GitHub Actions packaging by matching Flutter's actual flavored split-APK filenames (`app-armeabi-v7a-direct-release.apk` and `app-arm64-v8a-direct-release.apk`).
 - Added fail-fast artifact discovery diagnostics so a future Flutter output-name change reports the APKs that were actually generated instead of failing with a vague `cp` error.
 - Upgraded the Android build toolchain to Gradle `9.1.0`, Android Gradle Plugin `9.0.1`, and Kotlin Gradle Plugin `2.3.20`.
-- Added Flutter's AGP 9 compatibility flags (`android.newDsl=false` and `android.builtInKotlin=false`) while Koinly and its plugin graph still use the legacy Kotlin Gradle Plugin path.
+- Added Flutter's AGP 9 compatibility flags (`android.newDsl=false` and `android.builtInKotlin=false`) while Yutaka and its plugin graph still use the legacy Kotlin Gradle Plugin path.
 - Bumped synchronized app/Android/Worker release metadata to `1.0.1218+262`.
 
 ## [1.0.1217] - 2026-09-30
 
 - Replaced the placeholder privacy copy with a complete in-app Privacy Policy and added a dedicated **Settings > Privacy & data** screen.
 - Made Firebase Analytics and Crashlytics opt-in per device and disabled both collection paths by default.
-- Explicitly removed the Android advertising-ID permission because Koinly has no advertising SDK.
+- Explicitly removed the Android advertising-ID permission because Yutaka has no advertising SDK.
 - Added a public `PRIVACY_POLICY.md`, static-hostable privacy-policy HTML, and a Play Console Data Safety audit checklist covering self-hosted sync, profile media, Telegram, Google Drive, Firebase telemetry, and exported reports/backups.
 - Added direct privacy-policy and account-deletion information links from the app and removed the previous placeholder Privacy Policy dialog.
 - Added privacy compliance regression coverage.
@@ -35,7 +61,7 @@
 
 - Added permanent self-service sync-account deletion from Settings > Account & sync, protected by the current password and an explicit `DELETE` confirmation.
 - Kept local device data by default during cloud-account deletion, with a separate opt-in to erase the local offline copy.
-- Added the Worker-hosted `/delete-account` browser flow so users can delete their account without reinstalling Koinly.
+- Added the Worker-hosted `/delete-account` browser flow so users can delete their account without reinstalling Yutaka.
 - Account deletion now removes synchronized finance rows, profile media, sessions/devices, backup schedules, and stored Telegram/Google Drive credentials for that account.
 - Administrator self-deletion invalidates administrator sessions and deployment-recovery secrets; the oldest remaining account becomes administrator, or a final-account deletion resets the Worker to first-user registration.
 - Administrator self-deletion also removes that Worker's cached Cloudflare/Turso deployment credentials from the deleting device secure store.
@@ -91,7 +117,7 @@
 
 ## [1.0.1209] - 2026-09-30
 
-- Added a Settings > General > Startup page option for choosing which primary Koinly page opens after launch.
+- Added a Settings > General > Startup page option for choosing which primary Yutaka page opens after launch.
 - Users can choose Home, Analysis, Loans, Transaction, or Categories; Home remains the default for existing and new installs unless changed.
 - The selected startup page is persisted with preferences without forcing an immediate navigation change while editing Settings.
 - Bumped synchronized app/Android/Worker release metadata to `1.0.1209+253`.
@@ -99,7 +125,7 @@
 ## [1.0.1208] - 2026-09-29
 
 - Added the same global show/hide-amount eye control used on the Home balance card to the Transaction title, Loans Portfolio header, Categories breakdown header, and Analysis cash-flow header.
-- The visibility state remains shared across the app, so toggling the eye from any of these screens immediately hides or reveals monetary values everywhere that uses Koinly amount formatting.
+- The visibility state remains shared across the app, so toggling the eye from any of these screens immediately hides or reveals monetary values everywhere that uses Yutaka amount formatting.
 - Preserved the project-wide GNU GPL v3.0 license metadata and notices while carrying forward the desktop updater and floating-action-button changes.
 - Bumped synchronized app/Android/Worker release metadata to `1.0.1208+252`.
 
@@ -119,7 +145,7 @@
 
 ## [1.0.1204] - 2026-09-28
 
-- Fixed the Material time-picker clock popup inheriting Koinly's app-wide always-scrollable/elastic physics, which let the otherwise fixed clock surface move or bounce.
+- Fixed the Material time-picker clock popup inheriting Yutaka's app-wide always-scrollable/elastic physics, which let the otherwise fixed clock surface move or bounce.
 - Time-picker dialogs now use non-scrollable physics and skip desktop elastic-scroll decoration while preserving normal hour/minute dial interaction and AM/PM controls.
 - Bumped synchronized app/Android/Worker release metadata to `1.0.1204+248`.
 
@@ -179,7 +205,7 @@
 ## [1.0.1194] - 2026-09-28
 
 - Added per-account removal controls to the Account & sync account switcher. Removing a saved account clears only its local saved login; cloud account data remains untouched.
-- Account switching and sign-out are now available while Restore cloud copy is running. Koinly cancels the active network sync, waits for any in-flight local database write to reach a safe boundary, then performs the account transition.
+- Account switching and sign-out are now available while Restore cloud copy is running. Yutaka cancels the active network sync, waits for any in-flight local database write to reach a safe boundary, then performs the account transition.
 - Bumped synchronized app/Worker release metadata to `1.0.1194+238`.
 
 ## [1.0.1193] - 2026-09-25
@@ -188,7 +214,7 @@
 - Creating, editing, bookmarking, changing draft status, and deleting notes now enqueue the corresponding cloud operations.
 - Added atomic one-time migration for notes saved by old local-only versions. Existing local notes are queued on the next authenticated push without duplicating already-pending or downloaded entries.
 - Kept newer cloud deletions from being overwritten by a stale pre-upgrade note during conflict resolution.
-- Included Notes in Telegram and Google Drive cloud-generated `.koinlybackup` snapshots (redeploy Worker to enable backup inclusion).
+- Included Notes in Telegram and Google Drive cloud-generated `.yutakabackup` snapshots (redeploy Worker to enable backup inclusion).
 - Added regression contracts for the end-to-end Note sync path and synchronized app/Worker version metadata to `1.0.1193+237`.
 
 ## [1.0.1192] - 2026-09-25
@@ -257,7 +283,7 @@
 
 - Added a Note feature from the transaction quick menu with local note list, add/edit popup, swipe edit/delete, and local backup/restore support.
 - Reworked the centered date range picker to draw the selected span inline across calendar rows, making the chosen start and end dates visually connected.
-- Fixed the new range calendar animation to use Koinly's existing `AppMotion.fast` duration.
+- Fixed the new range calendar animation to use Yutaka's existing `AppMotion.fast` duration.
 - Synchronized application and bundled Worker version metadata to `1.0.1181+225`.
 
 ## [1.0.1180] - 2026-09-22
@@ -295,7 +321,7 @@
 
 ## [1.0.1175] - 2026-09-21
 
-- Fixed the Android status-bar notification icon appearing as a solid white circle by adding a dedicated monochrome Koinly `K` notification icon.
+- Fixed the Android status-bar notification icon appearing as a solid white circle by adding a dedicated monochrome Yutaka `K` notification icon.
 - Applied the status icon to daily expense reminders, loan reminders, Flutter update notifications, native background update notifications, and Android default notification metadata.
 - Kept the full-color launcher/adaptive icon unchanged; only Android's small notification icon now uses the required transparent monochrome resource.
 - Synchronized application and bundled Worker version metadata to `1.0.1175+219`.
@@ -304,7 +330,7 @@
 
 - Added a persistent Transaction sort control with newest/oldest, category, amount, and title ordering. Changing the sort rebuilds a fresh list immediately, so existing transactions are reorganized without rewriting financial data.
 - Fixed legacy transaction ordering by using the visible transaction start timestamp (`createdOn`) rather than historical range-end metadata (`endOn`/`listOn`) for date sorting.
-- Applied the selected transaction ordering consistently to category transaction lists and synchronized the preference through Koinly settings sync.
+- Applied the selected transaction ordering consistently to category transaction lists and synchronized the preference through Yutaka settings sync.
 - Synchronized application and bundled Worker version metadata to `1.0.1174+218`.
 
 ## [1.0.1173] - 2026-09-18
@@ -369,11 +395,11 @@
 
 ## [1.0.1164] - 2026-09-16
 
-- The first Koinly account created in the Worker database is now the `/profile` administrator; separate `ADMIN_USERNAME` and `ADMIN_PASSWORD` deployment credentials were removed from in-app and GitHub deployments.
+- The first Yutaka account created in the Worker database is now the `/profile` administrator; separate `ADMIN_USERNAME` and `ADMIN_PASSWORD` deployment credentials were removed from in-app and GitHub deployments.
 - Added **Change username** to the Worker account manager. Renaming an account preserves its user ID and synchronized data, and renaming the first account keeps its administrator role.
 - Prevented deletion of the first-account administrator so Worker administration and encrypted deployment recovery cannot be orphaned.
 - Updated deployment recovery payloads to version 2 so Cloudflare, Turso, JWT, Worker URL, and version values can be restored after reinstall when the first account signs in, without storing separate administrator credentials.
-- Restyled the Worker `/profile` website to the current Koinly app palette, including the charcoal dark surfaces, light surfaces, and `#00BD91` accent.
+- Restyled the Worker `/profile` website to the current Yutaka app palette, including the charcoal dark surfaces, light surfaces, and `#00BD91` accent.
 - Fixed automatic and manual Worker redeployments failing with `migration must include a new_tag because old_tag is set`. Code-only updates now send the existing Durable Object migration tag as both `old_tag` and `new_tag`, including the one-time migration-state retry.
 - Added mocked HTTP deployment tests covering existing Workers, first deployments, migration-state recovery, declarative exports, and automatic updates.
 - Synchronized application and bundled Worker version metadata to `1.0.1164+208`.
@@ -389,29 +415,29 @@
 ## [1.0.1162] - 2026-09-15
 
 - Added **Settings > Permissions > Ignore Battery Optimization** on Android, with live permission-state refresh when returning from Android settings.
-- Added a native Android battery-optimization settings bridge so users can mark Koinly unrestricted and reduce background update/subscription delays caused by Doze or aggressive OEM power management.
+- Added a native Android battery-optimization settings bridge so users can mark Yutaka unrestricted and reduce background update/subscription delays caused by Doze or aggressive OEM power management.
 - Notification-enabled settings now request Android notification permission again when the user explicitly enables them.
 - Removed the unused exact-alarm permission and stripped generated/machine-specific Flutter and Android local configuration from the packaged repository.
 - Synchronized application and bundled Worker version metadata to `1.0.1162+206`.
 
 ## [1.0.1161] - 2026-09-15
 
-- Added encrypted deployment-value recovery for Workers deployed from Koinly. After reinstalling the app, paste and validate the same Worker URL and sign in with the first sync account; Koinly restores the saved Cloudflare/Turso/JWT deployment profile to secure storage automatically.
+- Added encrypted deployment-value recovery for Workers deployed from Yutaka. After reinstalling the app, paste and validate the same Worker URL and sign in with the first sync account; Yutaka restores the saved Cloudflare/Turso/JWT deployment profile to secure storage automatically.
 - Restricted deployment recovery to the first sync account and encrypted the remote recovery payload before storing it in Turso. The raw administrator password is still never stored or recoverable.
 - Kept automatic Worker updates working after reinstall by restoring the deployment profile before checking the Worker version.
 - Updated the README and Worker documentation and synchronized application/Worker version metadata to `1.0.1161+205`.
 
 ## [1.0.1160] - 2026-09-15
 
-- Fresh self-hosted Workers now allow the first Koinly sync account to be created directly from **Account & sync**, even when `/profile` administrator credentials are configured.
+- Fresh self-hosted Workers now allow the first Yutaka sync account to be created directly from **Account & sync**, even when `/profile` administrator credentials are configured.
 - After the first sync account exists, later app registration remains administrator-managed and continues to redirect account creation to `/profile`.
-- Removed the prefilled `koinly-sync` Worker name and `worker-admin` administrator username from the in-app deployment form; both fields now start empty on a fresh deployment.
+- Removed the prefilled `yutaka-sync` Worker name and `worker-admin` administrator username from the in-app deployment form; both fields now start empty on a fresh deployment.
 - Updated the README and Worker documentation for the first-account flow and synchronized application/Worker version metadata to `1.0.1160+204`.
 
 ## [1.0.1159] - 2026-09-14
 
 - Fixed in-app Cloudflare Worker updates failing when an existing `SyncHub` Durable Object had already applied the `v1-realtime-sync-hub` migration.
-- Koinly now reads the latest Cloudflare Worker version detail to recover the currently applied Durable Object migration tag and sends it back as `old_tag` on subsequent uploads, preserving the existing namespace and data.
+- Yutaka now reads the latest Cloudflare Worker version detail to recover the currently applied Durable Object migration tag and sends it back as `old_tag` on subsequent uploads, preserving the existing namespace and data.
 - Added a one-time safe retry when Cloudflare reports a migration-tag precondition mismatch, using Cloudflare's expected tag instead of requiring the Worker to be deleted or recreated.
 - Synchronized application and Worker version metadata to `1.0.1159+203`.
 
@@ -424,7 +450,7 @@
 
 ## [1.0.1157] - 2026-09-14
 
-- Fixed in-app Turso validation incorrectly rejecting valid database credentials with HTTP 404. Koinly now validates Turso through the same authenticated Hrana `/v2/pipeline` endpoint used for schema provisioning, using a read-only `SELECT 1` connection check.
+- Fixed in-app Turso validation incorrectly rejecting valid database credentials with HTTP 404. Yutaka now validates Turso through the same authenticated Hrana `/v2/pipeline` endpoint used for schema provisioning, using a read-only `SELECT 1` connection check.
 - Improved Turso deployment errors so authentication failures, missing database endpoints, and other HTTP failures are reported separately.
 - Added a deployment contract regression check that prevents the unsupported Turso `/version` probe from returning.
 - Synchronized application and Worker version metadata to `1.0.1157+201`.
@@ -433,7 +459,7 @@
 
 - Added automatic self-hosted Worker updates for Workers deployed through **Settings > Account & sync > Deploy Database**.
 - The app can now securely retain the Cloudflare/Turso deployment profile on-device, while storing only the derived administrator password verifier rather than the raw administrator password.
-- On the first launch after a newer Koinly app update, Koinly compares the active Worker's reported version with the Worker bundled into the app and redeploys only when the bundled Worker is newer.
+- On the first launch after a newer Yutaka app update, Yutaka compares the active Worker's reported version with the Worker bundled into the app and redeploys only when the bundled Worker is newer.
 - Added Worker version reporting to `/health`, automatic update progress/error reporting in **Account & sync**, retry support, and a control to forget saved deployment credentials.
 - GitHub-based Worker deployment now verifies that its Worker version matches the app release version before deployment.
 - Updated the README and Worker documentation for the automatic redeployment flow and synchronized application version metadata to `1.0.1156+200`.
@@ -449,7 +475,7 @@
 
 ## [1.0.1154] - 2026-09-14
 
-- Refreshed the public README so it documents the current Koinly experience instead of calling out features that were removed in earlier versions.
+- Refreshed the public README so it documents the current Yutaka experience instead of calling out features that were removed in earlier versions.
 - Updated self-hosted account password-reset documentation to describe the current `/profile` administrator flow directly.
 - Removed stale README wording around the retired in-app recovery flow and legacy email-login migration.
 - Simplified credential and Analytics documentation to describe where current controls live without listing removed UI elements.
@@ -483,9 +509,9 @@
 ## [1.0.1149] - 2026-09-14
 
 - Reorganized Archive backup-file scheduling: **Automatic backup** is now **Local backup File**, **Local Backup** is now **Local**, and **Telegram Backup** is now **Cloud**.
-- Expanded **Archive > Cloud** so `.koinlybackup` files can be scheduled or uploaded manually to either Telegram or Google Drive using credentials from **Settings > Credential**.
-- Added an independent Google Drive `.koinlybackup` schedule. Telegram backup, Google Drive backup, Telegram report, and Google Drive report schedules are all enforced at least 5 minutes apart.
-- Google Drive backup uses the configured Drive Folder ID when present; otherwise the Worker creates/reuses a dedicated **Koinly Backup** folder.
+- Expanded **Archive > Cloud** so `.yutakabackup` files can be scheduled or uploaded manually to either Telegram or Google Drive using credentials from **Settings > Credential**.
+- Added an independent Google Drive `.yutakabackup` schedule. Telegram backup, Google Drive backup, Telegram report, and Google Drive report schedules are all enforced at least 5 minutes apart.
+- Google Drive backup uses the configured Drive Folder ID when present; otherwise the Worker creates/reuses a dedicated **Yutaka Backup** folder.
 - Synchronized application version metadata to `1.0.1149+193`.
 
 ## [1.0.1148] - 2026-09-14
@@ -516,10 +542,10 @@
 
 ## [1.0.1143] - 2026-09-14
 
-- Added an optional **Google Drive Folder ID** field to **Settings > Credential > Google Drive**. When set, both manual Analytics uploads and scheduled Cloud Backup reports are uploaded directly into that folder; when blank, Koinly continues to create/reuse **Koinly Analytics**.
+- Added an optional **Google Drive Folder ID** field to **Settings > Credential > Google Drive**. When set, both manual Analytics uploads and scheduled Cloud Backup reports are uploaded directly into that folder; when blank, Yutaka continues to create/reuse **Yutaka Analytics**.
 - Folder IDs are validated by the Worker, custom folders are checked for accessibility/write permission during OAuth connection, and Shared Drive uploads use `supportsAllDrives`. Changing the configured folder forces a fresh Google authorization so the required scope cannot stay stale.
-- Google OAuth now keeps the limited `drive.file` scope for the default Koinly-managed folder and requests the broader Drive scope only when a user explicitly configures an existing Folder ID.
-- Renamed **Automatic Telegram backup** to **Telegram Backup** throughout the active app UI and current documentation without changing its scheduling or `.koinlybackup` behavior.
+- Google OAuth now keeps the limited `drive.file` scope for the default Yutaka-managed folder and requests the broader Drive scope only when a user explicitly configures an existing Folder ID.
+- Renamed **Automatic Telegram backup** to **Telegram Backup** throughout the active app UI and current documentation without changing its scheduling or `.yutakabackup` behavior.
 - Added the `google_folder_id` Turso schema migration and synchronized application version metadata to `1.0.1143+187`.
 
 ## [1.0.1142] - 2026-09-14
@@ -528,20 +554,20 @@
 - Manual Analytics download, Telegram upload, and Google Drive upload now use the selected report format and correct filename/MIME type.
 - Added a per-destination file-format selector to **Settings > Archive > Cloud Backup** so Telegram and Google Drive schedules can independently generate PDF, XLSX, or TXT reports.
 - Extended the Self-Hosted Sync Worker and Turso schedule schema to persist report format, generate scheduled XLSX/TXT reports, validate manual uploads by format, and default existing schedules safely to PDF.
-- Preserved the existing date filters, custom ranges, schedule cadence, and pairwise five-minute separation across Telegram reports, Google Drive reports, and Telegram `.koinlybackup` uploads.
+- Preserved the existing date filters, custom ranges, schedule cadence, and pairwise five-minute separation across Telegram reports, Google Drive reports, and Telegram `.yutakabackup` uploads.
 - Synchronized application version metadata to `1.0.1142+186`.
 
 ## [1.0.1141] - 2026-09-14
 
 - Removed the redundant instructional copy from **Archive > Automatic local backup**, including the folder, retention, encrypted-file, and reopen-to-catch-up explanations.
-- Replaced Android's foreground/resume-only automatic local backup behavior with a native Android WorkManager job so due local backups can be created while the Koinly UI is closed.
-- The background worker reads the current SQLite data and saved backup preferences, writes the same version-7 encrypted `.koinlybackup` format through the persisted Android Storage Access Framework folder grant, applies the existing latest-only/history retention choice, and reports last-backup/error state back to the app.
+- Replaced Android's foreground/resume-only automatic local backup behavior with a native Android WorkManager job so due local backups can be created while the Yutaka UI is closed.
+- The background worker reads the current SQLite data and saved backup preferences, writes the same version-7 encrypted `.yutakabackup` format through the persisted Android Storage Access Framework folder grant, applies the existing latest-only/history retention choice, and reports last-backup/error state back to the app.
 - Non-Android automatic local backup behavior remains unchanged.
 - Synchronized application version metadata to `1.0.1141+185`.
 
 ## [1.0.1140] - 2026-09-14
 
-- Replaced custom date-range flows with one centered Koinly range popup that reuses the transaction editor's **Use range** interaction: select Start/End inside the same calendar and apply the range once.
+- Replaced custom date-range flows with one centered Yutaka range popup that reuses the transaction editor's **Use range** interaction: select Start/End inside the same calendar and apply the range once.
 - Applied the centered custom-range picker globally to the main date filter, Analytics, the default date filter in Settings, and automatic Analytics PDF schedules.
 - Replaced the automatic PDF date-filter dropdown with the centered **Choose Date Filter** popup and added **Custom range** alongside Today, This Week, This Month, This Year, and All Time.
 - Added Worker/Turso support for persisted custom start/end dates so scheduled Telegram and Google Drive PDFs use the exact selected custom range.
@@ -570,7 +596,7 @@
 - Moved **Automatic Telegram backup** out of Account & sync and into Archive; its page now manages only backup scheduling/status while using Telegram credentials from Settings > Credential.
 - Added **Archive > Cloud Backup** for automatic Analytics PDF schedules to Telegram and Google Drive; credential editing was removed from Analytics/cloud scheduling.
 - Removed the Telegram backup action from Account & sync and removed the Telegram/Drive configuration icons from the Analytics app bar. Manual Analytics PDF uploads continue to use the credentials configured in Settings > Credential.
-- Preserved Worker-side pairwise minimum five-minute separation across automatic Telegram PDF, Google Drive PDF, and Telegram `.koinlybackup` schedules.
+- Preserved Worker-side pairwise minimum five-minute separation across automatic Telegram PDF, Google Drive PDF, and Telegram `.yutakabackup` schedules.
 - Synchronized application version metadata to `1.0.1137+181`.
 
 ## [1.0.1136] - 2026-09-13
@@ -582,8 +608,8 @@
 ## [1.0.1135] - 2026-09-13
 
 - Added configurable automatic Analytics PDF delivery schedules for both Telegram and Google Drive, with separate report type, date filter, daily/weekly/monthly cadence, and delivery time settings.
-- Automatic PDFs are generated by the Self-Hosted Sync Worker from the latest synchronized Koinly data, so scheduled delivery does not require the app to stay open.
-- Enforced a minimum five-minute separation between every enabled automatic upload time: Telegram Analytics PDF, Google Drive Analytics PDF, and Telegram `.koinlybackup`. Conflicting schedules are rejected by the Worker as well as explained in the app.
+- Automatic PDFs are generated by the Self-Hosted Sync Worker from the latest synchronized Yutaka data, so scheduled delivery does not require the app to stay open.
+- Enforced a minimum five-minute separation between every enabled automatic upload time: Telegram Analytics PDF, Google Drive Analytics PDF, and Telegram `.yutakabackup`. Conflicting schedules are rejected by the Worker as well as explained in the app.
 - Disconnecting Google Drive now disables its automatic PDF schedule while preserving the rest of the Analytics upload configuration.
 - Synchronized application version metadata to `1.0.1135+179`.
 
@@ -631,7 +657,7 @@
 - Completely removed the in-app **Forgot password** flow from Account & sync.
 - Removed the recovery-key popup, recovery-key rotation control, and the client-side recovery API code that existed only for in-app password recovery.
 - Account password recovery is now handled from the Self-Hosted Sync Worker's `/profile` administration page.
-- Kept the Worker's legacy recovery endpoints intact for backward compatibility with older Koinly app versions.
+- Kept the Worker's legacy recovery endpoints intact for backward compatibility with older Yutaka app versions.
 - Bumped application metadata to `1.0.1129+173`.
 
 ## [1.0.1128] - 2026-09-13
@@ -656,7 +682,7 @@
 
 - Added direct **Upload Telegram** and **Upload Drive** actions to Analytics PDF reports. These now upload through the authenticated Self-Hosted Sync Worker instead of relying only on the device share sheet.
 - Telegram Analytics uploads reuse the existing encrypted Telegram-backup bot token and destination, so no duplicate Telegram configuration is required and automatic Telegram backups may remain disabled.
-- Added Google Drive connection settings for Analytics. Users configure their own Google OAuth Web application once, authorize their Google account in the browser, and Koinly uploads reports into a dedicated **Koinly Analytics** folder using the limited `drive.file` scope.
+- Added Google Drive connection settings for Analytics. Users configure their own Google OAuth Web application once, authorize their Google account in the browser, and Yutaka uploads reports into a dedicated **Yutaka Analytics** folder using the limited `drive.file` scope.
 - Added Worker-side encrypted storage for the Google OAuth Client Secret and refresh token, OAuth callback handling, token refresh, Drive folder creation, and PDF upload endpoints.
 - Added Worker health/deployment capability reporting for Analytics uploads and schema support for the new encrypted upload settings.
 
@@ -671,7 +697,7 @@
 
 - Added **Settings > Analytics** with Daily, Weekly, Monthly, and Yearly summaries. Each period reports income, expense, net cash flow, transaction activity, transfers, savings movement, loan/repayment activity, applicable budgets, top income/expense categories, and a current account-balance snapshot.
 - Added previous-period comparisons and period navigation/date selection so historical summaries can be reviewed without changing the app-wide default date filter.
-- Added local PDF report generation with **Download PDF** and **Share / upload** actions. The share flow uses the device share sheet so the PDF can be sent to Telegram, Google Drive, or another compatible app without adding separate cloud credentials to Koinly.
+- Added local PDF report generation with **Download PDF** and **Share / upload** actions. The share flow uses the device share sheet so the PDF can be sent to Telegram, Google Drive, or another compatible app without adding separate cloud credentials to Yutaka.
 
 ### Changed
 
@@ -737,7 +763,7 @@
 ### Fixed
 
 - Fixed the misleading `Sync pending • Waiting for internet` state. A pending
-  outbox no longer claims that the device has no internet; Koinly now
+  outbox no longer claims that the device has no internet; Yutaka now
   distinguishes Worker timeouts, Worker reachability/transport failures, Worker
   errors, and ordinary queued retries.
 - Made background sync preserve the real failure message and error code so the
@@ -761,7 +787,7 @@
 ### Fixed
 
 - Restricted Android, Windows, Linux, and macOS release build jobs to the
-  canonical `Chowdhury-Siam/Koinly` repository for both push and manual
+  canonical `Chowdhury-Siam/Yutaka` repository for both push and manual
   workflow runs, so fork repositories cannot build application release
   packages with the inherited workflow.
 - Kept the separate Self-Hosted Sync Worker workflow unchanged so fork owners
@@ -829,13 +855,13 @@
 ### Added
 
 - Integrated `ADMIN_USERNAME` and `ADMIN_PASSWORD` into the main eight-value setup checklist and subsequent instructions. The GitHub deployment workflow hashes the administrator password automatically; no separate hash-generation page or command is needed.
-- Added the self-hosted Worker's authenticated `/profile` administration portal: account counts, paginated account lists, usernames, creation dates, Active/Invited status, manual account creation, password resets, and confirmed account deletion. The responsive dashboard follows Koinly's emerald colors, rounded cards, inputs, buttons, light/dark themes, transitions, and reduced-motion preferences.
+- Added the self-hosted Worker's authenticated `/profile` administration portal: account counts, paginated account lists, usernames, creation dates, Active/Invited status, manual account creation, password resets, and confirmed account deletion. The responsive dashboard follows Yutaka's emerald colors, rounded cards, inputs, buttons, light/dark themes, transitions, and reduced-motion preferences.
 - Added administrator login using `ADMIN_USERNAME` and `ADMIN_PASSWORD` repository secrets, with automatic salted hashing before deployment. Ordinary sync accounts cannot access the portal. The UI displays clear success, invalid-login, duplicate-username, and server/database error messages.
 - Added revocable, one-hour administrator sessions with secure HttpOnly cookies, same-origin protection, login throttling, private responses, and a restrictive content security policy. New account passwords use salted PBKDF2 hashes; password resets revoke access/refresh sessions and the previous recovery key. Account deletion removes related cloud records atomically.
 
 ### Fixed
 
-- Android Photos and videos permission is no longer requested during startup or onboarding. Koinly now asks for media access only after the user explicitly taps the profile-photo/media upload action.
+- Android Photos and videos permission is no longer requested during startup or onboarding. Yutaka now asks for media access only after the user explicitly taps the profile-photo/media upload action.
 
 ### Deployment required
 
@@ -858,7 +884,7 @@
 ### Fixed
 
 - Fixed desktop text fields sliding horizontally while selecting text with the mouse. The app-wide scroll behavior no longer claims mouse drag gestures that belong to text selection.
-- Prevented Koinly's elastic/always-scrollable page physics from leaking into `EditableText`'s internal caret scrollable, so short field values stay anchored instead of overscrolling or appearing to disappear.
+- Prevented Yutaka's elastic/always-scrollable page physics from leaking into `EditableText`'s internal caret scrollable, so short field values stay anchored instead of overscrolling or appearing to disappear.
 - Kept mouse-wheel and trackpad scrolling for pages/lists while preserving normal mouse selection, copy, cut, paste, and caret behavior in every text field.
 - Bumped application metadata to `1.0.1108+152`.
 
@@ -899,7 +925,7 @@
 
 ### Fixed
 
-- Fixed Linux AppImage packaging failure by resizing and validating the Koinly icon as a real 512×512 PNG before passing it to `linuxdeploy`.
+- Fixed Linux AppImage packaging failure by resizing and validating the Yutaka icon as a real 512×512 PNG before passing it to `linuxdeploy`.
 - Fixed ARM64 desktop CI setup failures caused by `subosito/flutter-action` being unable to resolve some stable ARM64 SDK archive entries. Linux ARM64 now bootstraps the pinned Flutter `3.47.4` tag directly from the official Flutter repository.
 - Reworked macOS packaging into a single verified universal build produced on `macos-15-intel`, containing both `x86_64` and `arm64` slices. This avoids the ARM64 Flutter SDK archive resolution failure while keeping native Apple Silicon support.
 
@@ -915,7 +941,7 @@
 - Added first-class Linux desktop release builds for both x64 and ARM64. GitHub Actions now publishes a broad-distro AppImage plus a portable `.tar.gz` bundle for each architecture.
 - Added macOS release builds for Apple Silicon ARM64 and Intel x64, publishing both DMG installers and zipped `.app` bundles.
 - Added optional Developer ID signing and Apple notarization support for macOS GitHub releases.
-- Added Linux desktop launcher metadata and Koinly branding for packaged AppImages.
+- Added Linux desktop launcher metadata and Yutaka branding for packaged AppImages.
 
 ### Changed
 
@@ -956,7 +982,7 @@
 
 ### Changed
 - Refined the shared switch theme so on/off toggles no longer render with a harsh outline around the track.
-- Improved inactive thumb/track contrast and kept pressed feedback subtle while preserving the existing Koinly green active state.
+- Improved inactive thumb/track contrast and kept pressed feedback subtle while preserving the existing Yutaka green active state.
 - Bumped application metadata to `1.0.1100+144`.
 
 ## [1.0.1099] - 2026-09-12
@@ -971,7 +997,7 @@
 ### Fixed
 - Center popups no longer shrink when the on-screen keyboard opens. Popup sizing now ignores IME insets and stays based on the real safe viewport.
 - While typing, popups move toward the top of the screen instead of scaling down, keeping text and controls at their normal readable size.
-- The behavior is shared by the transaction editor and every popup using the common Koinly popup frame.
+- The behavior is shared by the transaction editor and every popup using the common Yutaka popup frame.
 
 ### Changed
 - Bumped application metadata to `1.0.1098+142`.
@@ -989,7 +1015,7 @@
 ## [1.0.1096] - 2026-09-11
 
 ### Changed
-- Background update checks now run at Android WorkManager's 15-minute periodic floor, so new-release notifications can arrive while Koinly is closed instead of depending on the next app launch.
+- Background update checks now run at Android WorkManager's 15-minute periodic floor, so new-release notifications can arrive while Yutaka is closed instead of depending on the next app launch.
 - Removed the battery-not-low constraint from the lightweight release check; only an active network connection is required.
 - Added a Loan preferences toggle to show or hide loan-linked movements from the main Transaction list without deleting them or changing loan/account data.
 - Bumped application metadata to `1.0.1096+140`.
@@ -1031,7 +1057,7 @@
 
 ### Fixed
 
-- Fixed the top success/error/warning feedback banner visual bug. The oversized Awesome Snackbar MaterialBanner surface is now presented as a compact floating top notification with safe-area spacing, restrained height, balanced icon/text/close alignment, consistent Koinly rounding, and no decorative shapes bleeding into the message.
+- Fixed the top success/error/warning feedback banner visual bug. The oversized Awesome Snackbar MaterialBanner surface is now presented as a compact floating top notification with safe-area spacing, restrained height, balanced icon/text/close alignment, consistent Yutaka rounding, and no decorative shapes bleeding into the message.
 - Preserved the same feedback timing, semantic success/error/warning types, and dismiss behavior; no transaction, Slidable, navigation, loan, chart, update-notification, or other UI behavior was changed in this release.
 
 ### Changed
@@ -1042,7 +1068,7 @@
 
 ### Added
 
-- Added Android background update monitoring when **Automatic update pop-ups** is enabled. Android WorkManager performs a battery-aware network check every few hours and Koinly posts one deduplicated local notification per newly detected release, including when the app is not currently open. Turning the setting off cancels the worker and its update notification.
+- Added Android background update monitoring when **Automatic update pop-ups** is enabled. Android WorkManager performs a battery-aware network check every few hours and Yutaka posts one deduplicated local notification per newly detected release, including when the app is not currently open. Turning the setting off cancels the worker and its update notification.
 - Added a continuously animated Home balance wave using `fl_chart`. The motion is subtle, looped, and automatically stops when Reduce Motion / disabled animations is active.
 - Reworked animated empty states so the Lottie pulse remains as ambient motion while the foreground icon now matches the actual section (budget, category spending, transactions, plans, loans, and other empty cards).
 
@@ -1071,7 +1097,7 @@
 
 ### Fixed
 
-- Fixed Flutter Slidable rows rendering as clipped rectangular action strips during partial swipes. Transaction, planned-purchase, and loan quick actions now use rounded Koinly action surfaces with stable BehindMotion, compact fitted labels, auto-close behavior, and per-list grouping so only one row stays open.
+- Fixed Flutter Slidable rows rendering as clipped rectangular action strips during partial swipes. Transaction, planned-purchase, and loan quick actions now use rounded Yutaka action surfaces with stable BehindMotion, compact fitted labels, auto-close behavior, and per-list grouping so only one row stays open.
 - Fixed the mobile tab transition briefly mixing the previous page with the next tab's dock selection and transaction Plan/Add controls. Page content, dock state, and tab-specific floating actions now transition as one keyed stage.
 
 ### Changed
@@ -1084,7 +1110,7 @@
 
 ### Fixed
 
-- Fixed `flutter pub get` failing after the Awesome Snackbar Content integration. `awesome_snackbar_content` 0.1.8 uses Flutter localizations, which on the current Flutter 3.47.x toolchain requires `intl ^0.20.3`; Koinly now uses the same compatible Intl constraint instead of the older `^0.19.0`.
+- Fixed `flutter pub get` failing after the Awesome Snackbar Content integration. `awesome_snackbar_content` 0.1.8 uses Flutter localizations, which on the current Flutter 3.47.x toolchain requires `intl ^0.20.3`; Yutaka now uses the same compatible Intl constraint instead of the older `^0.19.0`.
 - Kept `awesome_snackbar_content` 0.1.8 rather than downgrading it, preserving the current desktop/mobile fixes and semantic snackbar styling.
 - Bumped application metadata to `1.0.1087+131`.
 
@@ -1094,7 +1120,7 @@
 
 - Added Lottie-powered empty states for key zero-data screens while respecting the system Reduce Motion setting.
 - Added Flutter SpinKit loaders and centralized compact/page loading indicators across the app.
-- Added Awesome Snackbar Content for semantic success, warning, and failure feedback while preserving Koinly's lightweight top notification for ordinary informational messages.
+- Added Awesome Snackbar Content for semantic success, warning, and failure feedback while preserving Yutaka's lightweight top notification for ordinary informational messages.
 - Added Flutter Slidable actions to transaction, purchase-plan, and loan rows. Touch users can quickly duplicate/edit/delete transactions, buy/edit/delete planned items, and record/edit loans; desktop transaction rows keep an explicit action menu.
 - Added a Timelines-based chronological loan history with loan creation, repayments, dates, amounts, and existing repayment deletion controls. The maintained `timelines_plus` implementation is used for current Flutter compatibility.
 
@@ -1127,7 +1153,7 @@
 ### Fixed
 
 - Fixed Android Back / predictive Back dismissing a page or centered popup together with the on-screen keyboard. While the IME is visible, the first Back action now only clears text-field focus and dismisses the keyboard; all entered values and the current form remain intact. A later Back action, after the keyboard is closed, navigates away normally.
-- Centralized the behavior in a shared keyboard-back guard used by every standard `PageScaffold`, every centered Koinly popup, and first-run onboarding currency setup. This covers transaction, account, category, budget, loan, profile, search, login/sync, recovery, currency, and other existing text-entry flows without screen-specific hacks.
+- Centralized the behavior in a shared keyboard-back guard used by every standard `PageScaffold`, every centered Yutaka popup, and first-run onboarding currency setup. This covers transaction, account, category, budget, loan, profile, search, login/sync, recovery, currency, and other existing text-entry flows without screen-specific hacks.
 - Added the missing tap-outside focus dismissal to all account-recovery text fields so keyboard dismissal behavior is consistent with the rest of the app.
 
 ## [1.0.1082] - 2026-09-11
@@ -1150,7 +1176,7 @@
 
 ### Fixed
 
-- Fixed the Android release workflow overwriting Koinly's custom splash resources when it regenerated missing Gradle wrapper binaries. Release builds now preserve the complete checked-in Android project and copy back only the generated wrapper files, so Android 12+ uses the dedicated transparent/padded K mark instead of falling back to the rounded-square launcher icon.
+- Fixed the Android release workflow overwriting Yutaka's custom splash resources when it regenerated missing Gradle wrapper binaries. Release builds now preserve the complete checked-in Android project and copy back only the generated wrapper files, so Android 12+ uses the dedicated transparent/padded K mark instead of falling back to the rounded-square launcher icon.
 - Tightened the Flutter loading mark bounds so the in-app fallback splash also keeps the full K artwork visible without clipping.
 
 ## [1.0.1080] - 2026-09-11
@@ -1162,7 +1188,7 @@
 
 ### Fixed
 
-- Reworked the Android launch artwork to use a transparent, extra-safe padded Koinly mark instead of the full rounded-square launcher tile, preventing OEM splash-screen masks from cropping the launch logo.
+- Reworked the Android launch artwork to use a transparent, extra-safe padded Yutaka mark instead of the full rounded-square launcher tile, preventing OEM splash-screen masks from cropping the launch logo.
 - Editing a linked loan transaction now keeps the underlying loan/repayment record and account balance synchronized. Deleting a linked repayment removes its repayment record safely, while deleting a loan disbursal transaction detaches only the recorded account movement from the loan.
 
 ## [1.0.1079] - 2026-09-11
@@ -1248,7 +1274,7 @@
 ## [1.0.1072] - 2026-09-09
 
 ### Fixed
-- Fixed self-hosted Telegram backups that could decrypt successfully but contain zero finance rows. The Worker now refuses to send an empty `.koinlybackup` and returns a clear recovery message instead of producing a file that later appears to restore successfully.
+- Fixed self-hosted Telegram backups that could decrypt successfully but contain zero finance rows. The Worker now refuses to send an empty `.yutakabackup` and returns a clear recovery message instead of producing a file that later appears to restore successfully.
 - Telegram backup generation now reconstructs current cloud state from sync history when `sync_entities` is unexpectedly empty but recoverable `sync_changes` still exist.
 - Backup restore now validates the actual supported finance-row count rather than treating a database object containing only empty arrays as valid data.
 - **Upload local changes** now reconciles the complete local snapshot, so records that existed before signing in to a self-hosted Worker are uploaded instead of being missed because they were never in the sync outbox.
@@ -1259,14 +1285,14 @@
 - Existing-account login now pulls/merges the cloud first and then adopts the complete merged local snapshot back to that account, so local-only records become part of future Worker backups automatically.
 
 ### Changed
-- Telegram-generated backups include per-table `record_counts` and a total `finance_record_count` diagnostic field while remaining compatible with the existing `.koinlybackup` restore format.
+- Telegram-generated backups include per-table `record_counts` and a total `finance_record_count` diagnostic field while remaining compatible with the existing `.yutakabackup` restore format.
 
 ## [1.0.1071] - 2026-09-09
 
 ### Added
-- Optional Telegram `.koinlybackup` delivery for the **self-hosted Sync Worker**. A bot button now appears in the Account & sync app bar only while Self-hosted is selected and the device is signed in.
-- Self-hosted owners can configure a Telegram bot token, group/channel Chat ID, daily/weekly/monthly schedule, exact local time, weekly day or monthly date, test delivery, and **Upload backup now** from Koinly.
-- The self-hosted Worker encrypts the saved bot token with an AES-GCM key derived from its `JWT_SECRET`, stores only the encrypted token in Turso, creates a cloud-state `.koinlybackup`, and uploads it directly to Telegram.
+- Optional Telegram `.yutakabackup` delivery for the **self-hosted Sync Worker**. A bot button now appears in the Account & sync app bar only while Self-hosted is selected and the device is signed in.
+- Self-hosted owners can configure a Telegram bot token, group/channel Chat ID, daily/weekly/monthly schedule, exact local time, weekly day or monthly date, test delivery, and **Upload backup now** from Yutaka.
+- The self-hosted Worker encrypts the saved bot token with an AES-GCM key derived from its `JWT_SECRET`, stores only the encrypted token in Turso, creates a cloud-state `.yutakabackup`, and uploads it directly to Telegram.
 - A dedicated self-hosted Wrangler config adds a five-minute Cron Trigger. The managed/default owner Worker does not receive this trigger and the Telegram-backup API rejects managed invite-key deployments.
 
 ### Changed
@@ -1292,7 +1318,7 @@
 ### Added
 - Added a **Plan** floating action button on the Transaction tab for purchase planning.
 - Added a dedicated Plan page where users can create and edit items with an expected price and expense category.
-- Planned items can be purchased directly: Koinly opens a centered account chooser, creates an expense transaction with the current date/time, deducts the selected account, and removes the completed planned item.
+- Planned items can be purchased directly: Yutaka opens a centered account chooser, creates an expense transaction with the current date/time, deducts the selected account, and removes the completed planned item.
 - Planned purchases are included in local backups, merge restores, category deduplication, and multi-device sync.
 
 ### Changed
@@ -1306,11 +1332,11 @@
 - Backup restore and cloud-login import paths remove only untouched built-in starter-account fingerprints before merging, preventing duplicate placeholder Cash/Card/Bank Account rows while preserving used or customized accounts.
 - Automatic-backup retention no longer uses a numeric **How many to keep** slider. The new **Delete older automatic backups** switch defaults on; when enabled, only the newest automatic backup is kept, and when disabled, automatic backup history is retained.
 - Automatic local backup now requires an explicit folder. The **App storage** destination option has been removed.
-- Choosing an automatic-backup location creates and uses a dedicated `Koinly/Backup` subfolder. Android keeps the parent folder grant through Storage Access Framework so scheduled backups continue after restarts.
+- Choosing an automatic-backup location creates and uses a dedicated `Yutaka/Backup` subfolder. Android keeps the parent folder grant through Storage Access Framework so scheduled backups continue after restarts.
 - Removed **Restore last safety backup** from Advanced settings. Safety backups remain internal protection for risky data operations.
 
 ### Fixed
-- Restoring a backup during first-run offline setup no longer leaves Koinly's preloaded starter accounts beside the restored accounts.
+- Restoring a backup during first-run offline setup no longer leaves Yutaka's preloaded starter accounts beside the restored accounts.
 - Existing-account login now discards untouched preloaded starter placeholders before and after the cloud merge, and pushes tombstones so old cloud placeholders cannot return.
 - Upgrading an existing installation that already has the old duplicate-starter bug now detects a redundant untouched starter fingerprint and cleans the remaining built-in placeholders while preserving used or customized accounts.
 
@@ -1324,7 +1350,7 @@
 ### Changed
 - **Upload local changes** is now merge-first: cloud-only records are preserved and newer same-ID records are reconciled instead of replacing the cloud dataset.
 - **Restore cloud copy** now performs a two-way merge. Local-only records remain on the device, the full cloud history is folded in, and any resulting local changes are queued back to cloud.
-- Loading a `.koinlybackup` or restoring the last safety backup now merges with the active local database rather than replacing it.
+- Loading a `.yutakabackup` or restoring the last safety backup now merges with the active local database rather than replacing it.
 - Categories are deduplicated semantically by category type plus normalized, case-insensitive name. For example, local `Food` and cloud ` food ` resolve to one category and transaction/budget/preference references are remapped to it.
 - Same-ID entity conflicts use `updated_on` (falling back to `created_on`) to retain the newer row; unrelated IDs are unioned.
 - The older Sync ID/PIN snapshot screen now follows the same merge semantics for both upload and download.
@@ -1355,8 +1381,8 @@
 ### Added
 - Loan start dates, due dates, and repayment records now include an editable time as well as a date. Existing loan records remain compatible and continue to load normally.
 - Added **Advanced settings > Automatic local backup** with daily, weekly, or monthly scheduling, a selectable backup time, configurable retention count, and a selectable local backup folder.
-- Automatic backups use separate `koinly_auto_*.koinlybackup` files, prune only older automatic backups, and never delete manual or safety backups.
-- Missed scheduled backups are created when Koinly next opens or resumes, and the settings screen shows the last/next automatic backup state.
+- Automatic backups use separate `yutaka_auto_*.yutakabackup` files, prune only older automatic backups, and never delete manual or safety backups.
+- Missed scheduled backups are created when Yutaka next opens or resumes, and the settings screen shows the last/next automatic backup state.
 
 ### Changed
 - Loan detail and payment history now display the recorded time alongside the date.
@@ -1364,7 +1390,7 @@
 ## [1.0.1064] - 2026-09-07
 
 ### Fixed
-- Removed the Android CI temporary signing-key fallback. Release APK builds now require the permanent Koinly signing secrets and fail immediately if any signing secret is missing.
+- Removed the Android CI temporary signing-key fallback. Release APK builds now require the permanent Yutaka signing secrets and fail immediately if any signing secret is missing.
 - Added validation for the decoded release keystore, configured alias, and store password before Flutter starts the Android release build.
 - The workflow now prints the configured release certificate SHA-256 fingerprint in the build log so the signing identity can be checked between releases.
 
@@ -1394,11 +1420,11 @@
 ### Fixed
 - Removed the custom desktop pointer-wheel animation layer that queued `animateTo` calls and caused jerky, overshooting, or jumping scroll behavior. Desktop pages, mouse wheels, touchpads, and fixed-item Choose pickers now use Flutter's native scrolling pipeline.
 - Removed selection-size changes from wheel rows so Theme, Currency, account/category selectors, and other Choose pickers no longer resize items while they are moving.
-- Windows updates now download inside Koinly instead of opening the GitHub installer URL directly. The Windows updater now shows the same live percentage, transferred size, speed, animated progress panel, cancel state, and retry behavior used by Android.
+- Windows updates now download inside Yutaka instead of opening the GitHub installer URL directly. The Windows updater now shows the same live percentage, transferred size, speed, animated progress panel, cancel state, and retry behavior used by Android.
 - Downloaded Windows installers are retained as pending updates and can be launched again if installation is not completed on the first attempt.
 
 ### Changed
-- Windows update downloads now verify that the installer comes from the configured Koinly GitHub release before saving or launching it.
+- Windows update downloads now verify that the installer comes from the configured Yutaka GitHub release before saving or launching it.
 
 ## [1.0.1060] - 2026-09-04
 
@@ -1415,7 +1441,7 @@
 ### Fixed
 - Download progress wave now continuously animates while an update is downloading instead of becoming static when reduced-motion settings are enabled.
 - Choose Color no longer uses a nested non-scrollable grid that could swallow desktop mouse-wheel input; preset colors now use a wrap layout so the page scrolls normally.
-- Transaction date-range selection now opens in Koinly's centered popup instead of taking over the entire screen.
+- Transaction date-range selection now opens in Yutaka's centered popup instead of taking over the entire screen.
 
 ### Changed
 - Transaction Title now appears above Amount for Expense and Income entry.
@@ -1428,7 +1454,7 @@
 - Reworked the appearance-color screens for Windows/large displays so the preset palette uses compact fixed-density rows instead of oversized empty grid cells.
 - Rebuilt the custom color picker with a desktop two-column layout and a capped color wheel, preventing the wheel and controls from stretching far beyond usable desktop sizes.
 - Constrained the photo color picker on desktop so the complete appearance-color workflow remains readable at wide window sizes.
-- Made the generated Windows runner title patch handle both Flutter runner templates so the title bar consistently shows `Koinly` instead of the lowercase generated project name.
+- Made the generated Windows runner title patch handle both Flutter runner templates so the title bar consistently shows `Yutaka` instead of the lowercase generated project name.
 
 ### Changed
 
@@ -1520,7 +1546,7 @@
 ### Changed
 
 - Pointed GitHub update checks, release workflow gates, documentation links,
-  and the in-app GitHub link at `Chowdhury-Siam/Koinly`.
+  and the in-app GitHub link at `Chowdhury-Siam/Yutaka`.
 
 ## [1.0.1046] - 2026-08-28
 
@@ -1637,7 +1663,7 @@
 
 ### Changed
 
-- Worker changes in `Chowdhury-Siam/Koinly` now automatically deploy the
+- Worker changes in `Chowdhury-Siam/Yutaka` now automatically deploy the
   Owner/Default sync Worker, while the owner deployment job is always skipped
   in forks.
 - Worker changes in fork repositories now automatically deploy the User
@@ -1666,7 +1692,7 @@
 ### Changed
 
 - Android APK/AAB and Windows installer jobs now run automatically only in the
-  original `Chowdhury-Siam/Koinly` repository. Fork owners can still start
+  original `Chowdhury-Siam/Yutaka` repository. Fork owners can still start
   artifact builds manually.
 - Stable GitHub Release publishing is restricted to the original repository,
   including manually dispatched builds.
@@ -1761,9 +1787,9 @@
 - The default-service Create account form now requires a Registration Key and
   relies on backend validation; self-hosted registration uses the first-owner
   flow without a key.
-- Added a Pursenal-style Load backup workflow in Settings that opens a file picker, loads a `.koinlybackup` file, replaces local data, and triggers the existing cloud-upload path when signed in.
-- Android package/application ID changed from `com.siamapps.koinly` to `com.koinly.siam`.
-- Transaction amount entry now uses the normal phone/desktop keyboard instead of Koinly's old custom on-screen keypad.
+- Added a Pursenal-style Load backup workflow in Settings that opens a file picker, loads a `.yutakabackup` file, replaces local data, and triggers the existing cloud-upload path when signed in.
+- Android package/application ID changed from `com.siamapps.yutaka` to `com.yutaka.siam`.
+- Transaction amount entry now uses the normal phone/desktop keyboard instead of Yutaka's old custom on-screen keypad.
 - Release automation now falls back to only the first/current bullet under each Unreleased heading, so accidental older notes do not flood the newest GitHub Release body.
 
 ### Previous development history
@@ -1785,12 +1811,12 @@
 - Hardened the Cloudflare Worker `/v1/sync/replace` endpoint so duplicate snapshot upserts are coalesced by entity before writing to Turso.
 - Made replace-sync processed operation writes idempotent, preventing repeated operation IDs from turning cloud overwrite attempts into 500 responses.
 - Added sanitized Worker-side logging for unexpected internal errors so future Cloudflare logs show the useful failure reason.
-- Fixed Android release builds on newer Flutter SDKs by hiding Flutter's `Category` and `Summary` annotation exports where they collided with Koinly finance models.
+- Fixed Android release builds on newer Flutter SDKs by hiding Flutter's `Category` and `Summary` annotation exports where they collided with Yutaka finance models.
 - Fixed clean ZIP packaging on Windows so entries use GitHub-compatible `/` paths instead of literal backslash filenames.
 - Ensured workflow files package as `.github/workflows/*.yml`, allowing GitHub Actions to detect them after upload.
 - Continued Phase 13 source-structure cleanup by extracting shared icon lookup/rendering helpers into `lib/icon_helpers.dart`.
 - Reduced `lib/main.dart` further by moving reusable icon glyph and icon bubble UI helpers out of the main app file.
-- Continued Phase 12 source-structure cleanup by extracting reusable Koinly branding widgets into `lib/branding_widgets.dart`.
+- Continued Phase 12 source-structure cleanup by extracting reusable Yutaka branding widgets into `lib/branding_widgets.dart`.
 - Moved the shared `firstOrNull` collection extension into `lib/collection_utils.dart`.
 - Continued Phase 11 source-structure cleanup by extracting `ReminderService` into `lib/reminder_service.dart`.
 - Moved legacy Cloudflare sync, account sync API, and MongoDB snapshot sync helpers into `lib/sync_services.dart`.
@@ -1811,7 +1837,7 @@
 - Added Phase 4 diagnostics with Advanced settings → Data health for local data, sync backlog, sync conflicts, and skipped setup leftovers.
 - Added a safe Data health cleanup action for untouched starter accounts that remain after the user skipped account setup.
 - Added Phase 3 data safety: automatic local safety backups are created before manual restores, legacy cloud restores, full cloud-overwrite syncs, and server reset sync operations.
-- Koinly now keeps the newest 3 safety backups and exposes Restore last safety backup in Advanced settings.
+- Yutaka now keeps the newest 3 safety backups and exposes Restore last safety backup in Advanced settings.
 - Login/cloud-restore no longer clears local data before a successful cloud download; the app downloads first, saves a safety backup, then overwrites local finance data.
 - Started Phase 2 polish by reducing desktop transitions, card animations, update-wave animation, gradients, and heavy shadows.
 - Made desktop page headers more compact for a less oversized Windows layout.

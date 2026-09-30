@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Android-only bridge for the system battery-optimization exemption used by
-/// Koinly's background update/subscription workers.
+/// Android-only bridge for battery-optimization status/settings used by
+/// Yutaka's background update/subscription workers. Google Play builds only
+/// open Android's general settings screen; direct builds may request the
+/// app-specific exemption.
 class AndroidBackgroundPermissionService {
   const AndroidBackgroundPermissionService._();
 
-  static const MethodChannel _channel = MethodChannel('com.koinly.siam/background_permissions');
+  static const MethodChannel _channel = MethodChannel('com.yutaka.siam/background_permissions');
 
   static bool get isSupported => !kIsWeb && Platform.isAndroid;
 
@@ -35,8 +37,9 @@ class AndroidBackgroundPermissionService {
     }
   }
 
-  /// Requests Koinly's Android battery-optimization exemption directly.
-  /// Android/OEM builds show the system app-specific background-run prompt.
+  /// Opens the appropriate Android battery settings for this distribution.
+  /// Play builds use the general settings screen; direct builds may show the
+  /// app-specific exemption prompt declared by the direct manifest.
   static Future<bool> openBatteryOptimizationSettings() async {
     if (!isSupported) return false;
     try {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/category_deduplication.dart';
+import 'package:yutaka/category_deduplication.dart';
 
 Map<String, dynamic> duplicateCategoryPayload() => {
       'categories': [

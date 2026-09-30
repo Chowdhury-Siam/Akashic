@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/sync_services.dart';
+import 'package:yutaka/sync_services.dart';
 
 void main() {
   test('self-hosted sync endpoint accepts only an HTTPS origin', () {

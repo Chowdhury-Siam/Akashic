@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/main.dart';
+import 'package:yutaka/main.dart';
 
 Map<String, dynamic> storedNote(NoteRichTextController controller) {
-  const prefix = 'KOINLY_RICH_NOTE_V1:';
+  const prefix = 'YUTAKA_RICH_NOTE_V1:';
   final stored = controller.toStoredBody();
   expect(stored, startsWith(prefix));
   return jsonDecode(stored.substring(prefix.length)) as Map<String, dynamic>;

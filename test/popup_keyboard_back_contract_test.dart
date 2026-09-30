@@ -24,15 +24,15 @@ void main() {
     final app = File('lib/main.dart').readAsStringSync();
 
     final pageStart = app.indexOf('class PageScaffold extends StatelessWidget');
-    final atmosphereStart = app.indexOf('class KoinlyAtmosphere extends StatelessWidget');
+    final atmosphereStart = app.indexOf('class YutakaAtmosphere extends StatelessWidget');
     expect(pageStart, greaterThanOrEqualTo(0));
     expect(atmosphereStart, greaterThan(pageStart));
     final pageScaffold = app.substring(pageStart, atmosphereStart);
     expect(pageScaffold, contains('return _KeyboardDismissOnBack('));
     expect(pageScaffold, contains('child: Scaffold('));
 
-    final frameStart = app.indexOf('class _KoinlyPopupFrame extends StatelessWidget');
-    final contentStart = app.indexOf('class KoinlyPopupContent extends StatelessWidget');
+    final frameStart = app.indexOf('class _YutakaPopupFrame extends StatelessWidget');
+    final contentStart = app.indexOf('class YutakaPopupContent extends StatelessWidget');
     expect(frameStart, greaterThanOrEqualTo(0));
     expect(contentStart, greaterThan(frameStart));
     final frame = app.substring(frameStart, contentStart);
@@ -58,7 +58,7 @@ void main() {
     expect(stateStart, greaterThan(editorStart));
 
     final editorLauncher = app.substring(editorStart, stateStart);
-    expect(editorLauncher, contains('showKoinlyPopup<void>('));
+    expect(editorLauncher, contains('showYutakaPopup<void>('));
     expect(editorLauncher, contains('child: TransactionEditor('));
   });
 }

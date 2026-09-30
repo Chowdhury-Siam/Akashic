@@ -26,7 +26,7 @@ Future<LoanStartDateTimeConfiguration?> showLoanStartDateTimeConfiguration(
 }) {
   var workingStart = start;
 
-  return showKoinlyPopup<LoanStartDateTimeConfiguration>(
+  return showYutakaPopup<LoanStartDateTimeConfiguration>(
     context,
     maxWidth: 470,
     maxHeight: 430,
@@ -34,7 +34,7 @@ Future<LoanStartDateTimeConfiguration?> showLoanStartDateTimeConfiguration(
       builder: (dialogContext, setModalState) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-          child: KoinlyPopupContent(
+          child: YutakaPopupContent(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -114,7 +114,7 @@ Future<LoanInterestConfiguration?> showLoanInterestConfiguration(
   var workingPeriod = period;
 
   try {
-    return await showKoinlyPopup<LoanInterestConfiguration>(
+    return await showYutakaPopup<LoanInterestConfiguration>(
       context,
       maxWidth: 470,
       maxHeight: 590,
@@ -123,7 +123,7 @@ Future<LoanInterestConfiguration?> showLoanInterestConfiguration(
           final rateValue = double.tryParse(rateController.text.trim()) ?? 0;
           return Padding(
             padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-            child: KoinlyPopupContent(
+            child: YutakaPopupContent(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,7 +151,7 @@ Future<LoanInterestConfiguration?> showLoanInterestConfiguration(
                   if (workingType != LoanInterestType.none) ...[
                     const SizedBox(height: 16),
                     TextField(
-                      contextMenuBuilder: koinlyTextFieldContextMenu,
+                      contextMenuBuilder: yutakaTextFieldContextMenu,
                       enableInteractiveSelection: true,
                       onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                       controller: rateController,
@@ -210,7 +210,7 @@ Future<LoanInterestConfiguration?> showLoanInterestConfiguration(
 }
 
 Future<void> showLoanEditorSheet(BuildContext context, {Loan? loan, LoanDirection defaultDirection = LoanDirection.lent}) {
-  return showKoinlyPopup<void>(
+  return showYutakaPopup<void>(
     context,
     maxWidth: 600,
     maxHeight: 760,
@@ -377,7 +377,7 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
     final contactOption = _contactOption(state);
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -403,12 +403,12 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
           AppleSelectionField(label: 'Person', option: contactOption, onTap: () => _pickContact(state)),
           if (contactId == '__new__') ...[
             const SizedBox(height: 10),
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: newPerson, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Person name', prefixIcon: Icon(Icons.person_add_rounded))),
           ],
           const SizedBox(height: 12),
-          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -519,7 +519,7 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
             ),
           ],
           const SizedBox(height: 12),
-          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: note, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)')),
           const SizedBox(height: 20),
@@ -537,7 +537,7 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
 }
 
 Future<void> showLoanPaymentSheet(BuildContext context, {required Loan loan, double? initialAmount}) {
-  return showKoinlyPopup<void>(
+  return showYutakaPopup<void>(
     context,
     maxWidth: 560,
     maxHeight: 700,
@@ -636,7 +636,7 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
     final value = double.tryParse(amount.text) ?? 0;
     final split = allocateLoanPayment(widget.loan, state.paymentsForLoan(widget.loan.id), value, paidOn);
     final account = state.accountOf(accountId ?? '');
-    return KoinlyPopupContent(
+    return YutakaPopupContent(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -650,7 +650,7 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
           const SizedBox(height: 8),
           Text('Remaining ${state.format(remaining)}', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: kSleekAccent, fontWeight: FontWeight.w900)),
           const SizedBox(height: 14),
-          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -743,7 +743,7 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
               },
             ),
           const SizedBox(height: 12),
-          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: note, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)')),
           const SizedBox(height: 20),
@@ -761,7 +761,7 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
 }
 
 Future<void> showLoanPreferencesSheet(BuildContext context) {
-  return showKoinlyPopup<void>(context, maxWidth: 540, maxHeight: 520, child: const _LoanPreferencesSheet());
+  return showYutakaPopup<void>(context, maxWidth: 540, maxHeight: 520, child: const _LoanPreferencesSheet());
 }
 
 class _LoanPreferencesSheet extends StatelessWidget {

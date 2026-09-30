@@ -157,9 +157,9 @@ function legacyUsername(value) {
     .replace(/[^a-z0-9._-]+/g, '_')
     .replace(/^[._-]+|[._-]+$/g, '')
     .slice(0, 32);
-  if (!username) username = 'koinly_owner';
+  if (!username) username = 'yutaka_owner';
   while (username.length < 3) username += '_owner';
-  return username.slice(0, 32).replace(/[._-]+$/g, '') || 'koinly_owner';
+  return username.slice(0, 32).replace(/[._-]+$/g, '') || 'yutaka_owner';
 }
 
 function splitSqlStatements(source) {

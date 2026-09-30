@@ -8,7 +8,7 @@ const workerDir = dirname(scriptDir);
 const repoDir = dirname(dirname(workerDir));
 const outputDir = join(workerDir, '.app-deploy-bundle');
 const targetDir = join(repoDir, 'assets', 'worker');
-const target = join(targetDir, 'koinly_sync_worker.js');
+const target = join(targetDir, 'yutaka_sync_worker.js');
 
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
@@ -26,7 +26,7 @@ const result = spawnSync(
     '--config',
     'wrangler.self-hosted.toml',
     '--name',
-    'koinly-sync-worker',
+    'yutaka-sync-worker',
     '--outdir',
     outputDir,
   ],

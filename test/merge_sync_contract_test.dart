@@ -14,14 +14,14 @@ void main() {
 
   test('Android automatic backup uses persisted Storage Access Framework access', () {
     final dartSource = File('lib/android_saf_backup_store.dart').readAsStringSync();
-    final androidSource = File('android/app/src/main/kotlin/com/koinly/siam/MainActivity.kt').readAsStringSync();
+    final androidSource = File('android/app/src/main/kotlin/com/yutaka/siam/MainActivity.kt').readAsStringSync();
 
-    expect(dartSource, contains('com.koinly.siam/backup_storage'));
+    expect(dartSource, contains('com.yutaka.siam/backup_storage'));
     expect(androidSource, contains('Intent.ACTION_OPEN_DOCUMENT_TREE'));
     expect(androidSource, contains('takePersistableUriPermission'));
     expect(androidSource, contains('DocumentsContract.createDocument'));
-    expect(androidSource, contains('ensureKoinlyBackupDirectory'));
-    expect(androidSource, contains('"Koinly"'));
+    expect(androidSource, contains('ensureYutakaBackupDirectory'));
+    expect(androidSource, contains('"Yutaka"'));
     expect(androidSource, contains('"Backup"'));
   });
 

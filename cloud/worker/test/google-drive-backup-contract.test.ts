@@ -12,7 +12,7 @@ test('Google Drive cloud backup has settings, manual upload, cron delivery, and 
   assert.match(source, /runDueGoogleDriveBackups/);
   assert.match(source, /buildGoogleDriveBackupFile/);
   assert.match(source, /resolveGoogleBackupFolder/);
-  assert.match(source, /Koinly Backup/);
+  assert.match(source, /Yutaka Backup/);
   assert.match(source, /googleDriveBackupAvailable:\s*true/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS google_drive_backup_settings/);
   assert.match(workflow, /googleDriveBackupAvailable == true/);

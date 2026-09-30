@@ -8,7 +8,7 @@ void main() {
 
     expect(source, contains("addActionLabel: 'Add account'"));
     expect(source, contains("addActionLabel: 'Add category'"));
-    expect(source, contains("return showKoinlyPopup<String>("));
+    expect(source, contains("return showYutakaPopup<String>("));
     expect(source, contains('Navigator.pop(context, a.id)'));
     expect(source, contains('Navigator.pop(context, category.id)'));
     expect(source, contains('fixedType: categoryType'));

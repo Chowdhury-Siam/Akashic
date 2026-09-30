@@ -27,7 +27,7 @@ void main() {
     expect(app, contains('SpinKitThreeBounce('));
     expect(app, contains('SpinKitFadingCircle('));
     expect(app, contains('ContentType.success'));
-    expect(app, contains('class _KoinlyTopFeedbackBanner extends StatefulWidget'));
+    expect(app, contains('class _YutakaTopFeedbackBanner extends StatefulWidget'));
     expect(app, contains('PieChart('));
     expect(app, contains("ValueKey('transaction-\${tx.id}')"));
     expect(app, contains("ValueKey('planned-\${item.id}')"));

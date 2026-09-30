@@ -21,13 +21,13 @@ on:
       - ".github/workflows/build-android-apks.yml"
 
 concurrency:
-  group: koinly-release-${{ github.ref }}
+  group: yutaka-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   prepare-worker-bundle:
     name: Prepare in-app Worker deployment bundle
-    if: github.repository == 'Chowdhury-Siam/Koinly'
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,8 +39,8 @@ jobs:
         id: worker-bundle-cache
         uses: actions/cache@v5
         with:
-          path: assets/worker/koinly_sync_worker.js
-          key: koinly-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
+          path: assets/worker/yutaka_sync_worker.js
+          key: yutaka-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
 
       - name: Set up Node 22
         if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: cloud/worker/node_modules
-          key: koinly-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
+          key: yutaka-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
 
       - name: Install Worker dependencies
         if: steps.worker-bundle-cache.outputs.cache-hit != 'true' && steps.worker-node-cache.outputs.cache-hit != 'true'
@@ -70,26 +70,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle="assets/worker/koinly_sync_worker.js"
+          bundle="assets/worker/yutaka_sync_worker.js"
           test -s "$bundle"
-          ! grep -q 'KOINLY_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
+          ! grep -q 'YUTAKA_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
           test "$(wc -c < "$bundle")" -gt 10000
 
       - name: Upload deployable Worker bundle
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-worker-deploy-bundle
-          path: assets/worker/koinly_sync_worker.js
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker/yutaka_sync_worker.js
           if-no-files-found: error
           compression-level: 0
 
   # GitHub copies workflow triggers into forks. Keep every release build job
   # restricted to the canonical repository so fork pushes and manual runs
-  # cannot spend Actions minutes building Koinly application packages.
+  # cannot spend Actions minutes building Yutaka application packages.
   build-apks:
     needs: prepare-worker-bundle
     name: Build Android ${{ matrix.label }}
-    if: github.repository == 'Chowdhury-Siam/Koinly'
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -128,7 +128,7 @@ jobs:
       - name: Add deployable Worker bundle
         uses: actions/download-artifact@v5
         with:
-          name: koinly-worker-deploy-bundle
+          name: yutaka-worker-deploy-bundle
           path: assets/worker
 
       - name: Set up Java 17
@@ -198,23 +198,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .pub-cache
-          key: koinly-${{ runner.os }}-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-${{ runner.os }}-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
-            koinly-${{ runner.os }}-pub-
+            yutaka-${{ runner.os }}-pub-
 
       - name: Restore Android Gradle wrapper without replacing app resources
         shell: bash
         run: |
           set -euo pipefail
-          ANDROID_SOURCE="$RUNNER_TEMP/koinly-android-source"
-          WRAPPER_SOURCE="$RUNNER_TEMP/koinly-generated-wrapper"
+          ANDROID_SOURCE="$RUNNER_TEMP/yutaka-android-source"
+          WRAPPER_SOURCE="$RUNNER_TEMP/yutaka-generated-wrapper"
           rm -rf "$ANDROID_SOURCE" "$WRAPPER_SOURCE"
 
           # flutter create is used only to regenerate binary Gradle wrapper files that are
           # intentionally not kept in the source ZIP. Preserve the complete Android app
           # first so Flutter cannot silently replace the custom launcher/splash resources.
           cp -a android "$ANDROID_SOURCE"
-          flutter create --platforms=android --project-name koinly --no-pub .
+          flutter create --platforms=android --project-name yutaka --no-pub .
 
           mkdir -p "$WRAPPER_SOURCE"
           cp android/gradlew "$WRAPPER_SOURCE/gradlew"
@@ -231,8 +231,8 @@ jobs:
           chmod +x android/gradlew
 
           # Fail immediately if the dedicated splash configuration was lost.
-          grep -q '@drawable/koinly_splash_icon' android/app/src/main/res/values-v31/styles.xml
-          test -f android/app/src/main/res/drawable-nodpi/koinly_splash_icon.png
+          grep -q '@drawable/yutaka_splash_icon' android/app/src/main/res/values-v31/styles.xml
+          test -f android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png
 
       - name: Force Gradle wrapper 9.1.0
         run: |
@@ -254,8 +254,8 @@ jobs:
             echo "::error::pubspec.yaml version must use semantic-version+positive-build-number, for example 1.2.3+123."
             exit 1
           fi
-          echo "KOINLY_APP_VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
-          echo "KOINLY_APP_BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
           sed -i -E "s/versionCode = [0-9]+/versionCode = ${BUILD_NUMBER}/" android/app/build.gradle
           sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"${VERSION_NAME}\"/" android/app/build.gradle
           grep -nE "^(version:)|versionCode|versionName" pubspec.yaml android/app/build.gradle
@@ -296,6 +296,95 @@ jobs:
           print(f'file_picker Android configuration is API-36 compatible: {gradle_file}')
           PY_VERIFY_FILE_PICKER
 
+      - name: Verify Android permission policy split
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_ANDROID_PERMISSIONS'
+          from pathlib import Path
+
+          main = Path('android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          play = Path('android/app/src/play/AndroidManifest.xml').read_text(encoding='utf-8')
+          direct = Path('android/app/src/direct/AndroidManifest.xml').read_text(encoding='utf-8')
+          activity = Path('android/app/src/main/kotlin/com/yutaka/siam/MainActivity.kt').read_text(encoding='utf-8')
+          play_policy = Path('android/app/src/play/kotlin/com/yutaka/siam/BatteryOptimizationFlavorPolicy.kt').read_text(encoding='utf-8')
+          direct_policy = Path('android/app/src/direct/kotlin/com/yutaka/siam/BatteryOptimizationFlavorPolicy.kt').read_text(encoding='utf-8')
+
+          broad_media = [
+              'android.permission.READ_MEDIA_IMAGES',
+              'android.permission.READ_MEDIA_VIDEO',
+              'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+              'android.permission.READ_EXTERNAL_STORAGE',
+              'android.permission.WRITE_EXTERNAL_STORAGE',
+          ]
+          for permission in broad_media:
+              if permission in main:
+                  raise SystemExit(f'::error::Broad media/storage permission leaked into the common manifest: {permission}')
+              if permission not in play or 'tools:node="remove"' not in play:
+                  raise SystemExit(f'::error::Play manifest does not explicitly strip: {permission}')
+              if permission not in direct or 'tools:node="remove"' not in direct:
+                  raise SystemExit(f'::error::Direct manifest does not explicitly strip: {permission}')
+
+          battery = 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+          if battery in main:
+              raise SystemExit('::error::Battery-optimization exemption leaked into the common/Play manifest.')
+          if battery not in play or 'tools:node="remove"' not in play:
+              raise SystemExit('::error::Play manifest must explicitly remove REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.')
+          if battery not in direct:
+              raise SystemExit('::error::Direct flavor lost its optional battery-optimization exemption.')
+          if 'BatteryOptimizationFlavorPolicy.openSettings(this)' not in activity:
+              raise SystemExit('::error::Shared activity is not delegating battery settings to the flavor policy.')
+          if 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' in activity or 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' in play_policy:
+              raise SystemExit('::error::Direct battery exemption code leaked into the Play/shared Android sources.')
+          if 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' not in direct_policy:
+              raise SystemExit('::error::Direct battery exemption implementation is missing.')
+
+          print('Android permission policy split verified.')
+          PY_VERIFY_ANDROID_PERMISSIONS
+
+      - name: Verify Android platform backup privacy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_ANDROID_BACKUP'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          manifest_path = Path('android/app/src/main/AndroidManifest.xml')
+          legacy_path = Path('android/app/src/main/res/xml/backup_rules.xml')
+          modern_path = Path('android/app/src/main/res/xml/data_extraction_rules.xml')
+          manifest = manifest_path.read_text(encoding='utf-8')
+
+          required_manifest = [
+              'android:allowBackup="false"',
+              'android:fullBackupContent="@xml/backup_rules"',
+              'android:dataExtractionRules="@xml/data_extraction_rules"',
+          ]
+          for value in required_manifest:
+              if value not in manifest:
+                  raise SystemExit(f'::error::Android platform backup privacy setting is missing: {value}')
+
+          domains = {
+              'root', 'file', 'database', 'sharedpref', 'external',
+              'device_root', 'device_file', 'device_database', 'device_sharedpref',
+          }
+          legacy_root = ET.parse(legacy_path).getroot()
+          legacy_excluded = {e.attrib.get('domain') for e in legacy_root.findall('exclude') if e.attrib.get('path') == '.'}
+          if not domains.issubset(legacy_excluded):
+              raise SystemExit(f'::error::Legacy Android backup exclusions are incomplete: {sorted(domains - legacy_excluded)}')
+
+          modern_root = ET.parse(modern_path).getroot()
+          for section_name in ('cloud-backup', 'device-transfer'):
+              section = modern_root.find(section_name)
+              if section is None:
+                  raise SystemExit(f'::error::Android 12+ backup rules are missing <{section_name}>.')
+              excluded = {e.attrib.get('domain') for e in section.findall('exclude') if e.attrib.get('path') == '.'}
+              if not domains.issubset(excluded):
+                  raise SystemExit(f'::error::{section_name} exclusions are incomplete: {sorted(domains - excluded)}')
+
+          print('Android platform backup is disabled and all app-data domains are excluded.')
+          PY_VERIFY_ANDROID_BACKUP
+
       - name: Prepare artifact folder
         run: mkdir -p artifacts
 
@@ -319,9 +408,9 @@ jobs:
             exit 1
           fi
 
-          KEYSTORE_FILE="$RUNNER_TEMP/koinly-release.jks"
+          KEYSTORE_FILE="$RUNNER_TEMP/yutaka-release.jks"
           if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid Base64. Encode the same permanent Koinly .jks/.keystore file and update the repository secret."
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid Base64. Encode the same permanent Yutaka .jks/.keystore file and update the repository secret."
             rm -f "$KEYSTORE_FILE"
             exit 1
           fi
@@ -363,12 +452,12 @@ jobs:
             flutter build appbundle \
               --flavor play \
               --release \
-              --build-name="$KOINLY_APP_VERSION_NAME" \
-              --build-number="$KOINLY_APP_BUILD_NUMBER" \
+              --build-name="$YUTAKA_APP_VERSION_NAME" \
+              --build-number="$YUTAKA_APP_BUILD_NUMBER" \
               --no-pub \
               --no-tree-shake-icons \
-              --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME" \
-              --dart-define=KOINLY_ANDROID_DISTRIBUTION=play
+              --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME" \
+              --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play
             PLAY_MANIFEST="$(find build/app/intermediates -type f -path '*playRelease*' -name AndroidManifest.xml -print -quit)"
             if [ -z "$PLAY_MANIFEST" ]; then
               echo "::error::Could not locate the merged Google Play manifest for policy verification."
@@ -378,8 +467,8 @@ jobs:
               echo "::error::Google Play manifest unexpectedly requests REQUEST_INSTALL_PACKAGES."
               exit 1
             fi
-            if grep -q 'com.koinly.siam.fileprovider' "$PLAY_MANIFEST"; then
-              echo "::error::Google Play manifest unexpectedly contains Koinly's direct APK FileProvider."
+            if grep -q 'com.yutaka.siam.fileprovider' "$PLAY_MANIFEST"; then
+              echo "::error::Google Play manifest unexpectedly contains Yutaka's direct APK FileProvider."
               exit 1
             fi
             PLAY_AAB="$(find build/app/outputs/bundle -type f -name '*.aab' -path '*playRelease*' -print -quit)"
@@ -387,7 +476,7 @@ jobs:
               echo "::error::Google Play AAB was not produced."
               exit 1
             fi
-            cp "$PLAY_AAB" "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-play.aab"
+            cp "$PLAY_AAB" "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-play.aab"
           else
             extra_args=()
             if [ "${{ matrix.split_per_abi }}" = "true" ]; then
@@ -398,12 +487,12 @@ jobs:
               --release \
               "${extra_args[@]}" \
               --target-platform "${{ matrix.target_platform }}" \
-              --build-name="$KOINLY_APP_VERSION_NAME" \
-              --build-number="$KOINLY_APP_BUILD_NUMBER" \
+              --build-name="$YUTAKA_APP_VERSION_NAME" \
+              --build-number="$YUTAKA_APP_BUILD_NUMBER" \
               --no-pub \
               --no-tree-shake-icons \
-              --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME" \
-              --dart-define=KOINLY_ANDROID_DISTRIBUTION=direct
+              --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME" \
+              --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct
             case "${{ matrix.variant }}" in
               universal) expected_apk="app-direct-release.apk" ;;
               arm32) expected_apk="app-armeabi-v7a-direct-release.apk" ;;
@@ -423,7 +512,7 @@ jobs:
             fi
 
             cp "$source_apk" \
-              "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
+              "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
           fi
 
       - name: List Android artifacts
@@ -446,8 +535,8 @@ jobs:
         if: matrix.package == 'apk'
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-android-${{ matrix.variant }}
-          path: artifacts/Koinly-v*-${{ matrix.variant }}.apk
+          name: yutaka-android-${{ matrix.variant }}
+          path: artifacts/Yutaka-v*-${{ matrix.variant }}.apk
           if-no-files-found: error
           compression-level: 0
 
@@ -455,15 +544,15 @@ jobs:
         if: matrix.package == 'aab'
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-play-store-aab
-          path: artifacts/Koinly-v*-play.aab
+          name: yutaka-play-store-aab
+          path: artifacts/Yutaka-v*-play.aab
           if-no-files-found: error
           compression-level: 0
 
   build-windows:
     needs: prepare-worker-bundle
     name: Build Windows x64 installer EXE
-    if: github.repository == 'Chowdhury-Siam/Koinly'
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
     runs-on: windows-2022
     permissions:
       contents: read
@@ -477,7 +566,7 @@ jobs:
       - name: Add deployable Worker bundle
         uses: actions/download-artifact@v5
         with:
-          name: koinly-worker-deploy-bundle
+          name: yutaka-worker-deploy-bundle
           path: assets/worker
 
       - name: Set up Flutter
@@ -493,9 +582,9 @@ jobs:
           path: |
             .pub-cache
             build/windows/x64/extracted
-          key: koinly-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
-            koinly-${{ runner.os }}-deps-
+            yutaka-${{ runner.os }}-deps-
 
       - name: Show Flutter version
         run: flutter --version
@@ -504,9 +593,9 @@ jobs:
         run: flutter config --enable-windows-desktop
 
       - name: Generate Windows platform files
-        run: flutter create --platforms=windows --project-name koinly --no-pub .
+        run: flutter create --platforms=windows --project-name yutaka --no-pub .
 
-      - name: Apply Koinly Windows window title
+      - name: Apply Yutaka Windows window title
         shell: pwsh
         run: |
           $mainCpp = "windows/runner/main.cpp"
@@ -514,21 +603,21 @@ jobs:
             throw "Windows runner main.cpp was not generated: $mainCpp"
           }
           $main = Get-Content $mainCpp -Raw
-          $main = $main -replace 'CreateAndShow\(L"[^"]+"', 'CreateAndShow(L"Koinly"'
-          $main = $main -replace '\.Create\(L"[^"]+"', '.Create(L"Koinly"'
+          $main = $main -replace 'CreateAndShow\(L"[^"]+"', 'CreateAndShow(L"Yutaka"'
+          $main = $main -replace '\.Create\(L"[^"]+"', '.Create(L"Yutaka"'
           Set-Content -Path $mainCpp -Value $main -Encoding UTF8
 
           $resourceRc = "windows/runner/Runner.rc"
           if (Test-Path $resourceRc) {
             $rc = Get-Content $resourceRc -Raw
-            $rc = $rc -replace 'VALUE "FileDescription", "[^"]+"', 'VALUE "FileDescription", "Koinly"'
-            $rc = $rc -replace 'VALUE "InternalName", "[^"]+"', 'VALUE "InternalName", "Koinly"'
-            $rc = $rc -replace 'VALUE "OriginalFilename", "[^"]+"', 'VALUE "OriginalFilename", "Koinly.exe"'
-            $rc = $rc -replace 'VALUE "ProductName", "[^"]+"', 'VALUE "ProductName", "Koinly"'
+            $rc = $rc -replace 'VALUE "FileDescription", "[^"]+"', 'VALUE "FileDescription", "Yutaka"'
+            $rc = $rc -replace 'VALUE "InternalName", "[^"]+"', 'VALUE "InternalName", "Yutaka"'
+            $rc = $rc -replace 'VALUE "OriginalFilename", "[^"]+"', 'VALUE "OriginalFilename", "Yutaka.exe"'
+            $rc = $rc -replace 'VALUE "ProductName", "[^"]+"', 'VALUE "ProductName", "Yutaka"'
             Set-Content -Path $resourceRc -Value $rc -Encoding UTF8
           }
 
-      - name: Apply Koinly Windows app icon
+      - name: Apply Yutaka Windows app icon
         shell: pwsh
         run: |
           $iconSource = "assets/icons/app_icon.ico"
@@ -555,8 +644,8 @@ jobs:
           }
           $versionName = $parts[0]
           $buildNumber = $parts[1]
-          "KOINLY_APP_VERSION_NAME=$versionName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "KOINLY_APP_BUILD_NUMBER=$buildNumber" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "YUTAKA_APP_VERSION_NAME=$versionName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "YUTAKA_APP_BUILD_NUMBER=$buildNumber" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Select-String -Path "pubspec.yaml" -Pattern "^version:"
 
       - name: Patch Windows CMake for CMake 4/Firebase compatibility
@@ -642,14 +731,14 @@ jobs:
         run: |
           $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
           $env:CL = "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
-          flutter build windows --release --no-pub --dart-define=KOINLY_APP_VERSION="$env:KOINLY_APP_VERSION_NAME"
+          flutter build windows --release --no-pub --dart-define=YUTAKA_APP_VERSION="$env:YUTAKA_APP_VERSION_NAME"
 
       - name: Normalize Windows release executable name
         shell: pwsh
         run: |
           $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
-          $defaultExe = Join-Path $releaseDir "koinly.exe"
-          $namedExe = Join-Path $releaseDir "Koinly.exe"
+          $defaultExe = Join-Path $releaseDir "yutaka.exe"
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
           if (Test-Path $defaultExe) {
             Move-Item -Path $defaultExe -Destination $namedExe -Force
           }
@@ -668,12 +757,12 @@ jobs:
             exit 0
           }
 
-          $exe = (Resolve-Path "build/windows/x64/runner/Release/Koinly.exe").Path
+          $exe = (Resolve-Path "build/windows/x64/runner/Release/Yutaka.exe").Path
           & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$exe"
-          if ($LASTEXITCODE -ne 0) { throw "Failed to sign Koinly.exe" }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to sign Yutaka.exe" }
 
           & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$exe"
-          if ($LASTEXITCODE -ne 0) { throw "Koinly.exe signature verification failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Yutaka.exe signature verification failed" }
 
       - name: Ensure Inno Setup
         shell: pwsh
@@ -697,7 +786,7 @@ jobs:
             throw "Windows release directory was not found: $releaseDir"
           }
 
-          $namedExe = Join-Path $releaseDir "Koinly.exe"
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
           if (!(Test-Path $namedExe)) {
             throw "Expected Windows executable was not found before installer packaging: $namedExe"
           }
@@ -715,21 +804,21 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($appVersionName)) {
             throw "Could not parse installer version from pubspec.yaml version: $fullAppVersion"
           }
-          Write-Host "Packaging Koinly Windows installer version $appVersionName from pubspec version $fullAppVersion"
+          Write-Host "Packaging Yutaka Windows installer version $appVersionName from pubspec version $fullAppVersion"
           $iss = @"
           #define SourceDir "$sourceDir"
           #define OutputDir "$outputDir"
           #define IconFile "$iconFile"
-          #define MyAppName "Koinly"
+          #define MyAppName "Yutaka"
           #define MyAppVersion "$appVersionName"
-          #define MyAppExeName "Koinly.exe"
+          #define MyAppExeName "Yutaka.exe"
 
           [Setup]
           AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}
           AppName={#MyAppName}
           AppVersion={#MyAppVersion}
-          AppPublisher=Koinly
-          DefaultDirName={localappdata}\Programs\Koinly
+          AppPublisher=Yutaka
+          DefaultDirName={localappdata}\Programs\Yutaka
           DefaultGroupName={#MyAppName}
           DisableWelcomePage=no
           DisableDirPage=no
@@ -737,12 +826,12 @@ jobs:
           DisableReadyPage=no
           DisableFinishedPage=no
           OutputDir={#OutputDir}
-          OutputBaseFilename=KoinlySetup
+          OutputBaseFilename=YutakaSetup
           SetupIconFile={#IconFile}
           UninstallDisplayIcon={app}\{#MyAppExeName}
-          VersionInfoDescription=Koinly Installer
-          VersionInfoProductName=Koinly
-          VersionInfoCompany=Koinly
+          VersionInfoDescription=Yutaka Installer
+          VersionInfoProductName=Yutaka
+          VersionInfoCompany=Yutaka
           Compression=lzma2
           SolidCompression=yes
           WizardStyle=modern
@@ -767,10 +856,10 @@ jobs:
           Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
           "@
           $iss = ($iss -split "`r?`n" | ForEach-Object { $_.TrimStart() }) -join "`r`n"
-          Set-Content -Path "artifacts/koinly-installer.iss" -Value $iss -Encoding UTF8
-          & "$env:ISCC_PATH" "artifacts/koinly-installer.iss"
-          if (!(Test-Path "artifacts/KoinlySetup.exe")) {
-            throw "Installer was not created: artifacts/KoinlySetup.exe"
+          Set-Content -Path "artifacts/yutaka-installer.iss" -Value $iss -Encoding UTF8
+          & "$env:ISCC_PATH" "artifacts/yutaka-installer.iss"
+          if (!(Test-Path "artifacts/YutakaSetup.exe")) {
+            throw "Installer was not created: artifacts/YutakaSetup.exe"
           }
           Get-ChildItem artifacts | Format-Table Name,Length
 
@@ -782,20 +871,20 @@ jobs:
           if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
             Write-Host "Skipping Windows installer signing because WINDOWS_CODESIGN_PFX_BASE64 is not configured."
           } else {
-            $installer = (Resolve-Path "artifacts/KoinlySetup.exe").Path
+            $installer = (Resolve-Path "artifacts/YutakaSetup.exe").Path
             & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$installer"
-            if ($LASTEXITCODE -ne 0) { throw "Failed to sign KoinlySetup.exe" }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to sign YutakaSetup.exe" }
 
             & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$installer"
-            if ($LASTEXITCODE -ne 0) { throw "KoinlySetup.exe signature verification failed" }
+            if ($LASTEXITCODE -ne 0) { throw "YutakaSetup.exe signature verification failed" }
           }
-          Copy-Item -Path "artifacts/KoinlySetup.exe" -Destination "artifacts/Koinly-v$env:KOINLY_APP_VERSION_NAME-Setup.exe" -Force
+          Copy-Item -Path "artifacts/YutakaSetup.exe" -Destination "artifacts/Yutaka-v$env:YUTAKA_APP_VERSION_NAME-Setup.exe" -Force
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-windows-installer
-          path: artifacts/Koinly-v*-Setup.exe
+          name: yutaka-windows-installer
+          path: artifacts/Yutaka-v*-Setup.exe
           if-no-files-found: error
           compression-level: 0
 
@@ -803,7 +892,7 @@ jobs:
   build-linux:
     needs: prepare-worker-bundle
     name: Build Linux ${{ matrix.arch }} AppImage and portable archive
-    if: github.repository == 'Chowdhury-Siam/Koinly'
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
     strategy:
       fail-fast: false
       matrix:
@@ -827,7 +916,7 @@ jobs:
       - name: Add deployable Worker bundle
         uses: actions/download-artifact@v5
         with:
-          name: koinly-worker-deploy-bundle
+          name: yutaka-worker-deploy-bundle
           path: assets/worker
 
       - name: Install Linux desktop build dependencies
@@ -866,9 +955,9 @@ jobs:
           path: |
             .pub-cache
             build/linux
-          key: koinly-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
-            koinly-${{ runner.os }}-${{ matrix.arch }}-deps-
+            yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-
 
       - name: Show Flutter version
         run: flutter --version
@@ -877,9 +966,9 @@ jobs:
         run: flutter config --enable-linux-desktop
 
       - name: Generate Linux platform files
-        run: flutter create --platforms=linux --project-name koinly --no-pub .
+        run: flutter create --platforms=linux --project-name yutaka --no-pub .
 
-      - name: Apply Koinly Linux branding
+      - name: Apply Yutaka Linux branding
         shell: bash
         run: |
           set -euo pipefail
@@ -889,8 +978,8 @@ jobs:
           from pathlib import Path
           path = Path('linux/runner/my_application.cc')
           text = path.read_text()
-          text = text.replace('gtk_window_set_title(window, "koinly")', 'gtk_window_set_title(window, "Koinly")')
-          text = text.replace('gtk_header_bar_set_title(header_bar, "koinly")', 'gtk_header_bar_set_title(header_bar, "Koinly")')
+          text = text.replace('gtk_window_set_title(window, "yutaka")', 'gtk_window_set_title(window, "Yutaka")')
+          text = text.replace('gtk_header_bar_set_title(header_bar, "yutaka")', 'gtk_header_bar_set_title(header_bar, "Yutaka")')
           path.write_text(text)
           PY
 
@@ -905,8 +994,8 @@ jobs:
             echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
             exit 1
           fi
-          echo "KOINLY_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "KOINLY_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -916,7 +1005,7 @@ jobs:
         run: |
           set -euo pipefail
           flutter build linux --release --no-pub \
-            --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME"
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
 
       - name: Package portable Linux archive
         shell: bash
@@ -924,25 +1013,25 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           BUNDLE_DIR="$(find build/linux -type d -path '*/release/bundle' -print -quit)"
-          if [ -z "$BUNDLE_DIR" ] || [ ! -x "$BUNDLE_DIR/koinly" ]; then
+          if [ -z "$BUNDLE_DIR" ] || [ ! -x "$BUNDLE_DIR/yutaka" ]; then
             echo "::error::Linux release bundle was not found."
             find build/linux -maxdepth 6 -type f -print || true
             exit 1
           fi
-          tar -C "$BUNDLE_DIR" -czf "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz" .
-          echo "KOINLY_LINUX_BUNDLE=$BUNDLE_DIR" >> "$GITHUB_ENV"
+          tar -C "$BUNDLE_DIR" -czf "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz" .
+          echo "YUTAKA_LINUX_BUNDLE=$BUNDLE_DIR" >> "$GITHUB_ENV"
 
       - name: Package broad-distro AppImage
         shell: bash
         run: |
           set -euo pipefail
-          APPDIR="$RUNNER_TEMP/Koinly.AppDir"
+          APPDIR="$RUNNER_TEMP/Yutaka.AppDir"
           rm -rf "$APPDIR"
-          mkdir -p "$APPDIR/usr/lib/koinly" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
-          cp -a "$KOINLY_LINUX_BUNDLE"/. "$APPDIR/usr/lib/koinly/"
-          ln -s ../lib/koinly/koinly "$APPDIR/usr/bin/koinly"
-          cp tools/linux/koinly.desktop "$APPDIR/usr/share/applications/koinly.desktop"
-          ICON_PATH="$APPDIR/usr/share/icons/hicolor/512x512/apps/koinly.png"
+          mkdir -p "$APPDIR/usr/lib/yutaka" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+          cp -a "$YUTAKA_LINUX_BUNDLE"/. "$APPDIR/usr/lib/yutaka/"
+          ln -s ../lib/yutaka/yutaka "$APPDIR/usr/bin/yutaka"
+          cp tools/linux/yutaka.desktop "$APPDIR/usr/share/applications/yutaka.desktop"
+          ICON_PATH="$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png"
           convert assets/icons/app_icon.png -resize 512x512! "$ICON_PATH"
           ICON_SIZE="$(identify -format '%wx%h' "$ICON_PATH")"
           if [ "$ICON_SIZE" != "512x512" ]; then
@@ -953,13 +1042,13 @@ jobs:
           cat > "$APPDIR/AppRun" <<'EOF_APPRUN'
           #!/usr/bin/env bash
           HERE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-          export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/koinly/lib:${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/yutaka/lib:${LD_LIBRARY_PATH:-}"
           export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-          exec "$HERE/usr/lib/koinly/koinly" "$@"
+          exec "$HERE/usr/lib/yutaka/yutaka" "$@"
           EOF_APPRUN
           chmod +x "$APPDIR/AppRun"
-          ln -sf usr/share/icons/hicolor/512x512/apps/koinly.png "$APPDIR/koinly.png"
-          cp tools/linux/koinly.desktop "$APPDIR/koinly.desktop"
+          ln -sf usr/share/icons/hicolor/512x512/apps/yutaka.png "$APPDIR/yutaka.png"
+          cp tools/linux/yutaka.desktop "$APPDIR/yutaka.desktop"
 
           LINUXDEPLOY="$RUNNER_TEMP/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
           curl --fail --location --retry 3 \
@@ -969,9 +1058,9 @@ jobs:
           export APPIMAGE_EXTRACT_AND_RUN=1
           "$LINUXDEPLOY" \
             --appdir "$APPDIR" \
-            --executable "$APPDIR/usr/lib/koinly/koinly" \
-            --desktop-file "$APPDIR/usr/share/applications/koinly.desktop" \
-            --icon-file "$APPDIR/usr/share/icons/hicolor/512x512/apps/koinly.png" \
+            --executable "$APPDIR/usr/lib/yutaka/yutaka" \
+            --desktop-file "$APPDIR/usr/share/applications/yutaka.desktop" \
+            --icon-file "$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png" \
             --output appimage
 
           GENERATED="$(find . -maxdepth 1 -type f -name '*.AppImage' ! -name 'linuxdeploy-*' -print -quit)"
@@ -979,24 +1068,24 @@ jobs:
             echo "::error::linuxdeploy completed but no AppImage was produced."
             exit 1
           fi
-          mv "$GENERATED" "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
-          chmod +x "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          mv "$GENERATED" "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          chmod +x "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
           ls -lh artifacts
 
       - name: Upload Linux release artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-linux-${{ matrix.arch }}
+          name: yutaka-linux-${{ matrix.arch }}
           path: |
-            artifacts/Koinly-v*-linux-${{ matrix.arch }}.AppImage
-            artifacts/Koinly-v*-linux-${{ matrix.arch }}.tar.gz
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.AppImage
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           compression-level: 0
 
   build-macos:
     needs: prepare-worker-bundle
     name: Build macOS universal DMG and app archive
-    if: github.repository == 'Chowdhury-Siam/Koinly'
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
     # Apple Silicon is substantially faster for Flutter/Xcode release compilation than
     # the legacy Intel image. Flutter release builds remain universal when the ARM64-only
     # feature is disabled, so this single job still emits both arm64 and x86_64 slices.
@@ -1018,7 +1107,7 @@ jobs:
       - name: Add deployable Worker bundle
         uses: actions/download-artifact@v5
         with:
-          name: koinly-worker-deploy-bundle
+          name: yutaka-worker-deploy-bundle
           path: assets/worker
 
       - name: Restore pinned Flutter SDK cache
@@ -1026,7 +1115,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ci-cache/flutter-macos-arm64
-          key: koinly-flutter-${{ runner.os }}-${{ runner.arch }}-3.47.4-v1
+          key: yutaka-flutter-${{ runner.os }}-${{ runner.arch }}-3.47.4-v1
 
       - name: Set up pinned Flutter on Apple Silicon
         shell: bash
@@ -1053,7 +1142,7 @@ jobs:
           flutter config --no-enable-macos-arm64-only || true
 
       - name: Generate macOS platform files
-        run: flutter create --platforms=macos --project-name koinly --org com.koinly --no-pub .
+        run: flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 
       # Keep immutable dependency caches separate from the rolling Xcode/Flutter
       # build cache. This avoids re-uploading pub/CocoaPods data on every commit
@@ -1065,19 +1154,19 @@ jobs:
             .pub-cache
             ~/Library/Caches/CocoaPods
             macos/Pods
-          key: koinly-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
-            koinly-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+            yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
 
       - name: Restore macOS incremental build cache
         uses: actions/cache@v4
         with:
           path: build/macos
-          key: koinly-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
+          key: yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
           restore-keys: |
-            koinly-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+            yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
 
-      - name: Apply Koinly macOS identity, permissions, and icon
+      - name: Apply Yutaka macOS identity, permissions, and icon
         shell: bash
         run: |
           set -euo pipefail
@@ -1088,21 +1177,21 @@ jobs:
           config = Path('macos/Runner/Configs/AppInfo.xcconfig')
           text = config.read_text()
           replacements = {
-              'PRODUCT_NAME = koinly': 'PRODUCT_NAME = Koinly',
-              'PRODUCT_BUNDLE_IDENTIFIER = com.koinly.koinly': 'PRODUCT_BUNDLE_IDENTIFIER = com.koinly.siam',
+              'PRODUCT_NAME = yutaka': 'PRODUCT_NAME = Yutaka',
+              'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.yutaka': 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam',
           }
           for old, new in replacements.items():
               text = text.replace(old, new)
-          if 'PRODUCT_BUNDLE_IDENTIFIER = com.koinly.siam' not in text:
+          if 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam' not in text:
               lines = []
               found = False
               for line in text.splitlines():
                   if line.startswith('PRODUCT_BUNDLE_IDENTIFIER ='):
-                      line = 'PRODUCT_BUNDLE_IDENTIFIER = com.koinly.siam'
+                      line = 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam'
                       found = True
                   lines.append(line)
               if not found:
-                  lines.append('PRODUCT_BUNDLE_IDENTIFIER = com.koinly.siam')
+                  lines.append('PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam')
               text = '\n'.join(lines) + '\n'
           config.write_text(text)
 
@@ -1170,8 +1259,8 @@ jobs:
             echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
             exit 1
           fi
-          echo "KOINLY_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "KOINLY_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
       - name: Install Flutter dependencies
         shell: bash
@@ -1183,7 +1272,7 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE: "NO"
         run: |
           flutter build macos --release --no-pub --no-tree-shake-icons \
-            --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME"
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
 
       - name: Verify Intel and Apple Silicon slices
         shell: bash
@@ -1197,10 +1286,10 @@ jobs:
           MAIN_EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
           MAIN_BINARY="$APP_PATH/Contents/MacOS/$MAIN_EXECUTABLE"
           ARCHES="$(lipo -archs "$MAIN_BINARY")"
-          echo "Koinly macOS architectures: $ARCHES"
+          echo "Yutaka macOS architectures: $ARCHES"
           case " $ARCHES " in *" arm64 "*) ;; *) echo "::error::macOS build is missing arm64."; exit 1;; esac
           case " $ARCHES " in *" x86_64 "*) ;; *) echo "::error::macOS build is missing x86_64."; exit 1;; esac
-          echo "KOINLY_MACOS_APP=$APP_PATH" >> "$GITHUB_ENV"
+          echo "YUTAKA_MACOS_APP=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Prepare optional Developer ID signing
         shell: bash
@@ -1210,7 +1299,7 @@ jobs:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          APP_PATH="$KOINLY_MACOS_APP"
+          APP_PATH="$YUTAKA_MACOS_APP"
 
           if [ -z "${MACOS_CERTIFICATE_BASE64:-}" ]; then
             echo "::warning::MACOS_CERTIFICATE_BASE64 is not configured. The DMG will be distributed without Developer ID notarization."
@@ -1222,8 +1311,8 @@ jobs:
             exit 1
           fi
 
-          CERT_PATH="$RUNNER_TEMP/koinly-developer-id.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/koinly-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/yutaka-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/yutaka-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
           export CERT_PATH
           python3 - <<'PYCERT'
@@ -1268,16 +1357,16 @@ jobs:
             echo "MACOS_NOTARIZED=false" >> "$GITHUB_ENV"
             exit 0
           fi
-          NOTARY_ARCHIVE="$RUNNER_TEMP/Koinly-notarization-universal.zip"
+          NOTARY_ARCHIVE="$RUNNER_TEMP/Yutaka-notarization-universal.zip"
           rm -f "$NOTARY_ARCHIVE"
-          ditto -c -k --sequesterRsrc --keepParent "$KOINLY_MACOS_APP" "$NOTARY_ARCHIVE"
+          ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$NOTARY_ARCHIVE"
           xcrun notarytool submit "$NOTARY_ARCHIVE" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
-          xcrun stapler staple "$KOINLY_MACOS_APP"
-          xcrun stapler validate "$KOINLY_MACOS_APP"
+          xcrun stapler staple "$YUTAKA_MACOS_APP"
+          xcrun stapler validate "$YUTAKA_MACOS_APP"
           echo "MACOS_NOTARIZED=true" >> "$GITHUB_ENV"
 
       - name: Package macOS universal DMG and ZIP
@@ -1285,20 +1374,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          STAGE="$RUNNER_TEMP/koinly-dmg-stage"
+          STAGE="$RUNNER_TEMP/yutaka-dmg-stage"
           rm -rf "$STAGE"
           mkdir -p "$STAGE"
-          ditto "$KOINLY_MACOS_APP" "$STAGE/Koinly.app"
+          ditto "$YUTAKA_MACOS_APP" "$STAGE/Yutaka.app"
           ln -s /Applications "$STAGE/Applications"
-          DMG="artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-macos-universal.dmg"
-          ZIP="artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-macos-universal.zip"
+          DMG="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.dmg"
+          ZIP="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.zip"
 
           # DMG creation and ZIP packaging are independent. Run them concurrently,
           # and use fast zlib compression for the DMG to reduce release latency
           # without changing its compatibility or install flow.
           (
             hdiutil create \
-              -volname "Koinly" \
+              -volname "Yutaka" \
               -srcfolder "$STAGE" \
               -ov \
               -format UDZO \
@@ -1307,7 +1396,7 @@ jobs:
           ) &
           dmg_pid=$!
           (
-            ditto -c -k --sequesterRsrc --keepParent "$KOINLY_MACOS_APP" "$ZIP"
+            ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$ZIP"
           ) &
           zip_pid=$!
 
@@ -1318,10 +1407,10 @@ jobs:
       - name: Upload macOS release artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: koinly-macos-universal
+          name: yutaka-macos-universal
           path: |
-            artifacts/Koinly-v*-macos-universal.dmg
-            artifacts/Koinly-v*-macos-universal.zip
+            artifacts/Yutaka-v*-macos-universal.dmg
+            artifacts/Yutaka-v*-macos-universal.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -1334,7 +1423,7 @@ jobs:
       - build-linux
       - build-macos
     if: >-
-      github.repository == 'Chowdhury-Siam/Koinly' &&
+      github.repository == 'Chowdhury-Siam/Yutaka' &&
       (github.event_name == 'workflow_dispatch' ||
        github.ref == 'refs/heads/main' ||
        github.ref == 'refs/heads/master')
@@ -1350,27 +1439,27 @@ jobs:
       - name: Download APK artifacts
         uses: actions/download-artifact@v5
         with:
-          pattern: koinly-android-*
+          pattern: yutaka-android-*
           path: release-assets
           merge-multiple: true
 
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v5
         with:
-          name: koinly-windows-installer
+          name: yutaka-windows-installer
           path: release-assets
 
       - name: Download Linux release artifacts
         uses: actions/download-artifact@v5
         with:
-          pattern: koinly-linux-*
+          pattern: yutaka-linux-*
           path: release-assets
           merge-multiple: true
 
       - name: Download macOS release artifacts
         uses: actions/download-artifact@v5
         with:
-          pattern: koinly-macos-*
+          pattern: yutaka-macos-*
           path: release-assets
           merge-multiple: true
 
@@ -1392,7 +1481,7 @@ jobs:
             exit 1
           fi
           RELEASE_TAG="v${VERSION_NAME}"
-          RELEASE_TITLE="Koinly Stable ${VERSION_NAME}"
+          RELEASE_TITLE="Yutaka Stable ${VERSION_NAME}"
 
           # Prefer a real version section when it exists. Otherwise, fall back
           # to only the first/current bullet in each top
@@ -1436,7 +1525,7 @@ jobs:
             {
               echo "### Changed"
               echo
-              echo "- Stable Koinly ${VERSION_NAME} maintenance update."
+              echo "- Stable Yutaka ${VERSION_NAME} maintenance update."
             } > release-notes-body.md
           fi
           cp release-notes-body.md release-notes.md
@@ -1464,7 +1553,7 @@ jobs:
 
           assets = []
           for path in sorted(release_assets.iterdir()):
-              if not path.is_file() or path.name == "koinly-update.json":
+              if not path.is_file() or path.name == "yutaka-update.json":
                   continue
               assets.append({
                   "id": 0,
@@ -1486,9 +1575,9 @@ jobs:
               "published_at": published_at,
               "assets": assets,
           }
-          manifest_path = release_assets / "koinly-update.json"
+          manifest_path = release_assets / "yutaka-update.json"
           manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-          print(f"Wrote {manifest_path} for Koinly {version_name} with {len(assets)} release assets.")
+          print(f"Wrote {manifest_path} for Yutaka {version_name} with {len(assets)} release assets.")
           PY
 
           if ! git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then

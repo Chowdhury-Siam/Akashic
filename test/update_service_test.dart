@@ -4,11 +4,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:koinly/update_service.dart';
+import 'package:yutaka/update_service.dart';
 
 void main() {
-  test('uses the Koinly GitHub repository for update checks', () {
-    expect(updateRepositorySlug, 'Chowdhury-Siam/Koinly');
+  test('uses the Yutaka GitHub repository for update checks', () {
+    expect(updateRepositorySlug, 'Chowdhury-Siam/Yutaka');
   });
 
   group('SemanticVersion', () {
@@ -78,13 +78,13 @@ void main() {
 
   group('ReleaseAssetMatcher', () {
     final release = GithubRelease.fromJson(_release('v1.5.0', assets: [
-      _asset('Koinly-v1.5.0-arm64.apk', 39900000),
-      _asset('Koinly-v1.5.0-armeabi-v7a.apk', 32100000),
-      _asset('Koinly-v1.5.0-x86_64.apk', 42600000),
-      _asset('Koinly-v1.5.0-universal.apk', 111000000),
-      _asset('Koinly-v1.5.0.aab', 50000000),
-      _asset('Koinly-v1.5.0-Setup.exe', 21000000),
-      _asset('KoinlyTool.exe', 1000),
+      _asset('Yutaka-v1.5.0-arm64.apk', 39900000),
+      _asset('Yutaka-v1.5.0-armeabi-v7a.apk', 32100000),
+      _asset('Yutaka-v1.5.0-x86_64.apk', 42600000),
+      _asset('Yutaka-v1.5.0-universal.apk', 111000000),
+      _asset('Yutaka-v1.5.0.aab', 50000000),
+      _asset('Yutaka-v1.5.0-Setup.exe', 21000000),
+      _asset('YutakaTool.exe', 1000),
     ]));
 
     test('matches ARM64 asset', () {
@@ -143,7 +143,7 @@ Read [release notes](https://example.com).
   });
 
   test('partial-download cleanup removes only .part files', () async {
-    final dir = await Directory.systemTemp.createTemp('koinly_update_test_');
+    final dir = await Directory.systemTemp.createTemp('yutaka_update_test_');
     try {
       final partial = File('${dir.path}${Platform.pathSeparator}update.apk.part');
       final apk = File('${dir.path}${Platform.pathSeparator}update.apk');
@@ -181,7 +181,7 @@ Map<String, dynamic> _release(
   return {
     'id': tag.hashCode,
     'tag_name': tag,
-    'name': 'Koinly $tag',
+    'name': 'Yutaka $tag',
     'body': '## What is new\n- Update details',
     'html_url': 'https://github.com/$updateRepositorySlug/releases/tag/$tag',
     'draft': draft,

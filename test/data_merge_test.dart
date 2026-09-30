@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/data_merge.dart';
+import 'package:yutaka/data_merge.dart';
 
 void main() {
   test('merge keeps local-only and cloud-only rows', () {

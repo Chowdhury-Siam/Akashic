@@ -129,8 +129,8 @@ class WorkerDeploymentProfile {
 class WorkerDeploymentCredentialStore {
   WorkerDeploymentCredentialStore({FlutterSecureStorage? storage}) : _storage = storage ?? const FlutterSecureStorage();
 
-  static const _profileKey = 'koinly_worker_auto_deployment_profile_v1';
-  static const _profileKeyPrefix = 'koinly_worker_auto_deployment_profile_v2_';
+  static const _profileKey = 'yutaka_worker_auto_deployment_profile_v1';
+  static const _profileKeyPrefix = 'yutaka_worker_auto_deployment_profile_v2_';
   final FlutterSecureStorage _storage;
 
   Future<WorkerDeploymentProfile?> read({String workerUrl = ''}) async {
@@ -248,7 +248,7 @@ class WorkerAutoUpdateService {
       );
     }
 
-    onProgress?.call('A newer Koinly Worker is available. Updating automatically…');
+    onProgress?.call('A newer Yutaka Worker is available. Updating automatically…');
     final deployment = WorkerDeploymentService(client: _client);
     final result = await deployment.deploy(
       profile.toDeploymentConfig(),
@@ -300,7 +300,7 @@ class WorkerDeploymentService {
   final http.Client _client;
 
   static const _cloudflareApi = 'https://api.cloudflare.com/client/v4';
-  static const _bundleAsset = 'assets/worker/koinly_sync_worker.js';
+  static const _bundleAsset = 'assets/worker/yutaka_sync_worker.js';
   static const _schemaAsset = 'cloud/worker/schema.sql';
   static const _initialDurableObjectMigrationTag = 'v1-realtime-sync-hub';
 
@@ -325,7 +325,7 @@ class WorkerDeploymentService {
     onProgress('Preparing Worker runtime…');
     final lifecycle = await _durableObjectLifecycleMetadata(config);
 
-    onProgress('Uploading Koinly Sync Worker…');
+    onProgress('Uploading Yutaka Sync Worker…');
     final bundle = await _loadWorkerBundle();
     await _uploadWorker(config, bundle, lifecycle, onProgress: onProgress);
 
@@ -396,7 +396,7 @@ class WorkerDeploymentService {
     // Turso/libSQL's remote database API is the Hrana HTTP pipeline endpoint.
     // There is no guaranteed `/version` route on a Turso database host, so a
     // GET there can return 404 even when both the database URL and auth token
-    // are completely valid. Verify the exact API Koinly will use instead with
+    // are completely valid. Verify the exact API Yutaka will use instead with
     // a read-only SELECT.
     final response = await _client.post(
       Uri.parse('${_tursoHttpBase(c.tursoDatabaseUrl)}/v2/pipeline'),
@@ -411,7 +411,7 @@ class WorkerDeploymentService {
           {
             'type': 'execute',
             'stmt': {
-              'sql': 'SELECT 1 AS koinly_connection_test',
+              'sql': 'SELECT 1 AS yutaka_connection_test',
               'want_rows': true,
             },
           },
@@ -452,7 +452,7 @@ class WorkerDeploymentService {
   Future<void> _applySchema(WorkerDeploymentConfig c) async {
     final sql = await rootBundle.loadString(_schemaAsset);
     final statements = _splitSqlStatements(sql);
-    if (statements.isEmpty) throw const WorkerDeploymentException('Koinly database schema is missing from this build.');
+    if (statements.isEmpty) throw const WorkerDeploymentException('Yutaka database schema is missing from this build.');
 
     // Apply idempotent CREATE/INDEX statements in small pipelines. Existing
     // installations keep their rows because schema.sql uses IF NOT EXISTS.
@@ -461,7 +461,7 @@ class WorkerDeploymentService {
       await _tursoExecuteMany(c, statements.sublist(index, end));
     }
 
-    // Forward migrations for databases created by older Koinly Workers. Keep
+    // Forward migrations for databases created by older Yutaka Workers. Keep
     // this in sync with cloud/worker/scripts/apply-schema.mjs so switching
     // between GitHub Actions deployment and in-app deployment is safe.
     await _migrateLegacyUsers(c);
@@ -571,13 +571,13 @@ class WorkerDeploymentService {
         .replaceAll(RegExp(r'[^a-z0-9._-]+'), '_')
         .replaceAll(RegExp(r'^[._-]+|[._-]+$'), '');
     if (username.length > 32) username = username.substring(0, 32);
-    if (username.isEmpty) username = 'koinly_owner';
+    if (username.isEmpty) username = 'yutaka_owner';
     while (username.length < 3) {
       username = '${username}_owner';
       if (username.length > 32) username = username.substring(0, 32);
     }
     username = username.replaceAll(RegExp(r'[._-]+$'), '');
-    return username.isEmpty ? 'koinly_owner' : username;
+    return username.isEmpty ? 'yutaka_owner' : username;
   }
 
   String _sqlText(String value) => "'${value.replaceAll("'", "''")}'";
@@ -667,8 +667,8 @@ class WorkerDeploymentService {
 
   Future<String> _loadWorkerBundle() async {
     final bundle = await rootBundle.loadString(_bundleAsset);
-    if (bundle.contains('KOINLY_WORKER_BUNDLE_PLACEHOLDER') || bundle.trim().length < 10000) {
-      throw const WorkerDeploymentException('This app build does not contain the deployable Worker bundle. Install an official Koinly release built by the release workflow and try again.');
+    if (bundle.contains('YUTAKA_WORKER_BUNDLE_PLACEHOLDER') || bundle.trim().length < 10000) {
+      throw const WorkerDeploymentException('This app build does not contain the deployable Worker bundle. Install an official Yutaka release built by the release workflow and try again.');
     }
     return bundle;
   }
@@ -827,7 +827,7 @@ class WorkerDeploymentService {
         {'type': 'plain_text', 'name': 'REFRESH_TOKEN_TTL_SECONDS', 'text': '2592000'},
         {'type': 'plain_text', 'name': 'MAX_SYNC_BATCH_SIZE', 'text': '100'},
         {'type': 'plain_text', 'name': 'MAX_SYNC_REPLACE_SIZE', 'text': '25000'},
-        {'type': 'plain_text', 'name': 'KOINLY_WORKER_VERSION', 'text': appVersion},
+        {'type': 'plain_text', 'name': 'YUTAKA_WORKER_VERSION', 'text': appVersion},
         {'type': 'durable_object_namespace', 'name': 'SYNC_HUB', 'class_name': 'SyncHub'},
       ],
       ...lifecycle,
@@ -863,7 +863,7 @@ class WorkerDeploymentService {
 
     if (response.statusCode < 200 || response.statusCode >= 300 || data['success'] != true) {
       // Cloudflare protects Durable Object state with an optimistic migration
-      // precondition. If an older Koinly/Wrangler deployment already created
+      // precondition. If an older Yutaka/Wrangler deployment already created
       // SyncHub, Cloudflare tells us the exact current tag. Retry once using
       // that tag as both old_tag and new_tag. This is a code-only update:
       // do not recreate SyncHub or advance/reset its existing migration tag.
@@ -931,7 +931,7 @@ class WorkerDeploymentService {
 
         if (response.statusCode == 200 &&
             data['ok'] == true &&
-            data['service'] == 'koinly-sync' &&
+            (data['service'] == 'yutaka-sync' || data['service'] == 'koinly-sync') &&
             data['databaseReachable'] == true &&
             data['schemaReady'] == true &&
             data['registrationMode'] == 'first-user' &&
@@ -951,7 +951,7 @@ class WorkerDeploymentService {
         ));
 
         // Keep 404/52x/temporary 5xx responses in the normal propagation
-        // path. For a JSON 503 from Koinly itself, the diagnostic below keeps
+        // path. For a JSON 503 from Yutaka itself, the diagnostic below keeps
         // the actual database/schema/runtime reason so the final error is
         // actionable if it never recovers.
         if (attempt == 1 || attempt % 3 == 0 || hasJson) {
@@ -1021,7 +1021,7 @@ class WorkerDeploymentService {
       if (data['workerVersion'] != appVersion) {
         return 'Cloudflare is still serving Worker version ${data['workerVersion'] ?? 'legacy'} instead of $appVersion.';
       }
-      return 'The Worker returned HTTP $statusCode, but its Koinly capability contract is not ready yet.';
+      return 'The Worker returned HTTP $statusCode, but its Yutaka capability contract is not ready yet.';
     }
 
     if (statusCode == 404) {
@@ -1033,7 +1033,7 @@ class WorkerDeploymentService {
     final compactBody = body.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (compactBody.isNotEmpty) {
       final preview = compactBody.length > 180 ? '${compactBody.substring(0, 180)}…' : compactBody;
-      return 'The Worker health URL returned HTTP $statusCode instead of Koinly health JSON: $preview';
+      return 'The Worker health URL returned HTTP $statusCode instead of Yutaka health JSON: $preview';
     }
     return 'The Worker health URL returned HTTP $statusCode.';
   }

@@ -12,14 +12,14 @@ import 'package:path_provider/path_provider.dart';
 import 'app_config.dart';
 
 const updateGithubOwner = 'Chowdhury-Siam';
-const updateGithubRepo = 'Koinly';
+const updateGithubRepo = 'Yutaka';
 const updateGithubApiBase = 'https://api.github.com';
 const updateGithubWebBase = 'https://github.com';
 const updateRepositorySlug = '$updateGithubOwner/$updateGithubRepo';
-const updateManifestAssetName = 'koinly-update.json';
+const updateManifestAssetName = 'yutaka-update.json';
 const updateManifestUrl = '$updateGithubWebBase/$updateRepositorySlug/releases/latest/download/$updateManifestAssetName';
 const includePrereleaseUpdates = bool.fromEnvironment(
-  'KOINLY_INCLUDE_PRERELEASE_UPDATES',
+  'YUTAKA_INCLUDE_PRERELEASE_UPDATES',
   defaultValue: false,
 );
 
@@ -249,7 +249,7 @@ class GithubUpdateService {
     http.Response response;
     try {
       response = await _client
-          .get(uri, headers: const {'Accept': 'application/vnd.github+json', 'User-Agent': 'Koinly-Updater'})
+          .get(uri, headers: const {'Accept': 'application/vnd.github+json', 'User-Agent': 'Yutaka-Updater'})
           .timeout(const Duration(seconds: 12));
     } on TimeoutException {
       return UpdateCheckResult(outcome: UpdateCheckOutcome.networkError, installedVersion: installed, message: 'GitHub update check timed out.');
@@ -306,7 +306,7 @@ class GithubUpdateService {
     http.Response response;
     try {
       response = await _client
-          .get(Uri.parse(updateManifestUrl), headers: const {'Accept': 'application/json', 'User-Agent': 'Koinly-Updater'})
+          .get(Uri.parse(updateManifestUrl), headers: const {'Accept': 'application/json', 'User-Agent': 'Yutaka-Updater'})
           .timeout(const Duration(seconds: 12));
     } catch (_) {
       return null;
@@ -608,7 +608,7 @@ class UpdateDownloadStore {
 
   static Future<Directory> updatesDirectory() async {
     final base = await getTemporaryDirectory();
-    final dir = Directory(p.join(base.path, 'koinly_updates'));
+    final dir = Directory(p.join(base.path, 'yutaka_updates'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -622,7 +622,7 @@ class UpdateDownloadStore {
   }) async {
     final dir = await updatesDirectory();
     final version = safeFileName(release.displayVersion);
-    final name = safeFileName(asset.name.isEmpty ? 'Koinly-v$version-${kind.label}.apk' : asset.name);
+    final name = safeFileName(asset.name.isEmpty ? 'Yutaka-v$version-${kind.label}.apk' : asset.name);
     return File(p.join(dir.path, name));
   }
 
@@ -634,7 +634,7 @@ class UpdateDownloadStore {
     final dir = await updatesDirectory();
     final version = safeFileName(release.displayVersion);
     final assetName = safeFileName(asset.name.isEmpty ? fallbackName : asset.name);
-    final name = assetName.contains(version) ? assetName : 'Koinly-v$version-$assetName';
+    final name = assetName.contains(version) ? assetName : 'Yutaka-v$version-$assetName';
     return File(p.join(dir.path, name));
   }
 
@@ -644,7 +644,7 @@ class UpdateDownloadStore {
   }) => desktopReleaseAssetFile(
     release: release,
     asset: asset,
-    fallbackName: 'Koinly-Setup.exe',
+    fallbackName: 'Yutaka-Setup.exe',
   );
 
   static Future<File> linuxReleaseFile({
@@ -653,7 +653,7 @@ class UpdateDownloadStore {
   }) => desktopReleaseAssetFile(
     release: release,
     asset: asset,
-    fallbackName: 'Koinly.AppImage',
+    fallbackName: 'Yutaka.AppImage',
   );
 
   static Future<File> macOsReleaseFile({
@@ -662,7 +662,7 @@ class UpdateDownloadStore {
   }) => desktopReleaseAssetFile(
     release: release,
     asset: asset,
-    fallbackName: 'Koinly.dmg',
+    fallbackName: 'Yutaka.dmg',
   );
 
   static Future<void> cleanupPartialFiles({Directory? directory}) async {
@@ -842,7 +842,7 @@ class MacOsUpdateInstaller {
 }
 
 class AndroidUpdateInstaller {
-  static const MethodChannel _channel = MethodChannel('com.koinly.siam/updater');
+  static const MethodChannel _channel = MethodChannel('com.yutaka.siam/updater');
 
   static Future<GooglePlayUpdateInfo> checkGooglePlayUpdate() async {
     if (!Platform.isAndroid) {

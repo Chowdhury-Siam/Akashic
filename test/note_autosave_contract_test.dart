@@ -32,14 +32,14 @@ void main() {
         .split('class _NoteEditorScreenState extends State<NoteEditorScreen>')[1]
         .split('class _NoteMetaChip extends StatelessWidget')[0];
     final controllerAutosave = source
-        .split('Future<void> autosaveNote(KoinlyNote note) async {')[1]
+        .split('Future<void> autosaveNote(YutakaNote note) async {')[1]
         .split('Future<void> toggleNoteBookmark')[0];
 
     expect(editor, contains('_noteId = widget.note?.id ?? _uuid.v4();'));
     expect(editor, contains('id: _noteId'));
     expect(editor, contains('await state.autosaveNote(note);'));
     expect(controllerAutosave, contains('await database.upsertAutosavedNote(note);'));
-    expect(source, contains('Future<void> upsertAutosavedNote(KoinlyNote note) async'));
+    expect(source, contains('Future<void> upsertAutosavedNote(YutakaNote note) async'));
     expect(source, contains("'entity_type': 'notes'"));
     expect(source, contains("'operation': 'upsert'"));
     expect(controllerAutosave, contains('queueNoteAutosaveCloudSync();'));

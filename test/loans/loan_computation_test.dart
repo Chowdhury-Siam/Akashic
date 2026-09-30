@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/loans/loan_computation.dart';
-import 'package:koinly/loans/loan_models.dart';
+import 'package:yutaka/loans/loan_computation.dart';
+import 'package:yutaka/loans/loan_models.dart';
 
 Loan loan({
   double principal = 1000,

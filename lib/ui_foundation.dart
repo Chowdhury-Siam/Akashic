@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'app_config.dart';
 
-Widget koinlyTextFieldContextMenu(
+Widget yutakaTextFieldContextMenu(
   BuildContext context,
   EditableTextState editableTextState,
 ) {
@@ -46,7 +46,7 @@ class AppMotion {
   static const Curve emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
 
   // Used by implicit animations where a full physics simulation is not
-  // possible. The overshoot is deliberately small so Koinly still feels like
+  // possible. The overshoot is deliberately small so Yutaka still feels like
   // a finance app rather than a playful game UI.
   static const Curve spring = Cubic(0.18, 0.90, 0.28, 1.12);
 
@@ -94,8 +94,8 @@ class AppShapes {
   static RoundedRectangleBorder squircle(double radius) => RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius));
 }
 
-class KoinlyPageTransitionsBuilder extends PageTransitionsBuilder {
-  const KoinlyPageTransitionsBuilder();
+class YutakaPageTransitionsBuilder extends PageTransitionsBuilder {
+  const YutakaPageTransitionsBuilder();
 
   @override
   Widget buildTransitions<T>(
@@ -482,8 +482,8 @@ class _MotionInkWellState extends State<MotionInkWell> with SingleTickerProvider
   }
 }
 
-class KoinlyScrollBehavior extends MaterialScrollBehavior {
-  const KoinlyScrollBehavior();
+class YutakaScrollBehavior extends MaterialScrollBehavior {
+  const YutakaScrollBehavior();
 
   @override
   Set<ui.PointerDeviceKind> get dragDevices => const {
@@ -508,21 +508,21 @@ class KoinlyScrollBehavior extends MaterialScrollBehavior {
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
     // TextField/EditableText owns a private Scrollable for caret visibility.
-    // Giving that Scrollable Koinly's AlwaysScrollable+Bouncing physics lets a
+    // Giving that Scrollable Yutaka's AlwaysScrollable+Bouncing physics lets a
     // short value overscroll even when it already fits in the field, which is
     // the desktop "text sliding/disappearing" bug. Keep editing scrollables
     // clamped and only scrollable when their content actually overflows.
     if (_insideEditableText(context)) return const ClampingScrollPhysics();
 
     // Flutter's TimePickerDialog contains internal scrollables for constrained
-    // layouts/accessibility. Koinly's global AlwaysScrollable physics made the
+    // layouts/accessibility. Yutaka's global AlwaysScrollable physics made the
     // otherwise fixed clock surface drag/bounce even when all of its content
     // already fit. Keep the clock popup fixed; hour/minute selection still uses
     // the dial's own tap/drag gestures and the AM/PM controls normally.
     if (_insideTimePickerDialog(context)) return const NeverScrollableScrollPhysics();
 
-    if (kIsDesktopApp) return const KoinlyDesktopScrollPhysics(parent: AlwaysScrollableScrollPhysics());
-    return const KoinlyMobileScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+    if (kIsDesktopApp) return const YutakaDesktopScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+    return const YutakaMobileScrollPhysics(parent: AlwaysScrollableScrollPhysics());
   }
 
   @override
@@ -631,19 +631,19 @@ class _DesktopElasticScrollFeedbackState extends State<_DesktopElasticScrollFeed
 }
 
 ScrollPhysics optimizedScrollPhysics(BuildContext context) {
-  if (kIsDesktopApp) return const KoinlyDesktopScrollPhysics(parent: AlwaysScrollableScrollPhysics());
-  return const KoinlyMobileScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+  if (kIsDesktopApp) return const YutakaDesktopScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+  return const YutakaMobileScrollPhysics(parent: AlwaysScrollableScrollPhysics());
 }
 
 /// Desktop keeps Flutter's native mouse-wheel/trackpad pipeline, but uses
 /// bouncing boundary physics so reaching the top/bottom has the same restrained
 /// elastic response as touch. No pointer-wheel animation queue is introduced.
-class KoinlyDesktopScrollPhysics extends BouncingScrollPhysics {
-  const KoinlyDesktopScrollPhysics({super.parent});
+class YutakaDesktopScrollPhysics extends BouncingScrollPhysics {
+  const YutakaDesktopScrollPhysics({super.parent});
 
   @override
-  KoinlyDesktopScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return KoinlyDesktopScrollPhysics(parent: buildParent(ancestor));
+  YutakaDesktopScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return YutakaDesktopScrollPhysics(parent: buildParent(ancestor));
   }
 
   @override
@@ -661,12 +661,12 @@ class KoinlyDesktopScrollPhysics extends BouncingScrollPhysics {
 
 /// Mobile lists keep Android's precise fling behavior while adding a restrained
 /// elastic edge response.
-class KoinlyMobileScrollPhysics extends BouncingScrollPhysics {
-  const KoinlyMobileScrollPhysics({super.parent});
+class YutakaMobileScrollPhysics extends BouncingScrollPhysics {
+  const YutakaMobileScrollPhysics({super.parent});
 
   @override
-  KoinlyMobileScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return KoinlyMobileScrollPhysics(parent: buildParent(ancestor));
+  YutakaMobileScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return YutakaMobileScrollPhysics(parent: buildParent(ancestor));
   }
 
   @override

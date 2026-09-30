@@ -17,7 +17,7 @@ class AndroidSafBackupFile {
 }
 
 class AndroidSafBackupStore {
-  static const MethodChannel _channel = MethodChannel('com.koinly.siam/backup_storage');
+  static const MethodChannel _channel = MethodChannel('com.yutaka.siam/backup_storage');
 
   static Future<AndroidBackupDirectorySelection?> pickDirectory() async {
     final raw = await _channel.invokeMapMethod<String, dynamic>('pickDirectory');

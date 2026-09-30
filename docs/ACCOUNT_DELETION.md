@@ -1,8 +1,8 @@
-# Delete a Koinly sync account
+# Delete a Yutaka sync account
 
-Koinly can be used completely offline without an account. If you created an account on a self-hosted Koinly Sync Worker, you can permanently delete that account and its Worker-side data in either of these ways.
+Yutaka can be used completely offline without an account. If you created an account on a self-hosted Yutaka Sync Worker, you can permanently delete that account and its Worker-side data in either of these ways.
 
-## In the Koinly app
+## In the Yutaka app
 
 1. Open **Settings > Account & sync**.
 2. Select **Delete account**.
@@ -19,7 +19,7 @@ Open your own Worker URL and append `/delete-account`:
 https://<your-worker-host>/delete-account
 ```
 
-Enter the username and current password, type **DELETE**, and submit the form. Reinstalling Koinly is not required.
+Enter the username and current password, type **DELETE**, and submit the form. Reinstalling Yutaka is not required.
 
 ## Data deleted from the Worker
 

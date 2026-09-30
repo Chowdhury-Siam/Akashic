@@ -35,7 +35,7 @@ test('automatic Analytics report schedules share the five-minute Worker cron', (
 });
 
 test('scheduled XLSX output is a valid ZIP-based workbook', () => {
-  const bytes = buildSimpleXlsxFromLines(['Koinly Analytics', 'Income: BDT 100'], 'Summary');
+  const bytes = buildSimpleXlsxFromLines(['Yutaka Analytics', 'Income: BDT 100'], 'Summary');
   assert.deepEqual(Array.from(bytes.subarray(0, 4)), [0x50, 0x4b, 0x03, 0x04]);
   assert.match(Buffer.from(bytes).toString('latin1'), /xl\/workbook\.xml/);
   assert.match(Buffer.from(bytes).toString('latin1'), /xl\/worksheets\/sheet1\.xml/);

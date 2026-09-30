@@ -13,7 +13,7 @@ void main() {
     expect(foundation, contains('class MotionTouchFeedback'));
     expect(foundation, contains('SpringSimulation'));
     expect(foundation, contains('extends BouncingScrollPhysics'));
-    expect(foundation, contains('class KoinlyDesktopScrollPhysics extends BouncingScrollPhysics'));
+    expect(foundation, contains('class YutakaDesktopScrollPhysics extends BouncingScrollPhysics'));
     expect(foundation, contains('class _DesktopElasticScrollFeedback extends StatefulWidget'));
     expect(foundation, contains('onPointerSignal: _onPointerSignal'));
     expect(foundation, contains('onPointerDown: _pointerDown'));

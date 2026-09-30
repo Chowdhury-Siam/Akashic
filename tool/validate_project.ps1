@@ -39,7 +39,7 @@ function Invoke-ProcessWithTimeout {
   }
 }
 
-Write-Host "Koinly validation"
+Write-Host "Yutaka validation"
 Write-Host "Project: $ProjectRoot"
 $DartFileCount = @(
   Get-ChildItem -Path "lib","test" -Recurse -Filter "*.dart" -File -ErrorAction SilentlyContinue

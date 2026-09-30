@@ -11,7 +11,7 @@ const origin = 'https://worker.example';
 const schema = fs.readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
 
 test('account holders can permanently delete themselves and a final deletion resets first-user registration', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'koinly-delete-account-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yutaka-delete-account-'));
   const databaseUrl = 'file:' + path.join(directory, 'test.db').replaceAll('\\', '/');
   const connect = () => createClient({ url: databaseUrl });
   const db = connect();
@@ -85,7 +85,7 @@ test('account holders can permanently delete themselves and a final deletion res
 });
 
 test('browser deletion page is self-service and requires password plus DELETE confirmation', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'koinly-delete-web-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yutaka-delete-web-'));
   const databaseUrl = 'file:' + path.join(directory, 'test.db').replaceAll('\\', '/');
   const connect = () => createClient({ url: databaseUrl });
   const db = connect();
@@ -105,7 +105,7 @@ test('browser deletion page is self-service and requires password plus DELETE co
   const page = await deleteAccountPortal(new Request(origin + '/delete-account'), env, connect);
   assert.equal(page.status, 200);
   const html = await page.text();
-  assert.match(html, /Delete your Koinly account/);
+  assert.match(html, /Delete your Yutaka account/);
   assert.match(html, /Type DELETE to confirm/);
   assert.match(html, /Permanently delete account/);
 

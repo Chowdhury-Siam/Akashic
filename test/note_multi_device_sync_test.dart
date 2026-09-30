@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/data_merge.dart';
+import 'package:yutaka/data_merge.dart';
 
 void main() {
   test('notes participate in both local writes and the cloud change stream', () {
@@ -12,7 +12,7 @@ void main() {
     expect(syncTables, contains("'notes',"));
 
     final saveNote = source
-        .split('Future<void> saveNote(KoinlyNote note) async {')[1]
+        .split('Future<void> saveNote(YutakaNote note) async {')[1]
         .split('Future<void> toggleNoteBookmark')[0];
     expect(saveNote, contains("await database.enqueueTableRow('notes', note.id);"));
     expect(saveNote, contains('await reload(queueSync: true);'));
@@ -42,7 +42,7 @@ void main() {
   });
 
   test('rich-text note payloads are preserved during a two-device merge', () {
-    const richBody = 'KOINLY_RICH_NOTE_V1:{"text":"Bold and plain","styles":[{"start":0,"end":4,"style":"bold"}]}';
+    const richBody = 'YUTAKA_RICH_NOTE_V1:{"text":"Bold and plain","styles":[{"start":0,"end":4,"style":"bold"}]}';
     final deviceA = <String, dynamic>{
       'notes': [
         {'id': 'note-1', 'title': 'First', 'body': richBody, 'bookmarked': 1,

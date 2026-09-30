@@ -6,8 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:koinly/main.dart';
-import 'package:koinly/models.dart' as models;
+import 'package:yutaka/main.dart';
+import 'package:yutaka/models.dart' as models;
 
 Future<List<int>> pixelsAt(WidgetTester tester, GlobalKey key, List<Offset> points) async {
   return (await tester.runAsync(() async {
@@ -50,7 +50,7 @@ void main() {
         await tester.pumpWidget(ChangeNotifierProvider<AppController>.value(
           value: controller,
           child: Builder(builder: (context) {
-            final app = const KoinlyApp().build(context) as MaterialApp;
+            final app = const YutakaApp().build(context) as MaterialApp;
             return MaterialApp(
               theme: brightness == Brightness.dark ? app.darkTheme : app.theme,
               home: RepaintBoundary(key: captureKey, child: Scaffold(

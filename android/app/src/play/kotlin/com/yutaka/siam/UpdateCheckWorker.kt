@@ -1,4 +1,4 @@
-package com.koinly.siam
+package com.yutaka.siam
 
 import android.app.NotificationManager
 import android.content.Context
@@ -6,8 +6,8 @@ import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 
-private const val nativeUpdatePeriodicWork = "koinly-native-periodic-update-check"
-private const val nativeUpdateImmediateWork = "koinly-native-immediate-update-check"
+private const val nativeUpdatePeriodicWork = "yutaka-native-periodic-update-check"
+private const val nativeUpdateImmediateWork = "yutaka-native-immediate-update-check"
 private const val updateNotificationId = 902
 
 /**

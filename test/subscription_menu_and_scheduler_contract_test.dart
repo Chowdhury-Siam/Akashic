@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/data_merge.dart';
+import 'package:yutaka/data_merge.dart';
 
 void main() {
   test('transaction quick menu expands to Plan, Subscription, and Note over blur', () {
@@ -38,7 +38,7 @@ void main() {
     final models = File('lib/models.dart').readAsStringSync();
     final merge = File('lib/data_merge.dart').readAsStringSync();
 
-    expect(models, contains('class KoinlyNote'));
+    expect(models, contains('class YutakaNote'));
     expect(models, contains('final bool bookmarked;'));
     expect(models, contains('final bool draft;'));
     expect(app, contains('class NoteScreen'));
@@ -56,14 +56,14 @@ void main() {
     expect(app, contains('final circleSize = compact ? 40.0 : 44.0;'));
     expect(app, contains("_NoteMetaChip(label: DateFormat('EEE, MMM d, yyyy').format(noteDate), tooltip: 'Choose date', onTap: _pickNoteDate, height: chipHeight, compact: compact)"));
     expect(app, contains("_NoteMetaChip(label: DateFormat('h:mm a').format(noteDate), tooltip: 'Choose time', onTap: _pickNoteTime, height: chipHeight, compact: compact)"));
-    expect(app, contains('Future<void> toggleNoteBookmark(KoinlyNote note)'));
-    expect(app, contains('Future<void> toggleNoteDraft(KoinlyNote note)'));
+    expect(app, contains('Future<void> toggleNoteBookmark(YutakaNote note)'));
+    expect(app, contains('Future<void> toggleNoteDraft(YutakaNote note)'));
     expect(app, contains('ALTER TABLE notes ADD COLUMN bookmarked'));
     expect(app, contains('ALTER TABLE notes ADD COLUMN draft'));
     expect(app, contains("await Navigator.push(context, MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note)))"));
     expect(app, isNot(contains('child: NoteEditor(')));
     expect(app, contains("CREATE TABLE IF NOT EXISTS notes"));
-    expect(app, contains('Future<void> saveNote(KoinlyNote note)'));
+    expect(app, contains('Future<void> saveNote(YutakaNote note)'));
     expect(app, contains("await database.deleteNote(id);"));
     expect(app, contains("'notes', 'planned_purchases'"));
     expect(merge, contains("'notes',"));
@@ -144,8 +144,8 @@ void main() {
     final background = File('lib/update_background_service.dart').readAsStringSync();
     final service = File('lib/subscription_background_service.dart').readAsStringSync();
 
-    expect(background, contains("_backgroundSubscriptionTaskName = 'koinlySubscriptionCheck'"));
-    expect(background, contains("tag: 'koinly-subscriptions'"));
+    expect(background, contains("_backgroundSubscriptionTaskName = 'yutakaSubscriptionCheck'"));
+    expect(background, contains("tag: 'yutaka-subscriptions'"));
     expect(service, contains("'subscription:\$subscriptionId:\${occurrence.millisecondsSinceEpoch}'"));
     expect(service, contains("linked_entity_type': 'subscription'"));
     expect(service, contains('while (!due.isAfter(now)'));

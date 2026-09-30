@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/data_merge.dart';
+import 'package:yutaka/data_merge.dart';
 
 void main() {
   test('planned purchases are part of non-destructive database merge', () {

@@ -81,7 +81,7 @@ class CloudSyncService {
 
   static Future<void> testBackend(String apiBaseUrl) async {
     final baseUrl = resolveApiBaseUrl(apiBaseUrl);
-    if (baseUrl.isEmpty || baseUrl.contains('your-koinly-sync-worker')) {
+    if (baseUrl.isEmpty || baseUrl.contains('your-yutaka-sync-worker')) {
       throw StateError('Add the Worker API URL first.');
     }
     final response = await http
@@ -101,7 +101,7 @@ class CloudSyncService {
     required Map<String, dynamic> body,
   }) async {
     final baseUrl = resolveApiBaseUrl(apiBaseUrl);
-    if (baseUrl.isEmpty || baseUrl.contains('your-koinly-sync-worker')) {
+    if (baseUrl.isEmpty || baseUrl.contains('your-yutaka-sync-worker')) {
       throw StateError('Enter and validate your self-hosted Cloudflare Worker URL first.');
     }
     final uri = Uri.parse('$baseUrl$path');
@@ -128,8 +128,8 @@ class CloudSyncService {
   }
 }
 
-class KoinlySyncApi {
-  KoinlySyncApi({required this.baseUrl});
+class YutakaSyncApi {
+  YutakaSyncApi({required this.baseUrl});
 
   // Reuse the HTTP connection across rapid background sync requests, but keep
   // it replaceable. Android can keep a stale pooled socket after Wi-Fi/mobile
@@ -164,8 +164,9 @@ class KoinlySyncApi {
           .timeout(const Duration(seconds: 20));
       final decoded = response.body.trim().isEmpty ? null : jsonDecode(response.body);
       final data = decoded is Map ? decoded.cast<String, dynamic>() : const <String, dynamic>{};
-      if (data['service'] != 'koinly-sync') {
-        throw const CloudSyncException('This URL is not a Koinly sync Worker.');
+      final service = data['service']?.toString();
+      if (service != 'yutaka-sync' && service != 'koinly-sync') {
+        throw const CloudSyncException('This URL is not a Yutaka sync Worker.');
       }
       if (data['configured'] != true) {
         throw const CloudSyncException('The Worker is missing required secrets.');
@@ -190,7 +191,7 @@ class KoinlySyncApi {
       throw const CloudSyncException('The Worker could not be reached. Your internet may still be working.', code: 'NETWORK_UNREACHABLE');
     } on http.ClientException {
       _resetHttpClient();
-      throw const CloudSyncException('The connection to the Worker was interrupted. Koinly will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
+      throw const CloudSyncException('The connection to the Worker was interrupted. Yutaka will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
     } on FormatException {
       throw const CloudSyncException('The Worker returned an invalid health response.');
     }
@@ -435,7 +436,7 @@ class KoinlySyncApi {
         socketUri.toString(),
         headers: {
           'authorization': 'Bearer $accessToken',
-          'user-agent': 'Koinly realtime sync',
+          'user-agent': 'Yutaka realtime sync',
         },
       ).timeout(const Duration(seconds: 12));
       socket.pingInterval = const Duration(seconds: 20);
@@ -683,7 +684,7 @@ class KoinlySyncApi {
       throw const CloudSyncException('The Worker could not be reached. Your internet may still be working.', code: 'NETWORK_UNREACHABLE');
     } on http.ClientException {
       _resetHttpClient();
-      throw const CloudSyncException('The connection to the Worker was interrupted. Koinly will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
+      throw const CloudSyncException('The connection to the Worker was interrupted. Yutaka will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
     }
   }
 
@@ -714,7 +715,7 @@ class KoinlySyncApi {
       throw const CloudSyncException('The Worker could not be reached. Your internet may still be working.', code: 'NETWORK_UNREACHABLE');
     } on http.ClientException {
       _resetHttpClient();
-      throw const CloudSyncException('The connection to the Worker was interrupted. Koinly will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
+      throw const CloudSyncException('The connection to the Worker was interrupted. Yutaka will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
     }
   }
 
@@ -739,13 +740,13 @@ class KoinlySyncApi {
       return _decodeResponse(response);
     } on TimeoutException {
       _resetHttpClient();
-      throw const CloudSyncException('Upload to the Worker timed out. Koinly will retry automatically.', code: 'NETWORK_TIMEOUT');
+      throw const CloudSyncException('Upload to the Worker timed out. Yutaka will retry automatically.', code: 'NETWORK_TIMEOUT');
     } on SocketException {
       _resetHttpClient();
       throw const CloudSyncException('The Worker could not be reached. Your internet may still be working.', code: 'NETWORK_UNREACHABLE');
     } on http.ClientException {
       _resetHttpClient();
-      throw const CloudSyncException('The connection to the Worker was interrupted. Koinly will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
+      throw const CloudSyncException('The connection to the Worker was interrupted. Yutaka will retry with a fresh connection.', code: 'NETWORK_TRANSPORT');
     }
   }
 
@@ -784,9 +785,9 @@ class KoinlySyncApi {
 }
 
 class MongoDbSyncService {
-  static const String defaultDatabaseName = 'koinly';
-  static const String defaultCollectionName = 'koinly_sync_snapshots';
-  static const String snapshotDocumentId = 'koinly_latest_snapshot';
+  static const String defaultDatabaseName = 'yutaka';
+  static const String defaultCollectionName = 'yutaka_sync_snapshots';
+  static const String snapshotDocumentId = 'yutaka_latest_snapshot';
 
   static String normalizeDatabaseName(String value) {
     final normalized = value.trim();
@@ -808,7 +809,7 @@ class MongoDbSyncService {
     final db = await _open(connectionString, databaseName);
     try {
       final collection = db.collection(normalizeCollectionName(collectionName));
-      await collection.findOne(mongo.where.eq('_id', '__koinly_connection_test__')).timeout(const Duration(seconds: 20));
+      await collection.findOne(mongo.where.eq('_id', '__yutaka_connection_test__')).timeout(const Duration(seconds: 20));
     } finally {
       await db.close();
     }

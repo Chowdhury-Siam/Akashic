@@ -1,4 +1,4 @@
-package com.koinly.siam
+package com.yutaka.siam
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

@@ -7,7 +7,7 @@ void main() {
     final branding = File('lib/branding_widgets.dart').readAsStringSync();
     final main = File('lib/main.dart').readAsStringSync();
 
-    expect(branding, contains("assets/icons/koinly_mark.png"));
+    expect(branding, contains("assets/icons/yutaka_mark.png"));
     expect(branding, isNot(contains("assets/icons/app_icon.png")));
     expect(main, contains('_AnimatedOnboardingGlyph(icon: icon)'));
     expect(main, contains('class _AnimatedOnboardingGlyph'));

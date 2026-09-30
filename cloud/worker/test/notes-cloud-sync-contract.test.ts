@@ -8,7 +8,7 @@ const worker = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
 test('notes are uploaded after save and their deletion is synchronized', () => {
   const tables = app.split('static const syncTables = [')[1].split('];')[0];
   assert.match(tables, /'notes'/);
-  const save = app.split('Future<void> saveNote(KoinlyNote note) async {')[1].split('Future<void> toggleNoteBookmark')[0];
+  const save = app.split('Future<void> saveNote(YutakaNote note) async {')[1].split('Future<void> toggleNoteBookmark')[0];
   assert.match(save, /enqueueTableRow\('notes', note.id\)/);
   assert.match(save, /reload\(queueSync: true\)/);
   const remove = app.split('Future<void> deleteNote(String id) async {')[2].split('Future<void> saveSubscription')[0];

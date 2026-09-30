@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:koinly/app_config.dart';
-import 'package:koinly/worker_deployment.dart';
+import 'package:yutaka/app_config.dart';
+import 'package:yutaka/worker_deployment.dart';
 
 const _config = WorkerDeploymentConfig(
   workerName: 'test-worker',
@@ -97,7 +97,7 @@ class _DeploymentServer {
     }
     if (path == '/health') {
       return _json({
-        'ok': true, 'service': 'koinly-sync', 'databaseReachable': true,
+        'ok': true, 'service': 'yutaka-sync', 'databaseReachable': true,
         'schemaReady': true, 'registrationMode': 'first-user',
         'telegramBackupAvailable': true, 'googleDriveBackupAvailable': true,
         'analyticsUploadAvailable': true, 'realtimeSyncAvailable': true,
@@ -128,12 +128,12 @@ class _MemoryCredentials extends WorkerDeploymentCredentialStore {
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
-    rootBundle.evict('assets/worker/koinly_sync_worker.js');
+    rootBundle.evict('assets/worker/yutaka_sync_worker.js');
     rootBundle.evict('cloud/worker/schema.sql');
     binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets', (message) async {
       final path = utf8.decode(message!.buffer.asUint8List(message.offsetInBytes, message.lengthInBytes));
       final asset = switch (path) {
-        'assets/worker/koinly_sync_worker.js' => '//${List.filled(10001, 'x').join()}',
+        'assets/worker/yutaka_sync_worker.js' => '//${List.filled(10001, 'x').join()}',
         'cloud/worker/schema.sql' => 'CREATE TABLE IF NOT EXISTS users (id TEXT);',
         _ => throw StateError('Unexpected asset $path'),
       };
@@ -142,7 +142,7 @@ void main() {
   });
   tearDown(() {
     binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets', null);
-    rootBundle.evict('assets/worker/koinly_sync_worker.js');
+    rootBundle.evict('assets/worker/yutaka_sync_worker.js');
     rootBundle.evict('cloud/worker/schema.sql');
   });
 

@@ -1,6 +1,6 @@
-# Self-hosted Koinly Sync Worker configuration.
+# Self-hosted Yutaka Sync Worker configuration.
 # The user deployment workflow overrides this fallback with CLOUDFLARE_NAME.
-name = "koinly-sync-worker"
+name = "yutaka-sync-worker"
 main = "src/index.ts"
 compatibility_date = "2026-08-21"
 workers_dev = true
@@ -14,13 +14,13 @@ tag = "v1-realtime-sync-hub"
 new_sqlite_classes = ["SyncHub"]
 
 [vars]
-KOINLY_WORKER_VERSION = "1.0.1220"
+YUTAKA_WORKER_VERSION = "1.0.1223"
 ACCESS_TOKEN_TTL_SECONDS = "900"
 REFRESH_TOKEN_TTL_SECONDS = "2592000"
 MAX_SYNC_BATCH_SIZE = "100"
 MAX_SYNC_REPLACE_SIZE = "25000"
 
 # Every five minutes the Worker checks automatic Analytics report schedules and the signed-in owner's optional
-# Telegram .koinlybackup schedule. The app enforces at least five minutes between enabled upload times.
+# Telegram .yutakabackup schedule. The app enforces at least five minutes between enabled upload times.
 [triggers]
 crons = ["*/5 * * * *"]

@@ -1,16 +1,11 @@
-package com.koinly.siam
+package com.yutaka.siam
 
-import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.DocumentsContract
-import android.provider.Settings
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -24,18 +19,15 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.TimeZone
 
 class MainActivity: FlutterFragmentActivity() {
-    private val updaterChannel = "com.koinly.siam/updater"
-    private val updateBackgroundChannel = "com.koinly.siam/update_background"
-    private val profileMediaChannel = "com.koinly.siam/profile_media"
-    private val backupStorageChannel = "com.koinly.siam/backup_storage"
-    private val backgroundPermissionsChannel = "com.koinly.siam/background_permissions"
-    private val profileMediaPermissionRequestCode = 4107
+    private val updaterChannel = "com.yutaka.siam/updater"
+    private val updateBackgroundChannel = "com.yutaka.siam/update_background"
+    private val backupStorageChannel = "com.yutaka.siam/backup_storage"
+    private val backgroundPermissionsChannel = "com.yutaka.siam/background_permissions"
     private val backupDirectoryRequestCode = 4208
-    private var pendingProfileMediaPermissionResult: MethodChannel.Result? = null
     private var pendingBackupDirectoryResult: MethodChannel.Result? = null
     private val playUpdateManager by lazy { AppUpdateManagerFactory.create(this) }
     private val playUpdateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
-        // Google Play owns the update UI. Koinly rechecks availability when the
+        // Google Play owns the update UI. Yutaka rechecks availability when the
         // activity resumes, so cancellation/failure never leaves stale state.
     }
     private val flexibleUpdateListener = InstallStateUpdatedListener { state ->
@@ -87,14 +79,6 @@ class MainActivity: FlutterFragmentActivity() {
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
                 "deviceTimeZoneId" -> result.success(TimeZone.getDefault().id)
                 "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
-                else -> result.notImplemented()
-            }
-        }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, profileMediaChannel).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "checkPermission" -> result.success(profileMediaPermissionState())
-                "requestPermission" -> requestProfileMediaPermission(result)
-                "openAppSettings" -> result.success(openAppSettings())
                 else -> result.notImplemented()
             }
         }
@@ -290,10 +274,10 @@ class MainActivity: FlutterFragmentActivity() {
                 pending.error("folder_not_writable", "The selected folder is not writable.", null)
                 return
             }
-            // The picker grants access to a parent location. Koinly owns a
-            // predictable Koinly/Backup child below it so users never need to
+            // The picker grants access to a parent location. Yutaka owns a
+            // predictable Yutaka/Backup child below it so users never need to
             // create or manage the destination folder manually.
-            ensureKoinlyBackupDirectory(treeUri)
+            ensureYutakaBackupDirectory(treeUri)
             pending.success(
                 mapOf(
                     "uri" to treeUri.toString(),
@@ -302,94 +286,6 @@ class MainActivity: FlutterFragmentActivity() {
             )
         } catch (error: Exception) {
             pending.error("folder_permission_failed", error.message ?: "Could not keep access to the selected folder.", null)
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != profileMediaPermissionRequestCode) return
-        pendingProfileMediaPermissionResult?.success(profileMediaPermissionState(checkPermanentDenial = true))
-        pendingProfileMediaPermissionResult = null
-    }
-
-    private fun fullProfileMediaPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-            )
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-    }
-
-    private fun requestedProfileMediaPermissions(): Array<String> {
-        val permissions = fullProfileMediaPermissions().toMutableList()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        }
-        return permissions.toTypedArray()
-    }
-
-    private fun hasFullProfileMediaPermission(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
-        return fullProfileMediaPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
-    private fun hasSelectedProfileMediaPermission(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
-        return ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun profileMediaPermissionState(checkPermanentDenial: Boolean = false): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return "granted"
-        if (hasFullProfileMediaPermission() || hasSelectedProfileMediaPermission()) return "granted"
-        if (checkPermanentDenial) {
-            val permanentlyDenied = fullProfileMediaPermissions().any { permission ->
-                ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED &&
-                    !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
-            }
-            if (permanentlyDenied) return "permanentlyDenied"
-        }
-        return "denied"
-    }
-
-    private fun requestProfileMediaPermission(result: MethodChannel.Result) {
-        if (hasFullProfileMediaPermission() || hasSelectedProfileMediaPermission()) {
-            result.success("granted")
-            return
-        }
-        if (pendingProfileMediaPermissionResult != null) {
-            result.error("request_in_progress", "A Photos and videos permission request is already active.", null)
-            return
-        }
-        pendingProfileMediaPermissionResult = result
-        ActivityCompat.requestPermissions(
-            this,
-            requestedProfileMediaPermissions(),
-            profileMediaPermissionRequestCode,
-        )
-    }
-
-    private fun openAppSettings(): Boolean {
-        return try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:$packageName")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-            true
-        } catch (_: Exception) {
-            false
         }
     }
 
@@ -402,24 +298,7 @@ class MainActivity: FlutterFragmentActivity() {
     private fun openBatteryOptimizationSettings(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         if (isIgnoringBatteryOptimizations()) return true
-
-        // Request the exemption for Koinly directly. Android/OEM builds render
-        // this as the app-specific "always run in background" confirmation
-        // instead of dropping the user into the global optimization list.
-        return try {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:$packageName")
-            }
-            startActivity(intent)
-            true
-        } catch (_: Exception) {
-            try {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                true
-            } catch (_: Exception) {
-                openAppSettings()
-            }
-        }
+        return BatteryOptimizationFlavorPolicy.openSettings(this)
     }
 
     private fun pickBackupDirectory(result: MethodChannel.Result) {
@@ -535,34 +414,34 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
-    private fun selectedTreeIsKoinlyBackup(treeUri: Uri): Boolean {
+    private fun selectedTreeIsYutakaBackup(treeUri: Uri): Boolean {
         val segments = selectedTreeSegments(treeUri)
         return segments.size >= 2 &&
-            segments[segments.lastIndex - 1].equals("Koinly", ignoreCase = true) &&
+            segments[segments.lastIndex - 1].equals("Yutaka", ignoreCase = true) &&
             segments.last().equals("Backup", ignoreCase = true)
     }
 
-    private fun selectedTreeIsKoinlyFolder(treeUri: Uri): Boolean {
+    private fun selectedTreeIsYutakaFolder(treeUri: Uri): Boolean {
         val segments = selectedTreeSegments(treeUri)
-        return segments.isNotEmpty() && segments.last().equals("Koinly", ignoreCase = true)
+        return segments.isNotEmpty() && segments.last().equals("Yutaka", ignoreCase = true)
     }
 
-    private fun ensureKoinlyBackupDirectory(treeUri: Uri): Uri {
+    private fun ensureYutakaBackupDirectory(treeUri: Uri): Uri {
         val selected = parentDocumentUri(treeUri)
-        if (selectedTreeIsKoinlyBackup(treeUri)) return selected
-        if (selectedTreeIsKoinlyFolder(treeUri)) {
+        if (selectedTreeIsYutakaBackup(treeUri)) return selected
+        if (selectedTreeIsYutakaFolder(treeUri)) {
             return ensureChildDirectory(treeUri, selected, "Backup")
         }
-        val koinly = ensureChildDirectory(treeUri, selected, "Koinly")
-        return ensureChildDirectory(treeUri, koinly, "Backup")
+        val yutaka = ensureChildDirectory(treeUri, selected, "Yutaka")
+        return ensureChildDirectory(treeUri, yutaka, "Backup")
     }
 
     private fun resolvedBackupDirectoryLabel(treeUri: Uri): String {
         val selectedLabel = backupDirectoryLabel(treeUri)
         return when {
-            selectedTreeIsKoinlyBackup(treeUri) -> selectedLabel
-            selectedTreeIsKoinlyFolder(treeUri) -> "$selectedLabel/Backup"
-            else -> "$selectedLabel/Koinly/Backup"
+            selectedTreeIsYutakaBackup(treeUri) -> selectedLabel
+            selectedTreeIsYutakaFolder(treeUri) -> "$selectedLabel/Backup"
+            else -> "$selectedLabel/Yutaka/Backup"
         }
     }
 
@@ -572,9 +451,9 @@ class MainActivity: FlutterFragmentActivity() {
 
     private fun writeBackupFile(treeUri: Uri, fileName: String, bytes: ByteArray) {
         if (!canWriteBackupDirectory(treeUri)) {
-            throw SecurityException("Koinly no longer has write access to this folder. Choose it again in backup settings.")
+            throw SecurityException("Yutaka no longer has write access to this folder. Choose it again in backup settings.")
         }
-        val backupDirectoryUri = ensureKoinlyBackupDirectory(treeUri)
+        val backupDirectoryUri = ensureYutakaBackupDirectory(treeUri)
         val documentUri = findBackupDocument(treeUri, backupDirectoryUri, fileName)
             ?: DocumentsContract.createDocument(
                 contentResolver,
@@ -591,14 +470,14 @@ class MainActivity: FlutterFragmentActivity() {
 
     private fun listBackupFiles(treeUri: Uri): List<Map<String, Any>> {
         if (!canWriteBackupDirectory(treeUri)) {
-            throw SecurityException("Koinly no longer has access to this backup folder.")
+            throw SecurityException("Yutaka no longer has access to this backup folder.")
         }
         val result = mutableListOf<Map<String, Any>>()
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_LAST_MODIFIED,
         )
-        val backupDirectoryUri = ensureKoinlyBackupDirectory(treeUri)
+        val backupDirectoryUri = ensureYutakaBackupDirectory(treeUri)
         contentResolver.query(childDocumentsUri(treeUri, backupDirectoryUri), projection, null, null, null)?.use { cursor ->
             val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
@@ -614,7 +493,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     private fun deleteBackupFile(treeUri: Uri, fileName: String) {
         if (!canWriteBackupDirectory(treeUri)) return
-        val backupDirectoryUri = ensureKoinlyBackupDirectory(treeUri)
+        val backupDirectoryUri = ensureYutakaBackupDirectory(treeUri)
         val documentUri = findBackupDocument(treeUri, backupDirectoryUri, fileName) ?: return
         DocumentsContract.deleteDocument(contentResolver, documentUri)
     }

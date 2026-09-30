@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('opening the keyboard does not shrink shared center popups', () {
     final app = File('lib/main.dart').readAsStringSync();
-    final frameStart = app.indexOf('class _KoinlyPopupFrame extends StatelessWidget');
-    final contentStart = app.indexOf('class KoinlyPopupContent extends StatelessWidget');
+    final frameStart = app.indexOf('class _YutakaPopupFrame extends StatelessWidget');
+    final contentStart = app.indexOf('class YutakaPopupContent extends StatelessWidget');
 
     expect(frameStart, greaterThanOrEqualTo(0));
     expect(contentStart, greaterThan(frameStart));
@@ -22,7 +22,7 @@ void main() {
 
   test('popup body only scales for the actual safe viewport', () {
     final app = File('lib/main.dart').readAsStringSync();
-    final contentStart = app.indexOf('class KoinlyPopupContent extends StatelessWidget');
+    final contentStart = app.indexOf('class YutakaPopupContent extends StatelessWidget');
     final onboardingStart = app.indexOf('// -----------------------------------------------------------------------------\n// Onboarding', contentStart);
 
     expect(contentStart, greaterThanOrEqualTo(0));

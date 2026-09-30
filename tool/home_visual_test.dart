@@ -9,9 +9,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:koinly/main.dart';
-import 'package:koinly/app_config.dart';
-import 'package:koinly/models.dart' as models;
+import 'package:yutaka/main.dart';
+import 'package:yutaka/app_config.dart';
+import 'package:yutaka/models.dart' as models;
 
 class _PreviewController extends AppController {
   _PreviewController() {
@@ -53,7 +53,7 @@ void main() {
 
   setUpAll(() async {
     // Widget tests otherwise use Ahem, which cannot represent app typography.
-    final fontPath = Platform.environment['KOINLY_PREVIEW_FONT'] ?? r'C:\Windows\Fonts\segoeui.ttf';
+    final fontPath = Platform.environment['YUTAKA_PREVIEW_FONT'] ?? r'C:\Windows\Fonts\segoeui.ttf';
     final fontBytes = ByteData.sublistView(await File(fontPath).readAsBytes());
     for (final family in ['Inter', 'Roboto', 'Ahem', 'Segoe UI']) {
       await (FontLoader(family)..addFont(Future.value(fontBytes))).load();
@@ -74,7 +74,7 @@ void main() {
         ChangeNotifierProvider<AppController>.value(
           value: controller,
           child: Builder(builder: (context) {
-            final app = const KoinlyApp().build(context) as MaterialApp;
+            final app = const YutakaApp().build(context) as MaterialApp;
             return MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: app.darkTheme,
@@ -89,7 +89,7 @@ void main() {
         ),
       );
       await tester.runAsync(() async {
-        await precacheImage(const AssetImage('assets/icons/koinly_mark.png'),
+        await precacheImage(const AssetImage('assets/icons/yutaka_mark.png'),
             tester.element(find.byType(MainShell)));
       });
       await tester.pump();

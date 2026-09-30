@@ -79,12 +79,12 @@ class _WorkerProfileApi {
         .timeout(const Duration(seconds: 15));
     _throwIfError(response);
     final setCookie = response.headers['set-cookie'] ?? '';
-    final match = RegExp(r'__Host-koinly-admin=([^;]+)').firstMatch(setCookie);
+    final match = RegExp(r'__Host-yutaka-admin=([^;]+)').firstMatch(setCookie);
     final token = match?.group(1)?.trim() ?? '';
     if (token.isEmpty) {
       throw const _WorkerProfileException('The Worker signed in but did not return an administrator session. Redeploy the latest Worker and try again.');
     }
-    _cookie = '__Host-koinly-admin=$token';
+    _cookie = '__Host-yutaka-admin=$token';
   }
 
   Future<void> logout() async {
@@ -299,7 +299,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
               if (usernameEditable)
                 TextField(
                   controller: usernameController,
-                  contextMenuBuilder: koinlyTextFieldContextMenu,
+                  contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
                   autocorrect: false,
                   enableSuggestions: false,
@@ -310,7 +310,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
               if (requirePassword)
                 TextField(
                   controller: passwordController,
-                  contextMenuBuilder: koinlyTextFieldContextMenu,
+                  contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
                   obscureText: !passwordVisible,
                   autocorrect: false,
@@ -493,7 +493,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
                 const SizedBox(height: 20),
                 TextField(
                   controller: _usernameController,
-                  contextMenuBuilder: koinlyTextFieldContextMenu,
+                  contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
                   enabled: !_busy,
                   autocorrect: false,
@@ -504,7 +504,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _passwordController,
-                  contextMenuBuilder: koinlyTextFieldContextMenu,
+                  contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
                   enabled: !_busy,
                   obscureText: !_passwordVisible,
@@ -523,7 +523,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _busy ? null : _login,
-                  icon: _busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.login_rounded),
+                  icon: _busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.login_rounded),
                   label: const Text('Sign in'),
                 ),
               ],
@@ -654,7 +654,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _busy ? null : () => _run(_loadAccounts),
-            icon: _busy ? const KoinlyInlineLoader(size: 18) : const Icon(Icons.refresh_rounded),
+            icon: _busy ? const YutakaInlineLoader(size: 18) : const Icon(Icons.refresh_rounded),
             label: const Text('Refresh'),
           ),
           const SizedBox(height: 18),

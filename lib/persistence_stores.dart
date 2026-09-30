@@ -27,12 +27,12 @@ class SecureCredentialStore {
 
   final FlutterSecureStorage _storage;
 
-  static const _cloudSyncPinKey = 'koinly_cloud_sync_pin';
-  static const _mongoUrlKey = 'koinly_sync_mongodb_url';
-  static const _mongoSyncPinKey = 'koinly_sync_mongodb_pin';
-  static const _tursoAuthTokenKey = 'koinly_sync_turso_auth_token';
-  static const _accessTokenKey = 'koinly_account_access_token';
-  static const _refreshTokenKey = 'koinly_account_refresh_token';
+  static const _cloudSyncPinKey = 'yutaka_cloud_sync_pin';
+  static const _mongoUrlKey = 'yutaka_sync_mongodb_url';
+  static const _mongoSyncPinKey = 'yutaka_sync_mongodb_pin';
+  static const _tursoAuthTokenKey = 'yutaka_sync_turso_auth_token';
+  static const _accessTokenKey = 'yutaka_account_access_token';
+  static const _refreshTokenKey = 'yutaka_account_refresh_token';
 
   Future<String> readCloudSyncPin() async => await _storage.read(key: _cloudSyncPinKey) ?? '';
   Future<void> writeCloudSyncPin(String value) => _writeOrDelete(_cloudSyncPinKey, value);
@@ -72,10 +72,10 @@ class SyncProfileStore {
 
   final FlutterSecureStorage _storage;
 
-  static const _workersKey = 'koinly_saved_sync_workers_v1';
-  static const _accountsKey = 'koinly_saved_sync_accounts_v1';
-  static const _activeAccountKey = 'koinly_active_sync_account_profile_v1';
-  static const _activeWorkerKey = 'koinly_active_sync_worker_profile_v1';
+  static const _workersKey = 'yutaka_saved_sync_workers_v1';
+  static const _accountsKey = 'yutaka_saved_sync_accounts_v1';
+  static const _activeAccountKey = 'yutaka_active_sync_account_profile_v1';
+  static const _activeWorkerKey = 'yutaka_active_sync_worker_profile_v1';
 
   Future<List<SavedSyncWorker>> readWorkers() async {
     final prefs = await SharedPreferences.getInstance();
@@ -141,6 +141,6 @@ class SyncProfileStore {
     }
   }
 
-  String _accessKey(String profileId) => 'koinly_sync_profile_access_v1_$profileId';
-  String _refreshKey(String profileId) => 'koinly_sync_profile_refresh_v1_$profileId';
+  String _accessKey(String profileId) => 'yutaka_sync_profile_access_v1_$profileId';
+  String _refreshKey(String profileId) => 'yutaka_sync_profile_refresh_v1_$profileId';
 }

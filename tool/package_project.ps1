@@ -6,12 +6,12 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-  $OutputPath = Join-Path $ProjectRoot "Koinly-clean.zip"
+  $OutputPath = Join-Path $ProjectRoot "Yutaka-clean.zip"
 }
 
 $OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
-$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("koinly-package-" + [System.Guid]::NewGuid().ToString("N"))
-$stagingProject = Join-Path $stagingRoot "Koinly-main"
+$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("yutaka-package-" + [System.Guid]::NewGuid().ToString("N"))
+$stagingProject = Join-Path $stagingRoot "Yutaka-main"
 
 New-Item -ItemType Directory -Force -Path $stagingProject | Out-Null
 

@@ -25,7 +25,7 @@ test('profile portal supports username changes while preserving account identity
   assert.match(profile, />Administrator<\/span>/);
 });
 
-test('profile portal matches the current Koinly app palette', () => {
+test('profile portal matches the current Yutaka app palette', () => {
   for (const color of ['#0F1216', '#13181D', '#14191E', '#192126', '#272F35', '#ADB5BB', '#00BD91', '#27C6A0', '#FF5353', '#F6F9F6', '#FFFFFF', '#F3F8F4', '#ECF4EF', '#D9E7DE']) {
     assert.ok(profile.includes(color), `missing ${color}`);
   }

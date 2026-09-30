@@ -1,80 +1,6 @@
 part of '../main.dart';
 
-enum _ProfilePermissionAction { retry, openSettings, cancel }
-
-Future<bool> requestProfileMediaPermissionFlow(
-  BuildContext context,
-  AppController state,
-) async {
-  // Do not request Android media access during startup or onboarding. This
-  // flow is entered only after the user explicitly taps the profile-media
-  // upload action.
-  var permission = await state.profileMediaPermissions.check();
-
-  if (permission == ProfileMediaPermissionState.denied) {
-    permission = await state.profileMediaPermissions.request();
-  }
-
-  while (context.mounted) {
-    if (permission == ProfileMediaPermissionState.granted ||
-        permission == ProfileMediaPermissionState.notRequired) {
-      return true;
-    }
-
-    final action = await showProfileMediaPermissionDialog(context, permission);
-    if (!context.mounted || action == null || action == _ProfilePermissionAction.cancel) {
-      return false;
-    }
-    if (action == _ProfilePermissionAction.openSettings) {
-      await state.profileMediaPermissions.openSettings();
-      return false;
-    }
-    permission = await state.profileMediaPermissions.request();
-  }
-  return false;
-}
-
-Future<_ProfilePermissionAction?> showProfileMediaPermissionDialog(
-  BuildContext context,
-  ProfileMediaPermissionState permission,
-) {
-  final permanentlyDenied = permission == ProfileMediaPermissionState.permanentlyDenied;
-  return showDialog<_ProfilePermissionAction>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      icon: const Icon(Icons.perm_media_rounded, color: kSleekAccent, size: 34),
-      title: const Text('Photos and videos access'),
-      content: Text(
-        permanentlyDenied
-            ? 'Access is turned off in Android settings. Enable Photos and videos access so you can choose profile media.'
-            : 'Koinly needs Photos and videos access only when you choose a photo, GIF, or short video for your profile.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, _ProfilePermissionAction.cancel),
-          child: const Text('Not now'),
-        ),
-        if (permanentlyDenied)
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, _ProfilePermissionAction.openSettings),
-            icon: const Icon(Icons.settings_rounded),
-            label: const Text('Open settings'),
-          )
-        else
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, _ProfilePermissionAction.retry),
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Try again'),
-          ),
-      ],
-    ),
-  );
-}
-
 Future<void> pickAndSaveProfileMedia(BuildContext context, AppController state) async {
-  final allowed = await requestProfileMediaPermissionFlow(context, state);
-  if (!context.mounted || !allowed) return;
-
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ProfileMediaStorage.allowedExtensions,
@@ -229,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _editMediaFraming() async {
     final state = context.read<AppController>();
     if (!state.hasProfileMedia || mediaBusy) return;
-    await showKoinlyPopup<void>(
+    await showYutakaPopup<void>(
       context,
       maxWidth: 620,
       maxHeight: 760,
@@ -398,7 +324,7 @@ class _ProfileMediaCard extends StatelessWidget {
               FilledButton.icon(
                 onPressed: busy ? null : onPick,
                 icon: busy
-                    ? const KoinlyInlineLoader(size: 18)
+                    ? const YutakaInlineLoader(size: 18)
                     : Icon(hasMedia ? Icons.swap_horiz_rounded : Icons.add_photo_alternate_rounded),
                 label: Text(hasMedia ? 'Replace' : 'Add media'),
               ),
@@ -456,12 +382,12 @@ class _ProfileInformationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: displayName,
             maxLength: 60,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(labelText: 'Display name', hintText: 'How should Koinly address you?'),
+            decoration: const InputDecoration(labelText: 'Display name', hintText: 'How should Yutaka address you?'),
           ),
           if (username.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -545,7 +471,7 @@ class _ProfileMediaFramingEditorState extends State<ProfileMediaFramingEditor> {
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      child: KoinlyPopupContent(
+      child: YutakaPopupContent(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -619,7 +545,7 @@ class _ProfileMediaFramingEditorState extends State<ProfileMediaFramingEditor> {
                   child: FilledButton.icon(
                     onPressed: saving ? null : _save,
                     icon: saving
-                        ? const KoinlyInlineLoader(size: 18)
+                        ? const YutakaInlineLoader(size: 18)
                         : const Icon(Icons.check_rounded),
                     label: const Text('Save crop'),
                   ),
@@ -805,7 +731,7 @@ class _ProfileVideoViewState extends State<_ProfileVideoView> {
       return const Center(child: Icon(Icons.videocam_off_rounded, color: kSleekMuted));
     }
     if (!ready || current == null || !current.value.isInitialized) {
-      return const KoinlyInlineLoader(size: 24);
+      return const YutakaInlineLoader(size: 24);
     }
     final size = current.value.size;
     return ClipRect(

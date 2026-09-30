@@ -10,7 +10,7 @@ import 'models.dart';
 ///
 /// Foreground code calls this service for near-immediate processing. Android's
 /// WorkManager callback also calls it while the app is closed, so a scheduled
-/// charge is persisted even if the user does not have Koinly open at that
+/// charge is persisted even if the user does not have Yutaka open at that
 /// moment. IDs for automatic occurrences are deterministic, which makes the
 /// operation idempotent across multiple devices processing the same due date.
 class SubscriptionBackgroundService {
@@ -21,7 +21,7 @@ class SubscriptionBackgroundService {
 
   static Future<sql.Database> _openDatabase() async {
     final dir = await sql.getDatabasesPath();
-    return sql.openDatabase(p.join(dir, 'koinly_flutter.db'), singleInstance: false);
+    return sql.openDatabase(p.join(dir, 'yutaka_flutter.db'), singleInstance: false);
   }
 
   static Future<int> processDueNow({DateTime? now}) async {

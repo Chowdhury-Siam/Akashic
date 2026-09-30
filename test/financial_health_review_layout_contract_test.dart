@@ -9,7 +9,7 @@ void main() {
     final dialogStart = source.indexOf('class _FinancialHealthReviewDialogState');
     final splashStart = source.indexOf('class SplashScreen', dialogStart);
     final popupStart = source.indexOf('Future<T?> showFinancialHealthReviewPopup<T>');
-    final sharedFrameStart = source.indexOf('class _KoinlyPopupFrame extends StatelessWidget', popupStart);
+    final sharedFrameStart = source.indexOf('class _YutakaPopupFrame extends StatelessWidget', popupStart);
 
     expect(gateStart, greaterThanOrEqualTo(0));
     expect(dialogStart, greaterThan(gateStart));
@@ -22,12 +22,12 @@ void main() {
     final popup = source.substring(popupStart, sharedFrameStart);
 
     expect(gate, contains('showFinancialHealthReviewPopup<void>('));
-    expect(gate, isNot(contains('showKoinlyPopup<void>(')));
+    expect(gate, isNot(contains('showYutakaPopup<void>(')));
 
     expect(dialog, contains('SingleChildScrollView('));
     expect(dialog, contains('FinancialHealthSummarySection(summary: summary)'));
     expect(dialog, contains('height: 52'));
-    expect(dialog, isNot(contains('KoinlyPopupContent(')));
+    expect(dialog, isNot(contains('YutakaPopupContent(')));
     expect(dialog, isNot(contains('height: 760')));
 
     expect(popup, contains('final useFullScreen = safeWidth < 720 || safeHeight < 760;'));

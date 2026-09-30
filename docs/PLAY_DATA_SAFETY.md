@@ -1,7 +1,7 @@
-# Google Play Data Safety checklist for Koinly
+# Google Play Data Safety checklist for Yutaka
 
-**Release baseline:** Koinly 1.0.1220+264  
-**Reviewed:** 30 September 2026
+**Release baseline:** Yutaka 1.0.1223+267  
+**Reviewed:** 1 October 2026
 
 This file documents the current code paths so the Play Console Data safety form can be completed consistently with the shipped app. Re-check this document whenever dependencies, permissions, sync behavior, telemetry, or integrations change.
 
@@ -12,21 +12,24 @@ This file documents the current code paths so the Play Console Data safety form 
 - Telegram and Google Drive delivery are optional.
 - Firebase Analytics and Crashlytics collection are **off by default** and require an explicit user opt-in under **Settings > Privacy & data**.
 - The Android manifest explicitly removes `com.google.android.gms.permission.AD_ID`.
-- Koinly has no advertising SDK.
-- Koinly does not intentionally send finance contents to Firebase telemetry.
+- Profile photo/video selection uses Android's scoped system file picker; the Play build does **not** request `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED`, `READ_EXTERNAL_STORAGE`, or `WRITE_EXTERNAL_STORAGE`.
+- The merged Play build does **not** request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`; its settings shortcut opens Android's general battery-optimization screen instead of requesting direct exemption.
+- Android OS-managed Auto Backup is disabled; explicit backup rules exclude app-private data from cloud backup and device-to-device transfer. Yutaka backups occur only through the app's user-controlled backup/export features.
+- Yutaka has no advertising SDK.
+- Yutaka does not intentionally send finance contents to Firebase telemetry.
 
 ## Data inventory
 
-| Google Play data category | Koinly data / source | Leaves device? | When | Purpose | Optional? | Developer receives it? |
+| Google Play data category | Yutaka data / source | Leaves device? | When | Purpose | Optional? | Developer receives it? |
 | --- | --- | --- | --- | --- | --- | --- |
-| Personal info → User IDs | Self-hosted sync username | Yes | When the user enables and signs into self-hosted sync | Account authentication and sync | Yes | No central Koinly server; sent to the user's configured Worker |
-| Financial info | Accounts, balances, transactions, budgets, loans, repayments, plans, subscriptions and related finance records | Yes | Only when self-hosted sync or an explicit export/delivery feature is used | Multi-device sync, backup, reports | Yes | No central Koinly finance server; sent to user-configured infrastructure/destination |
-| Photos and videos | Selected profile photo/GIF/video | Yes | Only when profile media is selected and self-hosted sync is enabled | Profile display across devices | Yes | No central Koinly server; sent to the user's configured Worker |
-| Files and docs | Generated `.koinlybackup`, PDF, XLSX or TXT reports | Yes | Only when the user saves, shares, or enables Telegram/Google Drive delivery | Backup/export/reporting | Yes | Sent only to the selected destination or user-configured Worker |
-| App activity → App interactions | Firebase Analytics events, currently including app-open behavior | Yes | Only after the user enables telemetry | Product usage measurement | Yes | Firebase processes it for the configured Koinly Firebase project |
-| App info and performance → Crash logs | Firebase Crashlytics crash reports | Yes | Only after the user enables telemetry | Stability/debugging | Yes | Firebase processes it for the configured Koinly Firebase project |
-| App info and performance → Diagnostics | Technical diagnostics attached by Firebase SDKs | Yes | Only after the user enables telemetry | Stability/debugging | Yes | Firebase processes it for the configured Koinly Firebase project |
-| Device or other IDs | Firebase app-instance / similar SDK identifier | Yes | Only after the user enables telemetry | Analytics/crash service operation | Yes | Firebase processes it for the configured Koinly Firebase project |
+| Personal info → User IDs | Self-hosted sync username | Yes | When the user enables and signs into self-hosted sync | Account authentication and sync | Yes | No central Yutaka server; sent to the user's configured Worker |
+| Financial info | Accounts, balances, transactions, budgets, loans, repayments, plans, subscriptions and related finance records | Yes | Only when self-hosted sync or an explicit export/delivery feature is used | Multi-device sync, backup, reports | Yes | No central Yutaka finance server; sent to user-configured infrastructure/destination |
+| Photos and videos | Selected profile photo/GIF/video | Yes | Only when profile media is selected and self-hosted sync is enabled | Profile display across devices | Yes | No central Yutaka server; sent to the user's configured Worker |
+| Files and docs | Generated `.yutakabackup`, PDF, XLSX or TXT reports | Yes | Only when the user saves, shares, or enables Telegram/Google Drive delivery | Backup/export/reporting | Yes | Sent only to the selected destination or user-configured Worker |
+| App activity → App interactions | Firebase Analytics events, currently including app-open behavior | Yes | Only after the user enables telemetry | Product usage measurement | Yes | Firebase processes it for the configured Yutaka Firebase project |
+| App info and performance → Crash logs | Firebase Crashlytics crash reports | Yes | Only after the user enables telemetry | Stability/debugging | Yes | Firebase processes it for the configured Yutaka Firebase project |
+| App info and performance → Diagnostics | Technical diagnostics attached by Firebase SDKs | Yes | Only after the user enables telemetry | Stability/debugging | Yes | Firebase processes it for the configured Yutaka Firebase project |
+| Device or other IDs | Firebase app-instance / similar SDK identifier | Yes | Only after the user enables telemetry | Analytics/crash service operation | Yes | Firebase processes it for the configured Yutaka Firebase project |
 
 ## User-directed external services
 
@@ -41,7 +44,7 @@ The following transfers happen only when the user configures or invokes the feat
 
 When answering the Play Console “shared” questions, apply Google's current user-initiated transfer/service-provider exceptions to the exact production behavior rather than treating this table as an automatic legal classification.
 
-## Data not used by Koinly
+## Data not used by Yutaka
 
 The current Android app does not intentionally collect or request:
 

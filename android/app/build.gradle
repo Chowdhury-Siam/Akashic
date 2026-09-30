@@ -13,16 +13,16 @@ def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: project.findPr
 def releaseSigningConfigured = [releaseKeystorePath, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword].every { value -> value != null && value.toString().trim() }
 
 android {
-    namespace = "com.koinly.siam"
+    namespace = "com.yutaka.siam"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.koinly.siam"
+        applicationId = "com.yutaka.siam"
         minSdk = 23
         targetSdk = 36
-        versionCode = 264
-        versionName = "1.0.1220"
+        versionCode = 267
+        versionName = "1.0.1223"
         multiDexEnabled true
     }
 

@@ -10,13 +10,13 @@ void main() {
     final mainManifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     final directManifest = File('android/app/src/direct/AndroidManifest.xml').readAsStringSync();
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
-    final mainActivity = File('android/app/src/main/kotlin/com/koinly/siam/MainActivity.kt').readAsStringSync();
-    final directInstaller = File('android/app/src/direct/kotlin/com/koinly/siam/DirectApkInstaller.kt').readAsStringSync();
-    final playInstaller = File('android/app/src/play/kotlin/com/koinly/siam/DirectApkInstaller.kt').readAsStringSync();
-    final playWorkerStub = File('android/app/src/play/kotlin/com/koinly/siam/UpdateCheckWorker.kt').readAsStringSync();
+    final mainActivity = File('android/app/src/main/kotlin/com/yutaka/siam/MainActivity.kt').readAsStringSync();
+    final directInstaller = File('android/app/src/direct/kotlin/com/yutaka/siam/DirectApkInstaller.kt').readAsStringSync();
+    final playInstaller = File('android/app/src/play/kotlin/com/yutaka/siam/DirectApkInstaller.kt').readAsStringSync();
+    final playWorkerStub = File('android/app/src/play/kotlin/com/yutaka/siam/UpdateCheckWorker.kt').readAsStringSync();
     final workflow = File('.github/workflows/build-android-apks.yml').readAsStringSync();
 
-    expect(appConfig, contains("KOINLY_ANDROID_DISTRIBUTION"));
+    expect(appConfig, contains("YUTAKA_ANDROID_DISTRIBUTION"));
     expect(appConfig, contains("kIsGooglePlayBuild"));
 
     expect(mainManifest, isNot(contains('android.permission.REQUEST_INSTALL_PACKAGES')));
@@ -46,9 +46,9 @@ void main() {
 
     expect(workflow, contains('flutter build appbundle'));
     expect(workflow, contains('--flavor play'));
-    expect(workflow, contains('KOINLY_ANDROID_DISTRIBUTION=play'));
+    expect(workflow, contains('YUTAKA_ANDROID_DISTRIBUTION=play'));
     expect(workflow, contains('--flavor direct'));
-    expect(workflow, contains('KOINLY_ANDROID_DISTRIBUTION=direct'));
+    expect(workflow, contains('YUTAKA_ANDROID_DISTRIBUTION=direct'));
     expect(workflow, contains('REQUEST_INSTALL_PACKAGES'));
     expect(workflow, contains('Could not locate the merged Google Play manifest for policy verification.'));
   });

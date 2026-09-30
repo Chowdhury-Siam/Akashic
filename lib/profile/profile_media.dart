@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -9,13 +8,6 @@ const int kProfileMediaMaxBytes = 50 * 1024 * 1024;
 const String kProfileMediaSizeMessage = 'Profile media must be 50 MB or smaller.';
 
 enum ProfileMediaKind { photo, gif, video }
-
-enum ProfileMediaPermissionState {
-  notRequired,
-  granted,
-  denied,
-  permanentlyDenied,
-}
 
 class ProfileMediaException implements Exception {
   const ProfileMediaException(this.message);
@@ -152,60 +144,6 @@ class ProfileMediaStorage {
     final file = File(path);
     if (await file.exists()) {
       await file.delete();
-    }
-  }
-}
-
-class ProfileMediaPermissionService {
-  const ProfileMediaPermissionService();
-
-  static const MethodChannel _channel = MethodChannel('com.koinly.siam/profile_media');
-
-  Future<ProfileMediaPermissionState> check() async {
-    if (!Platform.isAndroid) return ProfileMediaPermissionState.notRequired;
-    try {
-      final state = await _channel.invokeMethod<String>('checkPermission');
-      return _decode(state);
-    } on PlatformException {
-      return ProfileMediaPermissionState.denied;
-    } on MissingPluginException {
-      return ProfileMediaPermissionState.denied;
-    }
-  }
-
-  Future<ProfileMediaPermissionState> request() async {
-    if (!Platform.isAndroid) return ProfileMediaPermissionState.notRequired;
-    try {
-      final state = await _channel.invokeMethod<String>('requestPermission');
-      return _decode(state);
-    } on PlatformException {
-      return ProfileMediaPermissionState.denied;
-    } on MissingPluginException {
-      return ProfileMediaPermissionState.denied;
-    }
-  }
-
-  Future<bool> openSettings() async {
-    if (!Platform.isAndroid) return false;
-    try {
-      return await _channel.invokeMethod<bool>('openAppSettings') ?? false;
-    } on PlatformException {
-      return false;
-    } on MissingPluginException {
-      return false;
-    }
-  }
-
-  ProfileMediaPermissionState _decode(String? value) {
-    switch (value) {
-      case 'granted':
-        return ProfileMediaPermissionState.granted;
-      case 'permanentlyDenied':
-        return ProfileMediaPermissionState.permanentlyDenied;
-      case 'notRequired':
-        return ProfileMediaPermissionState.notRequired;
-      default:
-        return ProfileMediaPermissionState.denied;
     }
   }
 }

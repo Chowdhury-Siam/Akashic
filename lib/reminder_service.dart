@@ -48,7 +48,7 @@ class ReminderService {
     if (!kSupportsLocalNotifications) return;
     await _configureLocalTimeZone();
     if (!_initialized) {
-      const android = AndroidInitializationSettings('ic_stat_koinly');
+      const android = AndroidInitializationSettings('ic_stat_yutaka');
       const settings = InitializationSettings(android: android);
       await _notifications.initialize(settings);
       _initialized = true;
@@ -143,14 +143,14 @@ class ReminderService {
         'daily_expense_reminder',
         'Daily expense reminder',
         channelDescription: 'Reminder to add daily expenses.',
-        icon: 'ic_stat_koinly',
+        icon: 'ic_stat_yutaka',
         importance: Importance.high,
         priority: Priority.high,
       ),
     );
     await _zonedScheduleWithExactFallback(
       id: 501,
-      title: 'Koinly',
+      title: 'Yutaka',
       body: "Don’t forget to record your expenses",
       scheduledDate: scheduled,
       details: details,
@@ -181,7 +181,7 @@ class ReminderService {
       'planned_purchase_reminder',
       'Plan reminders',
       channelDescription: 'Optional reminders for items saved in Plan.',
-      icon: 'ic_stat_koinly',
+      icon: 'ic_stat_yutaka',
       importance: Importance.high,
       priority: Priority.high,
     ),
@@ -253,7 +253,7 @@ class ReminderService {
         'loan_due_reminder',
         'Loan due reminders',
         channelDescription: 'Reminders for upcoming lending and borrowing due dates.',
-        icon: 'ic_stat_koinly',
+        icon: 'ic_stat_yutaka',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -299,10 +299,10 @@ class ReminderService {
     await ensureInitialized(requestPermission: false);
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'koinly_app_updates',
-        'Koinly updates',
-        channelDescription: 'Notifications when a newer Koinly release is available.',
-        icon: 'ic_stat_koinly',
+        'yutaka_app_updates',
+        'Yutaka updates',
+        channelDescription: 'Notifications when a newer Yutaka release is available.',
+        icon: 'ic_stat_yutaka',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -310,8 +310,8 @@ class ReminderService {
     final name = releaseName?.trim() ?? '';
     await _notifications.show(
       902,
-      'Koinly $version is available',
-      name.isEmpty ? 'A new update is ready. Open Koinly to review what changed.' : '$name is ready. Open Koinly to review what changed.',
+      'Yutaka $version is available',
+      name.isEmpty ? 'A new update is ready. Open Yutaka to review what changed.' : '$name is ready. Open Yutaka to review what changed.',
       details,
       payload: 'update:$version',
     );

@@ -349,7 +349,7 @@ class GoogleDriveAnalyticsSettings {
         connected = false,
         accountEmail = '',
         folderId = '',
-        folderName = 'Koinly Analytics',
+        folderName = 'Yutaka Analytics',
         connectedAt = null,
         lastUploadAt = null,
         lastError = null;
@@ -377,7 +377,7 @@ class GoogleDriveAnalyticsSettings {
       connected: data['connected'] == true,
       accountEmail: data['accountEmail']?.toString() ?? '',
       folderId: data['folderId']?.toString() ?? '',
-      folderName: data['folderName']?.toString().trim().isNotEmpty == true ? data['folderName'].toString() : 'Koinly Analytics',
+      folderName: data['folderName']?.toString().trim().isNotEmpty == true ? data['folderName'].toString() : 'Yutaka Analytics',
       connectedAt: parseTime(data['connectedAt']),
       lastUploadAt: parseTime(data['lastUploadAt']),
       lastError: data['lastError']?.toString(),

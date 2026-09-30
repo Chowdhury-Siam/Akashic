@@ -125,7 +125,7 @@ class _LoansScreenState extends State<LoansScreen> {
           _LoanSummaryHero(summary: state.loanSummary),
           const SizedBox(height: 14),
           if (searching) ...[
-            TextField(contextMenuBuilder: koinlyTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               controller: search,
               autofocus: true,
@@ -303,14 +303,14 @@ class _LoanTile extends StatelessWidget {
           closeThreshold: .16,
           children: [
             if (canRecordPayment)
-              _KoinlySlidableAction(
+              _YutakaSlidableAction(
                 onPressed: (_) => showLoanPaymentSheet(context, loan: loan),
                 backgroundColor: kSleekAccent,
                 foregroundColor: Colors.white,
                 icon: Icons.add_card_rounded,
                 label: 'Payment',
               ),
-            _KoinlySlidableAction(
+            _YutakaSlidableAction(
               onPressed: (_) => showLoanEditorSheet(context, loan: loan),
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,

@@ -390,9 +390,9 @@ String _analyticsPdfDateStamp(AnalyticsSnapshot snapshot) {
 String analyticsPdfFileName(AnalyticsSnapshot snapshot, {AnalyticsPdfVariant variant = AnalyticsPdfVariant.summary}) {
   final stamp = _analyticsPdfDateStamp(snapshot);
   if (variant == AnalyticsPdfVariant.transactionHistory) {
-    return 'Koinly-Transaction-History-$stamp.pdf';
+    return 'Yutaka-Transaction-History-$stamp.pdf';
   }
-  return 'Koinly-Analytics-${snapshot.dateFilter.name}-$stamp.pdf';
+  return 'Yutaka-Analytics-${snapshot.dateFilter.name}-$stamp.pdf';
 }
 
 class AnalyticsPdfService {
@@ -464,10 +464,10 @@ class AnalyticsPdfService {
         margin: const pw.EdgeInsets.fromLTRB(34, 36, 34, 36),
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
-          child: pw.Text('Koinly Analytics | Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          child: pw.Text('Yutaka Analytics | Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
         ),
         build: (context) => [
-          pw.Text('Koinly Analytics', style: pw.TextStyle(fontSize: 25, fontWeight: pw.FontWeight.bold, color: PdfColors.teal800)),
+          pw.Text('Yutaka Analytics', style: pw.TextStyle(fontSize: 25, fontWeight: pw.FontWeight.bold, color: PdfColors.teal800)),
           pw.SizedBox(height: 4),
           pw.Text('${snapshot.filterLabel} summary - ${_analyticsPdfSafe(snapshot.range.label)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
           pw.Text('Generated $generated | App version $appVersion', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
@@ -521,7 +521,7 @@ class AnalyticsPdfService {
               )),
           pw.Divider(height: 22, color: PdfColors.grey300),
           pw.Text(
-            'This report is generated locally from the finance data currently available in Koinly. Transfers are not counted as income or expense.',
+            'This report is generated locally from the finance data currently available in Yutaka. Transfers are not counted as income or expense.',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
         ],
@@ -615,10 +615,10 @@ class AnalyticsPdfService {
         margin: const pw.EdgeInsets.fromLTRB(34, 36, 34, 36),
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
-          child: pw.Text('Koinly Transaction History | Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          child: pw.Text('Yutaka Transaction History | Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
         ),
         build: (context) => [
-          pw.Text('Koinly Transaction History', style: pw.TextStyle(fontSize: 25, fontWeight: pw.FontWeight.bold, color: PdfColors.teal800)),
+          pw.Text('Yutaka Transaction History', style: pw.TextStyle(fontSize: 25, fontWeight: pw.FontWeight.bold, color: PdfColors.teal800)),
           pw.SizedBox(height: 4),
           pw.Text(_analyticsPdfSafe(snapshot.range.label), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
           pw.Text('Generated $generated | App version $appVersion', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
@@ -646,7 +646,7 @@ class AnalyticsPdfService {
           ],
           pw.SizedBox(height: 8),
           pw.Text(
-            'This report contains transactions matching the selected Koinly date filter. Transactions excluded from analytics are still included and are marked accordingly.',
+            'This report contains transactions matching the selected Yutaka date filter. Transactions excluded from analytics are still included and are marked accordingly.',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
         ],
@@ -680,8 +680,8 @@ String analyticsReportFileName(
 }) {
   final stamp = _analyticsPdfDateStamp(snapshot);
   final base = variant == AnalyticsPdfVariant.transactionHistory
-      ? 'Koinly-Transaction-History-$stamp'
-      : 'Koinly-Analytics-${snapshot.dateFilter.name}-$stamp';
+      ? 'Yutaka-Transaction-History-$stamp'
+      : 'Yutaka-Analytics-${snapshot.dateFilter.name}-$stamp';
   return '$base.${format.extension}';
 }
 
@@ -715,7 +715,7 @@ Uint8List _analyticsTextReport(AppController state, AnalyticsSnapshot snapshot, 
     final transfers = transactions.where((tx) => tx.type == MoneyTransactionType.transfer).toList(growable: false);
     final transferVolume = transfers.fold<double>(0, (sum, tx) => sum + tx.transferAmount);
     lines
-      ..add('Koinly Transaction History')
+      ..add('Yutaka Transaction History')
       ..add('${snapshot.filterLabel} | ${snapshot.range.label}')
       ..add('Generated $generated | App version $appVersion')
       ..add('')
@@ -756,7 +756,7 @@ Uint8List _analyticsTextReport(AppController state, AnalyticsSnapshot snapshot, 
     }
   } else {
     lines
-      ..add('Koinly Analytics')
+      ..add('Yutaka Analytics')
       ..add('${snapshot.filterLabel} summary | ${snapshot.range.label}')
       ..add('Generated $generated | App version $appVersion')
       ..add('')
@@ -994,7 +994,7 @@ Uint8List _analyticsXlsxReport(AppController state, AnalyticsSnapshot snapshot, 
   if (variant == AnalyticsPdfVariant.transactionHistory) {
     final transactions = _analyticsReportTransactions(snapshot);
     final rows = <List<Object?>>[
-      ['Koinly Transaction History'],
+      ['Yutaka Transaction History'],
       ['Date filter', snapshot.filterLabel],
       ['Range', snapshot.range.label],
       ['Generated', generated],
@@ -1030,7 +1030,7 @@ Uint8List _analyticsXlsxReport(AppController state, AnalyticsSnapshot snapshot, 
   }
 
   final summaryRows = <List<Object?>>[
-    ['Koinly Analytics'],
+    ['Yutaka Analytics'],
     ['Date filter', snapshot.filterLabel],
     ['Range', snapshot.range.label],
     ['Generated', generated],
@@ -1111,8 +1111,8 @@ Future<String?> downloadAnalyticsReport(
     try {
       final savedPath = await FilePicker.platform.saveFile(
         dialogTitle: variant == AnalyticsPdfVariant.summary
-            ? 'Save Koinly analytics ${format.label}'
-            : 'Save Koinly transaction history ${format.label}',
+            ? 'Save Yutaka analytics ${format.label}'
+            : 'Save Yutaka transaction history ${format.label}',
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: [format.extension],
@@ -1123,7 +1123,7 @@ Future<String?> downloadAnalyticsReport(
       return savedPath;
     } catch (_) {
       final documents = await getApplicationDocumentsDirectory();
-      final directory = Directory(p.join(documents.path, 'Koinly', 'Analytics'));
+      final directory = Directory(p.join(documents.path, 'Yutaka', 'Analytics'));
       await directory.create(recursive: true);
       final file = File(p.join(directory.path, fileName));
       await file.writeAsBytes(bytes, flush: true);
@@ -1144,8 +1144,8 @@ String _analyticsUploadError(Object error) {
 
 String _analyticsTelegramCaption(AnalyticsSnapshot snapshot, AnalyticsPdfVariant variant, AnalyticsReportFormat format) {
   final title = switch (variant) {
-    AnalyticsPdfVariant.summary => 'Koinly ${snapshot.filterLabel} Analytics',
-    AnalyticsPdfVariant.transactionHistory => 'Koinly Transaction History',
+    AnalyticsPdfVariant.summary => 'Yutaka ${snapshot.filterLabel} Analytics',
+    AnalyticsPdfVariant.transactionHistory => 'Yutaka Transaction History',
   };
   return '$title • ${format.label}\n${snapshot.range.label}';
 }
@@ -1241,7 +1241,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         bytes: bytes,
       );
       if (!mounted) return;
-      final folder = result['folderName']?.toString() ?? 'Koinly Analytics';
+      final folder = result['folderName']?.toString() ?? 'Yutaka Analytics';
       showSnack(context, '${pdfVariant == AnalyticsPdfVariant.summary ? 'Analytics' : 'Transaction history'} ${reportFormat.label} uploaded to Google Drive • $folder');
     } catch (error) {
       if (!mounted) return;
@@ -1588,7 +1588,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
       }
       final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
       if (!opened) throw StateError('Could not open Google authorization in your browser.');
-      if (mounted) showSnack(context, 'Finish Google authorization in the browser. Koinly will detect it automatically.');
+      if (mounted) showSnack(context, 'Finish Google authorization in the browser. Yutaka will detect it automatically.');
 
       for (var attempt = 0; attempt < 60 && mounted; attempt += 1) {
         await Future<void>.delayed(const Duration(seconds: 2));
@@ -1711,7 +1711,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                         ]),
                         const SizedBox(height: 14),
                         TextField(
-                          contextMenuBuilder: koinlyTextFieldContextMenu,
+                          contextMenuBuilder: yutakaTextFieldContextMenu,
                           enableInteractiveSelection: true,
                           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                           controller: _botTokenController,
@@ -1732,7 +1732,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                         ),
                         const SizedBox(height: 12),
                         TextField(
-                          contextMenuBuilder: koinlyTextFieldContextMenu,
+                          contextMenuBuilder: yutakaTextFieldContextMenu,
                           enableInteractiveSelection: true,
                           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                           controller: _chatIdController,
@@ -1840,7 +1840,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                           enableSuggestions: false,
                           decoration: const InputDecoration(
                             labelText: 'Google Drive Folder ID (optional)',
-                            hintText: 'Leave blank to use Koinly Analytics',
+                            hintText: 'Leave blank to use Yutaka Analytics',
                             prefixIcon: Icon(Icons.folder_rounded),
                           ),
                         ),

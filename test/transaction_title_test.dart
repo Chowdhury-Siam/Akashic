@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koinly/main.dart';
-import 'package:koinly/models.dart';
+import 'package:yutaka/main.dart';
+import 'package:yutaka/models.dart';
 import 'package:provider/provider.dart';
 
 MoneyTransaction titledTransaction({String title = 'Lunch with friends', DateTime? endOn}) {

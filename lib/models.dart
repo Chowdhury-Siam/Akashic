@@ -78,13 +78,13 @@ String syncDatabaseProviderSubtitle(SyncDatabaseProvider provider) {
     case SyncDatabaseProvider.local:
       return 'Keep data on this device only. No cloud credentials required.';
     case SyncDatabaseProvider.cloudflareD1:
-      return 'Free Cloudflare database option through your Koinly Worker API.';
+      return 'Free Cloudflare database option through your Yutaka Worker API.';
     case SyncDatabaseProvider.supabase:
-      return 'Free Supabase Postgres option through your Koinly Worker API.';
+      return 'Free Supabase Postgres option through your Yutaka Worker API.';
     case SyncDatabaseProvider.neonPostgres:
-      return 'Free Neon Postgres option through your Koinly Worker API.';
+      return 'Free Neon Postgres option through your Yutaka Worker API.';
     case SyncDatabaseProvider.firebaseFirestore:
-      return 'Free Firebase Firestore option through your Koinly Worker API.';
+      return 'Free Firebase Firestore option through your Yutaka Worker API.';
   }
 }
 
@@ -320,8 +320,8 @@ class PlannedPurchase {
       );
 }
 
-class KoinlyNote {
-  KoinlyNote({
+class YutakaNote {
+  YutakaNote({
     required this.id,
     required this.title,
     required this.body,
@@ -339,14 +339,14 @@ class KoinlyNote {
   final DateTime createdOn;
   final DateTime updatedOn;
 
-  KoinlyNote copyWith({
+  YutakaNote copyWith({
     String? title,
     String? body,
     bool? bookmarked,
     bool? draft,
     DateTime? createdOn,
     DateTime? updatedOn,
-  }) => KoinlyNote(
+  }) => YutakaNote(
         id: id,
         title: title ?? this.title,
         body: body ?? this.body,
@@ -366,7 +366,7 @@ class KoinlyNote {
         'updated_on': dateToDb(updatedOn),
       };
 
-  static KoinlyNote fromMap(Map<String, Object?> map) => KoinlyNote(
+  static YutakaNote fromMap(Map<String, Object?> map) => YutakaNote(
         id: map['id'] as String,
         title: map['title'] as String? ?? '',
         body: map['body'] as String? ?? '',

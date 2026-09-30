@@ -1,4 +1,4 @@
-package com.koinly.siam
+package com.yutaka.siam
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -29,19 +29,19 @@ private const val updatePreferencesFile = "FlutterSharedPreferences"
 private const val updatePreferencePrefix = "flutter."
 private const val automaticUpdatesKey = "automaticUpdatePopupEnabled"
 private const val lastNotifiedVersionKey = "lastNotifiedUpdateVersion"
-private const val nativeUpdatePeriodicWork = "koinly-native-periodic-update-check"
-private const val nativeUpdateImmediateWork = "koinly-native-immediate-update-check"
-private const val nativeUpdateTag = "koinly-native-updates"
-private const val updateChannelId = "koinly_app_updates"
+private const val nativeUpdatePeriodicWork = "yutaka-native-periodic-update-check"
+private const val nativeUpdateImmediateWork = "yutaka-native-immediate-update-check"
+private const val nativeUpdateTag = "yutaka-native-updates"
+private const val updateChannelId = "yutaka_app_updates"
 private const val updateNotificationId = 902
-private const val githubLatestReleaseUrl = "https://api.github.com/repos/Chowdhury-Siam/Koinly/releases/latest"
+private const val githubLatestReleaseUrl = "https://api.github.com/repos/Chowdhury-Siam/Yutaka/releases/latest"
 
 /**
  * Native Android updater scheduler.
  *
  * The release check deliberately runs outside the Flutter engine. This allows
  * Android WorkManager to check GitHub and post the update notification while
- * Koinly's UI process is not running. The old Dart WorkManager task depended on
+ * Yutaka's UI process is not running. The old Dart WorkManager task depended on
  * a headless Flutter isolate and could be deferred or fail to initialize plugin
  * state on some devices.
  */
@@ -134,7 +134,7 @@ class UpdateCheckWorker(
             connectTimeout = 12_000
             readTimeout = 12_000
             setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("User-Agent", "Koinly-Android-Background-Updater")
+            setRequestProperty("User-Agent", "Yutaka-Android-Background-Updater")
             instanceFollowRedirects = true
         }
         try {
@@ -168,10 +168,10 @@ class UpdateCheckWorker(
             manager.createNotificationChannel(
                 NotificationChannel(
                     updateChannelId,
-                    "Koinly updates",
+                    "Yutaka updates",
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
-                    description = "Notifications when a newer Koinly release is available."
+                    description = "Notifications when a newer Yutaka release is available."
                 },
             )
         }
@@ -180,7 +180,7 @@ class UpdateCheckWorker(
             .getLaunchIntentForPackage(applicationContext.packageName)
             ?.apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                putExtra("koinly_update_version", release.version)
+                putExtra("yutaka_update_version", release.version)
             }
         val pendingIntent = launchIntent?.let {
             PendingIntent.getActivity(
@@ -191,13 +191,13 @@ class UpdateCheckWorker(
             )
         }
         val body = if (release.name.isBlank()) {
-            "A new update is ready. Open Koinly to review what changed."
+            "A new update is ready. Open Yutaka to review what changed."
         } else {
-            "${release.name} is ready. Open Koinly to review what changed."
+            "${release.name} is ready. Open Yutaka to review what changed."
         }
         val notification = NotificationCompat.Builder(applicationContext, updateChannelId)
-            .setSmallIcon(R.drawable.ic_stat_koinly)
-            .setContentTitle("Koinly ${release.version} is available")
+            .setSmallIcon(R.drawable.ic_stat_yutaka)
+            .setContentTitle("Yutaka ${release.version} is available")
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)

@@ -1,4 +1,4 @@
-package com.koinly.siam
+package com.yutaka.siam
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit
 private const val flutterPreferencesFile = "FlutterSharedPreferences"
 private const val flutterPrefix = "flutter."
 private const val backupPassword = "YOUR_SECRET_PASSWORD"
-private const val automaticBackupPrefix = "koinly_auto_"
+private const val automaticBackupPrefix = "yutaka_auto_"
 
 internal data class AutomaticBackupSettings(
     val enabled: Boolean,
@@ -90,8 +90,8 @@ private fun SharedPreferences.stringListValue(key: String): List<String> {
 }
 
 internal object AutomaticBackupScheduler {
-    private const val uniqueWorkName = "koinly-native-automatic-local-backup"
-    private const val workTag = "koinly-automatic-local-backup"
+    private const val uniqueWorkName = "yutaka-native-automatic-local-backup"
+    private const val workTag = "yutaka-automatic-local-backup"
     private const val intervalMinutes = 15L
 
     fun sync(context: Context) {
@@ -237,8 +237,8 @@ class AutomaticBackupWorker(
     }
 
     private fun exportDatabase(): JSONObject {
-        val databaseFile = applicationContext.getDatabasePath("koinly_flutter.db")
-        if (!databaseFile.exists()) throw IllegalStateException("Koinly database is not available yet.")
+        val databaseFile = applicationContext.getDatabasePath("yutaka_flutter.db")
+        if (!databaseFile.exists()) throw IllegalStateException("Yutaka database is not available yet.")
         val database = SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY)
         return try {
             val output = JSONObject()
@@ -321,8 +321,8 @@ class AutomaticBackupWorker(
             put("loanShowWrittenOff", prefs.boolValue("loanShowWrittenOff", false))
             put("loanTransactionsVisibleInTransactionList", prefs.boolValue("loanTransactionsVisibleInTransactionList", true))
             put("syncDatabaseProvider", prefs.stringValue("syncDatabaseProvider", "mongoDb"))
-            put("syncMongoDatabaseName", prefs.stringValue("syncMongoDatabaseName", "koinly"))
-            put("syncMongoCollectionName", prefs.stringValue("syncMongoCollectionName", "koinly_sync_snapshots"))
+            put("syncMongoDatabaseName", prefs.stringValue("syncMongoDatabaseName", "yutaka"))
+            put("syncMongoCollectionName", prefs.stringValue("syncMongoCollectionName", "yutaka_sync_snapshots"))
         }
     }
 
@@ -330,7 +330,7 @@ class AutomaticBackupWorker(
         val now = Calendar.getInstance()
         return String.format(
             Locale.US,
-            "%s%04d%02d%02d_%02d%02d%02d.koinlybackup",
+            "%s%04d%02d%02d_%02d%02d%02d.yutakabackup",
             automaticBackupPrefix,
             now.get(Calendar.YEAR),
             now.get(Calendar.MONTH) + 1,
@@ -363,10 +363,10 @@ private object AndroidBackgroundBackupStorage {
         directoryLabel: String,
     ): String {
         if (!canWrite(context, treeUri)) {
-            throw SecurityException("Koinly no longer has permission to write to the selected backup folder. Choose the folder again.")
+            throw SecurityException("Yutaka no longer has permission to write to the selected backup folder. Choose the folder again.")
         }
         val resolver = context.contentResolver
-        val backupDirectory = ensureKoinlyBackupDirectory(context, treeUri)
+        val backupDirectory = ensureYutakaBackupDirectory(context, treeUri)
         val fileUri = findChild(context, treeUri, backupDirectory, fileName, directoryOnly = false)
             ?: DocumentsContract.createDocument(resolver, backupDirectory, "application/octet-stream", fileName)
             ?: throw IllegalStateException("Android could not create the automatic backup file.")
@@ -374,14 +374,14 @@ private object AndroidBackgroundBackupStorage {
             stream.write(bytes)
             stream.flush()
         } ?: throw IllegalStateException("Android could not open the automatic backup file for writing.")
-        val label = directoryLabel.ifBlank { "Koinly/Backup" }
+        val label = directoryLabel.ifBlank { "Yutaka/Backup" }
         return "$label/$fileName"
     }
 
     fun pruneOlderAutomaticBackups(context: Context, treeUri: Uri, keepFileName: String) {
-        val backupDirectory = ensureKoinlyBackupDirectory(context, treeUri)
+        val backupDirectory = ensureYutakaBackupDirectory(context, treeUri)
         val documents = listChildren(context, treeUri, backupDirectory)
-            .filter { it.name.startsWith(automaticBackupPrefix) && it.name.endsWith(".koinlybackup", ignoreCase = true) }
+            .filter { it.name.startsWith(automaticBackupPrefix) && it.name.endsWith(".yutakabackup", ignoreCase = true) }
         for (document in documents) {
             if (document.name == keepFileName) continue
             try {
@@ -432,26 +432,26 @@ private object AndroidBackgroundBackupStorage {
         }
     }
 
-    private fun selectedTreeIsKoinlyBackup(treeUri: Uri): Boolean {
+    private fun selectedTreeIsYutakaBackup(treeUri: Uri): Boolean {
         val segments = selectedTreeSegments(treeUri)
         return segments.size >= 2 &&
-            segments[segments.lastIndex - 1].equals("Koinly", ignoreCase = true) &&
+            segments[segments.lastIndex - 1].equals("Yutaka", ignoreCase = true) &&
             segments.last().equals("Backup", ignoreCase = true)
     }
 
-    private fun selectedTreeIsKoinlyFolder(treeUri: Uri): Boolean {
+    private fun selectedTreeIsYutakaFolder(treeUri: Uri): Boolean {
         val segments = selectedTreeSegments(treeUri)
-        return segments.isNotEmpty() && segments.last().equals("Koinly", ignoreCase = true)
+        return segments.isNotEmpty() && segments.last().equals("Yutaka", ignoreCase = true)
     }
 
-    private fun ensureKoinlyBackupDirectory(context: Context, treeUri: Uri): Uri {
+    private fun ensureYutakaBackupDirectory(context: Context, treeUri: Uri): Uri {
         val selected = parentDocumentUri(treeUri)
-        if (selectedTreeIsKoinlyBackup(treeUri)) return selected
-        if (selectedTreeIsKoinlyFolder(treeUri)) {
+        if (selectedTreeIsYutakaBackup(treeUri)) return selected
+        if (selectedTreeIsYutakaFolder(treeUri)) {
             return ensureChildDirectory(context, treeUri, selected, "Backup")
         }
-        val koinly = ensureChildDirectory(context, treeUri, selected, "Koinly")
-        return ensureChildDirectory(context, treeUri, koinly, "Backup")
+        val yutaka = ensureChildDirectory(context, treeUri, selected, "Yutaka")
+        return ensureChildDirectory(context, treeUri, yutaka, "Backup")
     }
 
     private fun ensureChildDirectory(
