@@ -1,0 +1,107 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:yutaka/data_merge.dart';
+
+void main() {
+  test('planned purchases are part of non-destructive database merge', () {
+    final result = mergeFinanceDatabasePayloads(
+      {
+        'planned_purchases': [
+          {
+            'id': 'local-plan',
+            'name': 'Headphones',
+            'amount': 100.0,
+            'category_id': 'shopping',
+            'created_on': 100,
+            'updated_on': 100,
+          },
+        ],
+      },
+      {
+        'planned_purchases': [
+          {
+            'id': 'cloud-plan',
+            'name': 'Keyboard',
+            'amount': 200.0,
+            'category_id': 'shopping',
+            'created_on': 200,
+            'updated_on': 200,
+          },
+        ],
+      },
+    );
+
+    final plans = (result.database['planned_purchases'] as List).cast<Map>();
+    expect(plans.map((row) => row['id']).toSet(), {'local-plan', 'cloud-plan'});
+  });
+
+  test('category normalization remaps planned-purchase category references', () {
+    final result = mergeFinanceDatabasePayloads(
+      {
+        'categories': [
+          {'id': 'food-old', 'type': 'expense', 'name': 'Food', 'created_on': 100, 'updated_on': 100},
+        ],
+      },
+      {
+        'categories': [
+          {'id': 'food-new', 'type': 'expense', 'name': ' food ', 'created_on': 200, 'updated_on': 200},
+        ],
+        'planned_purchases': [
+          {
+            'id': 'plan',
+            'name': 'Snacks',
+            'amount': 25.0,
+            'category_id': 'food-new',
+            'created_on': 200,
+            'updated_on': 200,
+          },
+        ],
+      },
+    );
+
+    final plans = (result.database['planned_purchases'] as List).cast<Map>();
+    expect(plans.single['category_id'], 'food-old');
+    final categories = (result.database['categories'] as List).cast<Map>();
+    expect(categories, hasLength(1));
+  });
+
+  test('transaction tab exposes Plan and purchase flow creates a current-time expense', () {
+    final source = File('lib/main.dart').readAsStringSync();
+
+    expect(source, contains("key: ValueKey('planned-\${item.id}')"));
+    expect(source, contains('startActionPane: ActionPane('));
+    expect(source, contains("label: 'Buy'"));
+    expect(source, contains('extentRatio: .28'));
+
+    expect(source, contains("heroTag: 'transactionPlanFab'"));
+    expect(source, contains("label: const Text('Plan')"));
+    expect(source, contains("child: const Text('Buy')"));
+    expect(source, contains("message: 'Total planned price'"));
+    expect(source, contains("final total = items.fold<double>(0"));
+    expect(source, contains("title: 'Choose Account'"));
+    expect(source, contains("child: Text(purchasing ? 'Purchasing…' : 'Purchase')"));
+    expect(source, contains("type: MoneyTransactionType.expense"));
+    expect(source, contains("final now = DateTime.now();"));
+    expect(source, contains("await txn.delete('planned_purchases'"));
+  });
+  test('planned purchases support optional synchronized reminders', () {
+    final model = File('lib/models.dart').readAsStringSync();
+    final main = File('lib/main.dart').readAsStringSync();
+    final reminders = File('lib/reminder_service.dart').readAsStringSync();
+
+    expect(model, contains('final DateTime? reminderOn;'));
+    expect(model, contains("'reminder_on': reminderOn == null ? null : dateToDb(reminderOn!)"));
+    expect(model, contains("reminderOn: nullableDateFromDb(map['reminder_on'])"));
+    expect(main, contains('ALTER TABLE planned_purchases ADD COLUMN reminder_on INTEGER'));
+    expect(main, contains("'Reminder'"));
+    expect(main, contains('reminderOn: reminderEnabled ? reminderAt : null'));
+    expect(main, contains('unawaited(refreshPlannedPurchaseReminders())'));
+    expect(reminders, contains("'planned_purchase_reminder'"));
+    expect(reminders, contains("payload: 'plan:\${reminder.id}'"));
+    expect(reminders, contains("item.payload?.startsWith('plan:') == true"));
+    expect(main, contains('await ReminderService.cancelPlannedPurchaseReminder(item.id)'));
+    expect(main, contains('await ReminderService.schedulePlannedPurchaseReminder('));
+  });
+
+}

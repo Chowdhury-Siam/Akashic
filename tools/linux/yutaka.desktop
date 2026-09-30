@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Yutaka
+Comment=Private, local-first personal finance tracker
+Exec=yutaka
+Icon=yutaka
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+StartupWMClass=yutaka

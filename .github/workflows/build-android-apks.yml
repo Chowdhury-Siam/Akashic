@@ -1,0 +1,1601 @@
+name: Build Android, Windows, Linux and macOS Releases
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "lib/**"
+      - "android/**"
+      - "windows/**"
+      - "linux/**"
+      - "macos/**"
+      - "tools/linux/**"
+      - "assets/**"
+      - "cloud/worker/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "CHANGELOG.md"
+      - ".github/workflows/build-android-apks.yml"
+
+concurrency:
+  group: yutaka-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-worker-bundle:
+    name: Prepare in-app Worker deployment bundle
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Restore prepared Worker bundle cache
+        id: worker-bundle-cache
+        uses: actions/cache@v5
+        with:
+          path: assets/worker/yutaka_sync_worker.js
+          key: yutaka-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
+
+      - name: Set up Node 22
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Restore Worker dependency cache
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        id: worker-node-cache
+        uses: actions/cache@v5
+        with:
+          path: cloud/worker/node_modules
+          key: yutaka-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
+
+      - name: Install Worker dependencies
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true' && steps.worker-node-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Build deployable Worker bundle for the app
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm run bundle:app
+
+      - name: Verify embedded Worker bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="assets/worker/yutaka_sync_worker.js"
+          test -s "$bundle"
+          ! grep -q 'YUTAKA_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
+          test "$(wc -c < "$bundle")" -gt 10000
+
+      - name: Upload deployable Worker bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker/yutaka_sync_worker.js
+          if-no-files-found: error
+          compression-level: 0
+
+  # GitHub copies workflow triggers into forks. Keep every release build job
+  # restricted to the canonical repository so fork pushes and manual runs
+  # cannot spend Actions minutes building Yutaka application packages.
+  build-apks:
+    needs: prepare-worker-bundle
+    name: Build Android ${{ matrix.label }}
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - variant: universal
+            label: direct universal APK
+            package: apk
+            target_platform: android-arm,android-arm64
+            split_per_abi: false
+          - variant: arm32
+            label: direct ARM32 APK
+            package: apk
+            target_platform: android-arm
+            split_per_abi: true
+          - variant: arm64
+            label: direct ARM64 APK
+            package: apk
+            target_platform: android-arm64
+            split_per_abi: true
+          - variant: play
+            label: Google Play AAB
+            package: aab
+            split_per_abi: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Dorg.gradle.jvmargs=-Xmx4g"
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Verify Android 16 / API 36 app target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_API36'
+          import pathlib
+          import re
+
+          gradle = pathlib.Path('android/app/build.gradle').read_text(encoding='utf-8')
+
+          def require_value(name: str, expected: int) -> None:
+              pattern = rf'\b{name}\s*=\s*(\d+)'
+              match = re.search(pattern, gradle)
+              if not match:
+                  raise SystemExit(f'::error::{name} is missing from android/app/build.gradle')
+              actual = int(match.group(1))
+              if actual != expected:
+                  raise SystemExit(f'::error::{name} must be {expected} for Android 16 / API 36 Play releases; found {actual}.')
+              print(f'{name}={actual}')
+
+          require_value('compileSdk', 36)
+          require_value('targetSdk', 36)
+          PY_VERIFY_API36
+
+      - name: Verify Android build toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'com.android.application" version "9.0.1"' android/settings.gradle
+          grep -q 'org.jetbrains.kotlin.android" version "2.3.20"' android/settings.gradle
+          grep -q 'gradle-9.1.0-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q '^android.newDsl=false$' android/gradle.properties
+          grep -q '^android.builtInKotlin=false$' android/gradle.properties
+
+      - name: Verify preinstalled Android SDK 36 and NDK 28
+        shell: bash
+        run: |
+          packages=()
+          [ -d "$ANDROID_HOME/platforms/android-36" ] || packages+=("platforms;android-36")
+          [ -d "$ANDROID_HOME/build-tools/36.0.0" ] || packages+=("build-tools;36.0.0")
+          [ -d "$ANDROID_HOME/ndk/28.2.13676358" ] || packages+=("ndk;28.2.13676358")
+          if [ ${#packages[@]} -gt 0 ]; then
+            echo "Installing missing Android SDK packages: ${packages[*]}"
+            yes | sdkmanager --licenses >/dev/null 2>&1 || true
+            sdkmanager "${packages[@]}"
+          else
+            echo "Required Android SDK/NDK packages are already available on the runner."
+          fi
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Restore Dart package cache
+        uses: actions/cache@v4
+        with:
+          path: .pub-cache
+          key: yutaka-${{ runner.os }}-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-pub-
+
+      - name: Restore Android Gradle wrapper without replacing app resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_SOURCE="$RUNNER_TEMP/yutaka-android-source"
+          WRAPPER_SOURCE="$RUNNER_TEMP/yutaka-generated-wrapper"
+          rm -rf "$ANDROID_SOURCE" "$WRAPPER_SOURCE"
+
+          # flutter create is used only to regenerate binary Gradle wrapper files that are
+          # intentionally not kept in the source ZIP. Preserve the complete Android app
+          # first so Flutter cannot silently replace the custom launcher/splash resources.
+          cp -a android "$ANDROID_SOURCE"
+          flutter create --platforms=android --project-name yutaka --no-pub .
+
+          mkdir -p "$WRAPPER_SOURCE"
+          cp android/gradlew "$WRAPPER_SOURCE/gradlew"
+          cp android/gradlew.bat "$WRAPPER_SOURCE/gradlew.bat"
+          cp -a android/gradle/wrapper "$WRAPPER_SOURCE/wrapper"
+
+          rm -rf android
+          cp -a "$ANDROID_SOURCE" android
+          cp "$WRAPPER_SOURCE/gradlew" android/gradlew
+          cp "$WRAPPER_SOURCE/gradlew.bat" android/gradlew.bat
+          mkdir -p android/gradle
+          rm -rf android/gradle/wrapper
+          cp -a "$WRAPPER_SOURCE/wrapper" android/gradle/wrapper
+          chmod +x android/gradlew
+
+          # Fail immediately if the dedicated splash configuration was lost.
+          grep -q '@drawable/yutaka_splash_icon' android/app/src/main/res/values-v31/styles.xml
+          test -f android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png
+
+      - name: Force Gradle wrapper 9.1.0
+        run: |
+          mkdir -p android/gradle/wrapper
+          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF_GRADLE'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-9.1.0-bin.zip
+          EOF_GRADLE
+
+      - name: Read app version
+        run: |
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::pubspec.yaml version must use semantic-version+positive-build-number, for example 1.2.3+123."
+            exit 1
+          fi
+          echo "YUTAKA_APP_VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+          sed -i -E "s/versionCode = [0-9]+/versionCode = ${BUILD_NUMBER}/" android/app/build.gradle
+          sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"${VERSION_NAME}\"/" android/app/build.gradle
+          grep -nE "^(version:)|versionCode|versionName" pubspec.yaml android/app/build.gradle
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          flutter pub get --offline || flutter pub get
+
+      - name: Verify file picker Android 16 build compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_FILE_PICKER'
+          import json
+          import pathlib
+          import urllib.parse
+
+          config = json.loads(pathlib.Path('.dart_tool/package_config.json').read_text(encoding='utf-8'))
+          package = next((item for item in config['packages'] if item['name'] == 'file_picker'), None)
+          if package is None:
+              raise SystemExit('::error::file_picker is missing from the resolved package configuration.')
+
+          root_uri = package['rootUri']
+          parsed = urllib.parse.urlparse(root_uri)
+          if parsed.scheme != 'file':
+              raise SystemExit(f'::error::Unsupported file_picker package URI: {root_uri}')
+
+          package_root = pathlib.Path(urllib.parse.unquote(parsed.path))
+          gradle_file = package_root / 'android' / 'build.gradle'
+          if not gradle_file.is_file():
+              raise SystemExit(f'::error::file_picker Android build.gradle was not found: {gradle_file}')
+
+          gradle = gradle_file.read_text(encoding='utf-8')
+          if 'flutter.compileSdkVersion' not in gradle:
+              raise SystemExit('::error::Resolved file_picker does not inherit Flutter compileSdkVersion; API 36 builds can regress to android-34.')
+
+          print(f'file_picker Android configuration is API-36 compatible: {gradle_file}')
+          PY_VERIFY_FILE_PICKER
+
+      - name: Verify Android permission policy split
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_ANDROID_PERMISSIONS'
+          from pathlib import Path
+
+          main = Path('android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          play = Path('android/app/src/play/AndroidManifest.xml').read_text(encoding='utf-8')
+          direct = Path('android/app/src/direct/AndroidManifest.xml').read_text(encoding='utf-8')
+          activity = Path('android/app/src/main/kotlin/com/yutaka/siam/MainActivity.kt').read_text(encoding='utf-8')
+          play_policy = Path('android/app/src/play/kotlin/com/yutaka/siam/BatteryOptimizationFlavorPolicy.kt').read_text(encoding='utf-8')
+          direct_policy = Path('android/app/src/direct/kotlin/com/yutaka/siam/BatteryOptimizationFlavorPolicy.kt').read_text(encoding='utf-8')
+
+          broad_media = [
+              'android.permission.READ_MEDIA_IMAGES',
+              'android.permission.READ_MEDIA_VIDEO',
+              'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+              'android.permission.READ_EXTERNAL_STORAGE',
+              'android.permission.WRITE_EXTERNAL_STORAGE',
+          ]
+          for permission in broad_media:
+              if permission in main:
+                  raise SystemExit(f'::error::Broad media/storage permission leaked into the common manifest: {permission}')
+              if permission not in play or 'tools:node="remove"' not in play:
+                  raise SystemExit(f'::error::Play manifest does not explicitly strip: {permission}')
+              if permission not in direct or 'tools:node="remove"' not in direct:
+                  raise SystemExit(f'::error::Direct manifest does not explicitly strip: {permission}')
+
+          battery = 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+          if battery in main:
+              raise SystemExit('::error::Battery-optimization exemption leaked into the common/Play manifest.')
+          if battery not in play or 'tools:node="remove"' not in play:
+              raise SystemExit('::error::Play manifest must explicitly remove REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.')
+          if battery not in direct:
+              raise SystemExit('::error::Direct flavor lost its optional battery-optimization exemption.')
+          if 'BatteryOptimizationFlavorPolicy.openSettings(this)' not in activity:
+              raise SystemExit('::error::Shared activity is not delegating battery settings to the flavor policy.')
+          if 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' in activity or 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' in play_policy:
+              raise SystemExit('::error::Direct battery exemption code leaked into the Play/shared Android sources.')
+          if 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' not in direct_policy:
+              raise SystemExit('::error::Direct battery exemption implementation is missing.')
+
+          print('Android permission policy split verified.')
+          PY_VERIFY_ANDROID_PERMISSIONS
+
+      - name: Verify Android platform backup privacy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_ANDROID_BACKUP'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          manifest_path = Path('android/app/src/main/AndroidManifest.xml')
+          legacy_path = Path('android/app/src/main/res/xml/backup_rules.xml')
+          modern_path = Path('android/app/src/main/res/xml/data_extraction_rules.xml')
+          manifest = manifest_path.read_text(encoding='utf-8')
+
+          required_manifest = [
+              'android:allowBackup="false"',
+              'android:fullBackupContent="@xml/backup_rules"',
+              'android:dataExtractionRules="@xml/data_extraction_rules"',
+          ]
+          for value in required_manifest:
+              if value not in manifest:
+                  raise SystemExit(f'::error::Android platform backup privacy setting is missing: {value}')
+
+          domains = {
+              'root', 'file', 'database', 'sharedpref', 'external',
+              'device_root', 'device_file', 'device_database', 'device_sharedpref',
+          }
+          legacy_root = ET.parse(legacy_path).getroot()
+          legacy_excluded = {e.attrib.get('domain') for e in legacy_root.findall('exclude') if e.attrib.get('path') == '.'}
+          if not domains.issubset(legacy_excluded):
+              raise SystemExit(f'::error::Legacy Android backup exclusions are incomplete: {sorted(domains - legacy_excluded)}')
+
+          modern_root = ET.parse(modern_path).getroot()
+          for section_name in ('cloud-backup', 'device-transfer'):
+              section = modern_root.find(section_name)
+              if section is None:
+                  raise SystemExit(f'::error::Android 12+ backup rules are missing <{section_name}>.')
+              excluded = {e.attrib.get('domain') for e in section.findall('exclude') if e.attrib.get('path') == '.'}
+              if not domains.issubset(excluded):
+                  raise SystemExit(f'::error::{section_name} exclusions are incomplete: {sorted(domains - excluded)}')
+
+          print('Android platform backup is disabled and all app-data domains are excluded.')
+          PY_VERIFY_ANDROID_BACKUP
+
+      - name: Prepare artifact folder
+        run: mkdir -p artifacts
+
+      - name: Prepare permanent Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Permanent Android release signing is required. Missing GitHub Actions secrets: ${missing[*]}"
+            echo "::error::The workflow will not generate a temporary signing key because changing signing certificates prevents normal app updates."
+            exit 1
+          fi
+
+          KEYSTORE_FILE="$RUNNER_TEMP/yutaka-release.jks"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid Base64. Encode the same permanent Yutaka .jks/.keystore file and update the repository secret."
+            rm -f "$KEYSTORE_FILE"
+            exit 1
+          fi
+
+          if [ ! -s "$KEYSTORE_FILE" ]; then
+            echo "::error::Decoded Android keystore is empty. Check ANDROID_KEYSTORE_BASE64."
+            rm -f "$KEYSTORE_FILE"
+            exit 1
+          fi
+
+          chmod 600 "$KEYSTORE_FILE"
+          if ! keytool -list \
+            -keystore "$KEYSTORE_FILE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null; then
+            echo "::error::Android release keystore validation failed. Check the keystore, password, and alias secrets."
+            exit 1
+          fi
+
+          echo "Using the configured permanent Android release key."
+          keytool -list -v \
+            -keystore "$KEYSTORE_FILE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            | grep -E 'SHA256:|Alias name:' || true
+
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      # Build each Android distribution artifact in its own matrix runner. Direct
+      # installs keep three APK variants, while the Play flavor produces a signed AAB
+      # whose merged manifest is checked to ensure sideload-update capability is absent.
+      - name: Build ${{ matrix.label }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.package }}" = "aab" ]; then
+            flutter build appbundle \
+              --flavor play \
+              --release \
+              --build-name="$YUTAKA_APP_VERSION_NAME" \
+              --build-number="$YUTAKA_APP_BUILD_NUMBER" \
+              --no-pub \
+              --no-tree-shake-icons \
+              --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME" \
+              --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play
+            PLAY_MANIFEST="$(find build/app/intermediates -type f -path '*playRelease*' -name AndroidManifest.xml -print -quit)"
+            if [ -z "$PLAY_MANIFEST" ]; then
+              echo "::error::Could not locate the merged Google Play manifest for policy verification."
+              exit 1
+            fi
+            if grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' "$PLAY_MANIFEST"; then
+              echo "::error::Google Play manifest unexpectedly requests REQUEST_INSTALL_PACKAGES."
+              exit 1
+            fi
+            if grep -q 'com.yutaka.siam.fileprovider' "$PLAY_MANIFEST"; then
+              echo "::error::Google Play manifest unexpectedly contains Yutaka's direct APK FileProvider."
+              exit 1
+            fi
+            PLAY_AAB="$(find build/app/outputs/bundle -type f -name '*.aab' -path '*playRelease*' -print -quit)"
+            if [ -z "$PLAY_AAB" ]; then
+              echo "::error::Google Play AAB was not produced."
+              exit 1
+            fi
+            cp "$PLAY_AAB" "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-play.aab"
+          else
+            extra_args=()
+            if [ "${{ matrix.split_per_abi }}" = "true" ]; then
+              extra_args+=(--split-per-abi)
+            fi
+            flutter build apk \
+              --flavor direct \
+              --release \
+              "${extra_args[@]}" \
+              --target-platform "${{ matrix.target_platform }}" \
+              --build-name="$YUTAKA_APP_VERSION_NAME" \
+              --build-number="$YUTAKA_APP_BUILD_NUMBER" \
+              --no-pub \
+              --no-tree-shake-icons \
+              --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME" \
+              --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct
+            case "${{ matrix.variant }}" in
+              universal) expected_apk="app-direct-release.apk" ;;
+              arm32) expected_apk="app-armeabi-v7a-direct-release.apk" ;;
+              arm64) expected_apk="app-arm64-v8a-direct-release.apk" ;;
+              *)
+                echo "::error::Unknown direct APK variant: ${{ matrix.variant }}"
+                exit 1
+                ;;
+            esac
+
+            source_apk="build/app/outputs/flutter-apk/${expected_apk}"
+            if [ ! -f "$source_apk" ]; then
+              echo "::error::Expected direct APK was not produced: $source_apk"
+              echo "Available Flutter APK outputs:"
+              find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' -print || true
+              exit 1
+            fi
+
+            cp "$source_apk" \
+              "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
+          fi
+
+      - name: List Android artifacts
+        run: ls -lh artifacts
+
+      - name: Verify APK signatures
+        if: matrix.package == 'apk'
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "::warning::apksigner was not found at $APKSIGNER; skipping signature verification."
+            exit 0
+          fi
+          for apk in artifacts/*.apk; do
+            echo "Verifying $apk"
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
+
+      - name: Upload direct APK
+        if: matrix.package == 'apk'
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-android-${{ matrix.variant }}
+          path: artifacts/Yutaka-v*-${{ matrix.variant }}.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload Google Play AAB
+        if: matrix.package == 'aab'
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-play-store-aab
+          path: artifacts/Yutaka-v*-play.aab
+          if-no-files-found: error
+          compression-level: 0
+
+  build-windows:
+    needs: prepare-worker-bundle
+    name: Build Windows x64 installer EXE
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}\.pub-cache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Restore Windows dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            build/windows/x64/extracted
+          key: yutaka-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-deps-
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Enable Windows desktop support
+        run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows platform files
+        run: flutter create --platforms=windows --project-name yutaka --no-pub .
+
+      - name: Apply Yutaka Windows window title
+        shell: pwsh
+        run: |
+          $mainCpp = "windows/runner/main.cpp"
+          if (!(Test-Path $mainCpp)) {
+            throw "Windows runner main.cpp was not generated: $mainCpp"
+          }
+          $main = Get-Content $mainCpp -Raw
+          $main = $main -replace 'CreateAndShow\(L"[^"]+"', 'CreateAndShow(L"Yutaka"'
+          $main = $main -replace '\.Create\(L"[^"]+"', '.Create(L"Yutaka"'
+          Set-Content -Path $mainCpp -Value $main -Encoding UTF8
+
+          $resourceRc = "windows/runner/Runner.rc"
+          if (Test-Path $resourceRc) {
+            $rc = Get-Content $resourceRc -Raw
+            $rc = $rc -replace 'VALUE "FileDescription", "[^"]+"', 'VALUE "FileDescription", "Yutaka"'
+            $rc = $rc -replace 'VALUE "InternalName", "[^"]+"', 'VALUE "InternalName", "Yutaka"'
+            $rc = $rc -replace 'VALUE "OriginalFilename", "[^"]+"', 'VALUE "OriginalFilename", "Yutaka.exe"'
+            $rc = $rc -replace 'VALUE "ProductName", "[^"]+"', 'VALUE "ProductName", "Yutaka"'
+            Set-Content -Path $resourceRc -Value $rc -Encoding UTF8
+          }
+
+      - name: Apply Yutaka Windows app icon
+        shell: pwsh
+        run: |
+          $iconSource = "assets/icons/app_icon.ico"
+          $iconDest = "windows/runner/resources/app_icon.ico"
+          if (!(Test-Path $iconSource)) {
+            throw "Windows icon source was not found: $iconSource"
+          }
+          if (!(Test-Path "windows/runner/resources")) {
+            New-Item -ItemType Directory -Force "windows/runner/resources" | Out-Null
+          }
+          Copy-Item -Path $iconSource -Destination $iconDest -Force
+          if (!(Test-Path $iconDest)) {
+            throw "Windows icon was not copied: $iconDest"
+          }
+
+      - name: Read app version
+        shell: pwsh
+        run: |
+          $versionLine = Get-Content "pubspec.yaml" | Where-Object { $_ -match '^version:' } | Select-Object -First 1
+          $fullVersion = ($versionLine -replace '^version:\s*', '').Trim()
+          $parts = $fullVersion -split '\+', 2
+          if ($parts.Count -ne 2 -or $parts[0] -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or $parts[1] -notmatch '^[1-9]\d*$') {
+            throw "pubspec.yaml version must use semantic-version+positive-build-number, for example 1.2.3+123."
+          }
+          $versionName = $parts[0]
+          $buildNumber = $parts[1]
+          "YUTAKA_APP_VERSION_NAME=$versionName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "YUTAKA_APP_BUILD_NUMBER=$buildNumber" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Select-String -Path "pubspec.yaml" -Pattern "^version:"
+
+      - name: Patch Windows CMake for CMake 4/Firebase compatibility
+        shell: pwsh
+        run: |
+          $cmakeFile = "windows/CMakeLists.txt"
+          if (!(Test-Path $cmakeFile)) {
+            throw "Windows CMakeLists.txt was not generated: $cmakeFile"
+          }
+
+          $content = Get-Content $cmakeFile -Raw
+          if ($content -notmatch "CMAKE_POLICY_VERSION_MINIMUM") {
+            $lines = Get-Content $cmakeFile
+            $patched = New-Object System.Collections.Generic.List[string]
+            $inserted = $false
+
+            foreach ($line in $lines) {
+              $patched.Add($line)
+              if (!$inserted -and $line -match "^cmake_minimum_required\(VERSION") {
+                $patched.Add("")
+                $patched.Add("# Firebase's bundled Windows C++ SDK still declares an older CMake policy.")
+                $patched.Add("# CMake 4 rejects that by default, so keep policy compatibility at 3.5.")
+                $patched.Add('set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for legacy Firebase C++ SDK")')
+                $patched.Add("")
+                $patched.Add("# Older Flutter Windows plugins can include MSVC's deprecated experimental coroutine header.")
+                $patched.Add("# Visual Studio 2026/MSVC 14.51 treats that as a hard error unless this macro is defined.")
+                $patched.Add('add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)')
+                $patched.Add("")
+                $inserted = $true
+              }
+            }
+
+            Set-Content -Path $cmakeFile -Value $patched -Encoding UTF8
+          }
+
+          Get-Content $cmakeFile -TotalCount 24
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare optional Windows code signing
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ vars.WINDOWS_CODESIGN_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_BASE64)) {
+            Write-Host "::warning::WINDOWS_CODESIGN_PFX_BASE64 is not configured. The installer will build unsigned, and Microsoft Defender SmartScreen can still show 'Windows protected your PC'."
+            "WINDOWS_SIGNING_ENABLED=false" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            exit 0
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PASSWORD)) {
+            throw "WINDOWS_CODESIGN_PASSWORD is required when WINDOWS_CODESIGN_PFX_BASE64 is configured."
+          }
+
+          $timestampUrl = $env:WINDOWS_CODESIGN_TIMESTAMP_URL
+          if ([string]::IsNullOrWhiteSpace($timestampUrl)) {
+            $timestampUrl = "http://timestamp.digicert.com"
+          }
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found in the Windows SDK installation."
+          }
+
+          New-Item -ItemType Directory -Force signing | Out-Null
+          $certPath = (Join-Path (Resolve-Path "signing").Path "windows-codesign.pfx")
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+
+          "WINDOWS_SIGNING_ENABLED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_CODESIGN_CERT=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_CODESIGN_TIMESTAMP_URL=$timestampUrl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Windows code signing is enabled. SignTool: $($signtool.FullName)"
+
+      - name: Build Windows release
+        run: |
+          $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+          $env:CL = "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          flutter build windows --release --no-pub --dart-define=YUTAKA_APP_VERSION="$env:YUTAKA_APP_VERSION_NAME"
+
+      - name: Normalize Windows release executable name
+        shell: pwsh
+        run: |
+          $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
+          $defaultExe = Join-Path $releaseDir "yutaka.exe"
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
+          if (Test-Path $defaultExe) {
+            Move-Item -Path $defaultExe -Destination $namedExe -Force
+          }
+          if (!(Test-Path $namedExe)) {
+            throw "Expected Windows executable was not found: $namedExe"
+          }
+          Get-ChildItem $releaseDir | Format-Table Name,Length
+
+      - name: Sign Windows app executable if certificate is configured
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
+            Write-Host "Skipping Windows app signing because WINDOWS_CODESIGN_PFX_BASE64 is not configured."
+            exit 0
+          }
+
+          $exe = (Resolve-Path "build/windows/x64/runner/Release/Yutaka.exe").Path
+          & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to sign Yutaka.exe" }
+
+          & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "Yutaka.exe signature verification failed" }
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          } else {
+            Write-Host "Using preinstalled Inno Setup: $iscc"
+          }
+          if (!(Test-Path $iscc)) {
+            throw "ISCC.exe was not found: $iscc"
+          }
+          "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build Windows installer EXE
+        shell: pwsh
+        run: |
+          $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
+          if (!(Test-Path $releaseDir)) {
+            throw "Windows release directory was not found: $releaseDir"
+          }
+
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
+          if (!(Test-Path $namedExe)) {
+            throw "Expected Windows executable was not found before installer packaging: $namedExe"
+          }
+
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $sourceDir = $releaseDir.Path
+          $outputDir = (Resolve-Path "artifacts").Path
+          $iconFile = (Resolve-Path "assets/icons/app_icon.ico").Path
+          $pubspecVersionLine = (Get-Content "pubspec.yaml" | Where-Object { $_ -match "^version:" } | Select-Object -First 1)
+          if ([string]::IsNullOrWhiteSpace($pubspecVersionLine)) {
+            throw "pubspec.yaml version was not found."
+          }
+          $fullAppVersion = ($pubspecVersionLine -replace "^version:\s*", "").Trim()
+          $appVersionName = ($fullAppVersion -split "\+")[0]
+          if ([string]::IsNullOrWhiteSpace($appVersionName)) {
+            throw "Could not parse installer version from pubspec.yaml version: $fullAppVersion"
+          }
+          Write-Host "Packaging Yutaka Windows installer version $appVersionName from pubspec version $fullAppVersion"
+          $iss = @"
+          #define SourceDir "$sourceDir"
+          #define OutputDir "$outputDir"
+          #define IconFile "$iconFile"
+          #define MyAppName "Yutaka"
+          #define MyAppVersion "$appVersionName"
+          #define MyAppExeName "Yutaka.exe"
+
+          [Setup]
+          AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher=Yutaka
+          DefaultDirName={localappdata}\Programs\Yutaka
+          DefaultGroupName={#MyAppName}
+          DisableWelcomePage=no
+          DisableDirPage=no
+          DisableProgramGroupPage=no
+          DisableReadyPage=no
+          DisableFinishedPage=no
+          OutputDir={#OutputDir}
+          OutputBaseFilename=YutakaSetup
+          SetupIconFile={#IconFile}
+          UninstallDisplayIcon={app}\{#MyAppExeName}
+          VersionInfoDescription=Yutaka Installer
+          VersionInfoProductName=Yutaka
+          VersionInfoCompany=Yutaka
+          Compression=lzma2
+          SolidCompression=yes
+          WizardStyle=modern
+          PrivilegesRequired=lowest
+          ArchitecturesAllowed=x64
+          ArchitecturesInstallIn64BitMode=x64
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+          Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+          "@
+          $iss = ($iss -split "`r?`n" | ForEach-Object { $_.TrimStart() }) -join "`r`n"
+          Set-Content -Path "artifacts/yutaka-installer.iss" -Value $iss -Encoding UTF8
+          & "$env:ISCC_PATH" "artifacts/yutaka-installer.iss"
+          if (!(Test-Path "artifacts/YutakaSetup.exe")) {
+            throw "Installer was not created: artifacts/YutakaSetup.exe"
+          }
+          Get-ChildItem artifacts | Format-Table Name,Length
+
+      - name: Sign Windows installer if certificate is configured
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
+            Write-Host "Skipping Windows installer signing because WINDOWS_CODESIGN_PFX_BASE64 is not configured."
+          } else {
+            $installer = (Resolve-Path "artifacts/YutakaSetup.exe").Path
+            & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$installer"
+            if ($LASTEXITCODE -ne 0) { throw "Failed to sign YutakaSetup.exe" }
+
+            & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$installer"
+            if ($LASTEXITCODE -ne 0) { throw "YutakaSetup.exe signature verification failed" }
+          }
+          Copy-Item -Path "artifacts/YutakaSetup.exe" -Destination "artifacts/Yutaka-v$env:YUTAKA_APP_VERSION_NAME-Setup.exe" -Force
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-windows-installer
+          path: artifacts/Yutaka-v*-Setup.exe
+          if-no-files-found: error
+          compression-level: 0
+
+
+  build-linux:
+    needs: prepare-worker-bundle
+    name: Build Linux ${{ matrix.arch }} AppImage and portable archive
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+            appimage_arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Install Linux desktop build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick \
+            libgtk-3-dev liblzma-dev libsecret-1-dev libsqlite3-dev libnotify-dev libjsoncpp-dev
+
+      - name: Set up Flutter on Linux x64
+        if: matrix.arch == 'x64'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Set up Flutter on Linux ARM64
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_ROOT="$RUNNER_TEMP/flutter-sdk"
+          rm -rf "$FLUTTER_ROOT"
+          git clone --depth 1 --branch 3.47.4 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          echo "FLUTTER_ROOT=$FLUTTER_ROOT" >> "$GITHUB_ENV"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" --version
+          "$FLUTTER_ROOT/bin/flutter" precache --linux
+
+      - name: Restore Linux dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            build/linux
+          key: yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Enable Linux desktop support
+        run: flutter config --enable-linux-desktop
+
+      - name: Generate Linux platform files
+        run: flutter create --platforms=linux --project-name yutaka --no-pub .
+
+      - name: Apply Yutaka Linux branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_file="linux/runner/my_application.cc"
+          test -f "$runner_file"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('linux/runner/my_application.cc')
+          text = path.read_text()
+          text = text.replace('gtk_window_set_title(window, "yutaka")', 'gtk_window_set_title(window, "Yutaka")')
+          text = text.replace('gtk_header_bar_set_title(header_bar, "yutaka")', 'gtk_header_bar_set_title(header_bar, "Yutaka")')
+          path.write_text(text)
+          PY
+
+      - name: Read app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Linux release
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build linux --release --no-pub \
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
+
+      - name: Package portable Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          BUNDLE_DIR="$(find build/linux -type d -path '*/release/bundle' -print -quit)"
+          if [ -z "$BUNDLE_DIR" ] || [ ! -x "$BUNDLE_DIR/yutaka" ]; then
+            echo "::error::Linux release bundle was not found."
+            find build/linux -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+          tar -C "$BUNDLE_DIR" -czf "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz" .
+          echo "YUTAKA_LINUX_BUNDLE=$BUNDLE_DIR" >> "$GITHUB_ENV"
+
+      - name: Package broad-distro AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPDIR="$RUNNER_TEMP/Yutaka.AppDir"
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/lib/yutaka" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+          cp -a "$YUTAKA_LINUX_BUNDLE"/. "$APPDIR/usr/lib/yutaka/"
+          ln -s ../lib/yutaka/yutaka "$APPDIR/usr/bin/yutaka"
+          cp tools/linux/yutaka.desktop "$APPDIR/usr/share/applications/yutaka.desktop"
+          ICON_PATH="$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png"
+          convert assets/icons/app_icon.png -resize 512x512! "$ICON_PATH"
+          ICON_SIZE="$(identify -format '%wx%h' "$ICON_PATH")"
+          if [ "$ICON_SIZE" != "512x512" ]; then
+            echo "::error::AppImage icon must be exactly 512x512, got $ICON_SIZE."
+            exit 1
+          fi
+
+          cat > "$APPDIR/AppRun" <<'EOF_APPRUN'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/yutaka/lib:${LD_LIBRARY_PATH:-}"
+          export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+          exec "$HERE/usr/lib/yutaka/yutaka" "$@"
+          EOF_APPRUN
+          chmod +x "$APPDIR/AppRun"
+          ln -sf usr/share/icons/hicolor/512x512/apps/yutaka.png "$APPDIR/yutaka.png"
+          cp tools/linux/yutaka.desktop "$APPDIR/yutaka.desktop"
+
+          LINUXDEPLOY="$RUNNER_TEMP/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
+          curl --fail --location --retry 3 \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage" \
+            --output "$LINUXDEPLOY"
+          chmod +x "$LINUXDEPLOY"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          "$LINUXDEPLOY" \
+            --appdir "$APPDIR" \
+            --executable "$APPDIR/usr/lib/yutaka/yutaka" \
+            --desktop-file "$APPDIR/usr/share/applications/yutaka.desktop" \
+            --icon-file "$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png" \
+            --output appimage
+
+          GENERATED="$(find . -maxdepth 1 -type f -name '*.AppImage' ! -name 'linuxdeploy-*' -print -quit)"
+          if [ -z "$GENERATED" ]; then
+            echo "::error::linuxdeploy completed but no AppImage was produced."
+            exit 1
+          fi
+          mv "$GENERATED" "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          chmod +x "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          ls -lh artifacts
+
+      - name: Upload Linux release artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-linux-${{ matrix.arch }}
+          path: |
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.AppImage
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
+  build-macos:
+    needs: prepare-worker-bundle
+    name: Build macOS universal DMG and app archive
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    # Apple Silicon is substantially faster for Flutter/Xcode release compilation than
+    # the legacy Intel image. Flutter release builds remain universal when the ARM64-only
+    # feature is disabled, so this single job still emits both arm64 and x86_64 slices.
+    runs-on: macos-15
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+      FLUTTER_VERSION: "3.47.4"
+      FLUTTER_SDK_DIR: ${{ github.workspace }}/.ci-cache/flutter-macos-arm64
+      # Release builds are explicitly universal so one package supports Intel and Apple Silicon.
+      FLUTTER_MACOS_ARM64_ONLY: "false"
+      COCOAPODS_DISABLE_STATS: "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Restore pinned Flutter SDK cache
+        id: flutter-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: .ci-cache/flutter-macos-arm64
+          key: yutaka-flutter-${{ runner.os }}-${{ runner.arch }}-3.47.4-v1
+
+      - name: Set up pinned Flutter on Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x "$FLUTTER_SDK_DIR/bin/flutter" ]; then
+            rm -rf "$FLUTTER_SDK_DIR"
+            mkdir -p "$(dirname "$FLUTTER_SDK_DIR")"
+            git clone --filter=blob:none --single-branch --depth 1 \
+              --branch "$FLUTTER_VERSION" \
+              https://github.com/flutter/flutter.git "$FLUTTER_SDK_DIR"
+          fi
+          echo "FLUTTER_ROOT=$FLUTTER_SDK_DIR" >> "$GITHUB_ENV"
+          echo "$FLUTTER_SDK_DIR/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_SDK_DIR/bin/flutter" config --no-analytics
+          if [ "${{ steps.flutter-sdk-cache.outputs.cache-hit }}" != "true" ]; then
+            "$FLUTTER_SDK_DIR/bin/flutter" precache --macos
+          fi
+          "$FLUTTER_SDK_DIR/bin/flutter" --version
+
+      - name: Enable macOS desktop support
+        run: |
+          flutter config --enable-macos-desktop
+          flutter config --no-enable-macos-arm64-only || true
+
+      - name: Generate macOS platform files
+        run: flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
+
+      # Keep immutable dependency caches separate from the rolling Xcode/Flutter
+      # build cache. This avoids re-uploading pub/CocoaPods data on every commit
+      # while still restoring the latest incremental macOS compilation state.
+      - name: Restore macOS dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            ~/Library/Caches/CocoaPods
+            macos/Pods
+          key: yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Restore macOS incremental build cache
+        uses: actions/cache@v4
+        with:
+          path: build/macos
+          key: yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Apply Yutaka macOS identity, permissions, and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYMAC'
+          from pathlib import Path
+          import plistlib
+
+          config = Path('macos/Runner/Configs/AppInfo.xcconfig')
+          text = config.read_text()
+          replacements = {
+              'PRODUCT_NAME = yutaka': 'PRODUCT_NAME = Yutaka',
+              'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.yutaka': 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          if 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam' not in text:
+              lines = []
+              found = False
+              for line in text.splitlines():
+                  if line.startswith('PRODUCT_BUNDLE_IDENTIFIER ='):
+                      line = 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam'
+                      found = True
+                  lines.append(line)
+              if not found:
+                  lines.append('PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam')
+              text = '\n'.join(lines) + '\n'
+          config.write_text(text)
+
+          for name in ('DebugProfile.entitlements', 'Release.entitlements'):
+              path = Path('macos/Runner') / name
+              with path.open('rb') as handle:
+                  data = plistlib.load(handle)
+              data['com.apple.security.app-sandbox'] = True
+              data['com.apple.security.network.client'] = True
+              data['com.apple.security.files.user-selected.read-write'] = True
+              with path.open('wb') as handle:
+                  plistlib.dump(data, handle, sort_keys=False)
+          PYMAC
+
+          ICONSET="macos/Runner/Assets.xcassets/AppIcon.appiconset"
+          test -d "$ICONSET"
+          python3 - <<'PYICON'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          source = Path('assets/icons/app_icon.png')
+          iconset = Path('macos/Runner/Assets.xcassets/AppIcon.appiconset')
+          contents = json.loads((iconset / 'Contents.json').read_text())
+          jobs = {}
+          for item in contents.get('images', []):
+              filename = item.get('filename')
+              logical_size = item.get('size', '').split('x', 1)[0]
+              scale = item.get('scale', '1x').rstrip('x')
+              if not filename or not logical_size:
+                  continue
+              pixels = int(round(float(logical_size) * float(scale or '1')))
+              jobs[filename] = pixels
+          if not jobs:
+              raise SystemExit('No macOS AppIcon images were generated from Contents.json')
+
+          # Several AppIcon slots resolve to the same backing filename. Generate each
+          # file only once, and let sips process the distinct sizes concurrently.
+          from concurrent.futures import ThreadPoolExecutor
+
+          def render(job):
+              filename, pixels = job
+              target = iconset / filename
+              subprocess.run(
+                  ['sips', '-s', 'format', 'png', '-z', str(pixels), str(pixels), str(source), '--out', str(target)],
+                  check=True,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+              return filename
+
+          with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as pool:
+              generated = sorted(pool.map(render, jobs.items()))
+          print('Generated macOS icons:', ', '.join(generated))
+          PYICON
+
+      - name: Read app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Install Flutter dependencies
+        shell: bash
+        run: |
+          flutter pub get --offline || flutter pub get
+
+      - name: Build universal macOS release
+        env:
+          COMPILER_INDEX_STORE_ENABLE: "NO"
+        run: |
+          flutter build macos --release --no-pub --no-tree-shake-icons \
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
+
+      - name: Verify Intel and Apple Silicon slices
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS .app bundle was not found."
+            exit 1
+          fi
+          MAIN_EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
+          MAIN_BINARY="$APP_PATH/Contents/MacOS/$MAIN_EXECUTABLE"
+          ARCHES="$(lipo -archs "$MAIN_BINARY")"
+          echo "Yutaka macOS architectures: $ARCHES"
+          case " $ARCHES " in *" arm64 "*) ;; *) echo "::error::macOS build is missing arm64."; exit 1;; esac
+          case " $ARCHES " in *" x86_64 "*) ;; *) echo "::error::macOS build is missing x86_64."; exit 1;; esac
+          echo "YUTAKA_MACOS_APP=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Prepare optional Developer ID signing
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$YUTAKA_MACOS_APP"
+
+          if [ -z "${MACOS_CERTIFICATE_BASE64:-}" ]; then
+            echo "::warning::MACOS_CERTIFICATE_BASE64 is not configured. The DMG will be distributed without Developer ID notarization."
+            echo "MACOS_SIGNING_ENABLED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]; then
+            echo "::error::MACOS_CERTIFICATE_PASSWORD is required when MACOS_CERTIFICATE_BASE64 is configured."
+            exit 1
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/yutaka-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/yutaka-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          export CERT_PATH
+          python3 - <<'PYCERT'
+          import base64
+          import os
+          from pathlib import Path
+
+          raw = os.environ['MACOS_CERTIFICATE_BASE64'].strip()
+          Path(os.environ['CERT_PATH']).write_bytes(base64.b64decode(raw, validate=True))
+          PYCERT
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          IDENTITY="${MACOS_SIGNING_IDENTITY:-}"
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          fi
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No Developer ID Application identity was found in the imported certificate."
+            exit 1
+          fi
+          echo "Signing macOS app with: $IDENTITY"
+          codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "MACOS_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+
+      - name: Notarize signed macOS app when credentials are configured
+        if: env.MACOS_SIGNING_ENABLED == 'true'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo "::warning::Apple notarization credentials are incomplete. The signed macOS packages will be published without notarization."
+            echo "MACOS_NOTARIZED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          NOTARY_ARCHIVE="$RUNNER_TEMP/Yutaka-notarization-universal.zip"
+          rm -f "$NOTARY_ARCHIVE"
+          ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$NOTARY_ARCHIVE"
+          xcrun notarytool submit "$NOTARY_ARCHIVE" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$YUTAKA_MACOS_APP"
+          xcrun stapler validate "$YUTAKA_MACOS_APP"
+          echo "MACOS_NOTARIZED=true" >> "$GITHUB_ENV"
+
+      - name: Package macOS universal DMG and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          STAGE="$RUNNER_TEMP/yutaka-dmg-stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          ditto "$YUTAKA_MACOS_APP" "$STAGE/Yutaka.app"
+          ln -s /Applications "$STAGE/Applications"
+          DMG="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.dmg"
+          ZIP="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.zip"
+
+          # DMG creation and ZIP packaging are independent. Run them concurrently,
+          # and use fast zlib compression for the DMG to reduce release latency
+          # without changing its compatibility or install flow.
+          (
+            hdiutil create \
+              -volname "Yutaka" \
+              -srcfolder "$STAGE" \
+              -ov \
+              -format UDZO \
+              -imagekey zlib-level=1 \
+              "$DMG"
+          ) &
+          dmg_pid=$!
+          (
+            ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$ZIP"
+          ) &
+          zip_pid=$!
+
+          wait "$dmg_pid"
+          wait "$zip_pid"
+          ls -lh artifacts
+
+      - name: Upload macOS release artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-macos-universal
+          path: |
+            artifacts/Yutaka-v*-macos-universal.dmg
+            artifacts/Yutaka-v*-macos-universal.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  publish-stable-release:
+    name: Publish stable GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-apks
+      - build-windows
+      - build-linux
+      - build-macos
+    if: >-
+      github.repository == 'Chowdhury-Siam/Yutaka' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.ref == 'refs/heads/main' ||
+       github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: yutaka-android-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download Windows installer artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-windows-installer
+          path: release-assets
+
+      - name: Download Linux release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: yutaka-linux-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download macOS release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: yutaka-macos-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lh release-assets
+
+      - name: Publish versioned stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          RELEASE_TAG="v${VERSION_NAME}"
+          RELEASE_TITLE="Yutaka Stable ${VERSION_NAME}"
+
+          # Prefer a real version section when it exists. Otherwise, fall back
+          # to only the first/current bullet in each top
+          # Unreleased category and stop before archived development history.
+          awk -v version="${VERSION_NAME}" '
+            BEGIN { capture=0; found=0 }
+            /^##[[:space:]]+\[?v?[0-9]+\.[0-9]+\.[0-9]+\]?/ {
+              if (capture) exit
+              if ($0 ~ version) { capture=1; found=1; next }
+            }
+            /^##[[:space:]]+/ && capture { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes-body.md
+
+          if [ ! -s release-notes-body.md ]; then
+            awk '
+              BEGIN { capture=0; in_section=0; emitted_any=0; emitted_in_section=0 }
+              /^##[[:space:]]+Unreleased/ { capture=1; next }
+              /^##[[:space:]]+/ && capture { exit }
+              /^###[[:space:]]+Previous development history/ && capture { exit }
+              capture && /^###[[:space:]]+/ {
+                if (emitted_any) print ""
+                print
+                print ""
+                in_section=1
+                emitted_in_section=0
+                next
+              }
+              capture && in_section && /^[[:space:]]*-[[:space:]]+/ && !emitted_in_section {
+                print
+                emitted_in_section=1
+                emitted_any=1
+                next
+              }
+            ' CHANGELOG.md > release-notes-body.md
+          fi
+
+          awk 'NF { seen=1 } seen { print }' release-notes-body.md > release-notes-trimmed.md
+          mv release-notes-trimmed.md release-notes-body.md
+          if [ ! -s release-notes-body.md ]; then
+            {
+              echo "### Changed"
+              echo
+              echo "- Stable Yutaka ${VERSION_NAME} maintenance update."
+            } > release-notes-body.md
+          fi
+          cp release-notes-body.md release-notes.md
+
+          VERSION_NAME="$VERSION_NAME" RELEASE_TAG="$RELEASE_TAG" RELEASE_TITLE="$RELEASE_TITLE" python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import pathlib
+
+          release_assets = pathlib.Path("release-assets")
+          notes = pathlib.Path("release-notes.md").read_text(encoding="utf-8")
+          version_name = os.environ["VERSION_NAME"]
+          release_tag = os.environ["RELEASE_TAG"]
+          release_title = os.environ["RELEASE_TITLE"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          content_types = {
+              ".apk": "application/vnd.android.package-archive",
+              ".exe": "application/vnd.microsoft.portable-executable",
+              ".dmg": "application/x-apple-diskimage",
+              ".appimage": "application/octet-stream",
+              ".gz": "application/gzip",
+              ".zip": "application/zip",
+          }
+
+          assets = []
+          for path in sorted(release_assets.iterdir()):
+              if not path.is_file() or path.name == "yutaka-update.json":
+                  continue
+              assets.append({
+                  "id": 0,
+                  "name": path.name,
+                  "size": path.stat().st_size,
+                  "browser_download_url": f"https://github.com/{repository}/releases/download/{release_tag}/{path.name}",
+                  "content_type": content_types.get(path.suffix.lower(), "application/octet-stream"),
+              })
+
+          published_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          manifest = {
+              "id": 0,
+              "tag_name": release_tag,
+              "name": release_title,
+              "body": notes,
+              "html_url": f"https://github.com/{repository}/releases/tag/{release_tag}",
+              "draft": False,
+              "prerelease": False,
+              "published_at": published_at,
+              "assets": assets,
+          }
+          manifest_path = release_assets / "yutaka-update.json"
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          print(f"Wrote {manifest_path} for Yutaka {version_name} with {len(assets)} release assets.")
+          PY
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            git tag "${RELEASE_TAG}" "$GITHUB_SHA"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+            gh release edit "${RELEASE_TAG}" \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release-notes.md \
+              --latest
+          fi
+          RELEASE_ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -f draft=false -f prerelease=false -f make_latest=true
