@@ -5,7 +5,7 @@ import test from 'node:test';
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const schema = readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
 
-test('deployment recovery is encrypted and restricted to the first sync account', () => {
+test('deployment recovery is encrypted and restricted to the current administrator account', () => {
   assert.match(source, /\/v1\/deployment-recovery\/profile/);
   assert.match(source, /requireDeploymentRecoveryOwner/);
   assert.match(source, /deployment_owner_user_id/);

@@ -80,8 +80,9 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 );
 
 -- Once the first sync account has been created, app-side registration stays
--- closed even if every account is later deleted from /profile. Existing
--- databases with accounts are latched closed during schema application.
+-- closed while any account remains. Administrator-managed /profile deletion
+-- cannot remove the owner; explicit self-deletion of the final account clears
+-- this marker so the Worker returns to first-user registration.
 CREATE TABLE IF NOT EXISTS worker_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

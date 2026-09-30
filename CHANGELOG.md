@@ -1,3 +1,25 @@
+## [1.0.1217] - 2026-09-30
+
+- Replaced the placeholder privacy copy with a complete in-app Privacy Policy and added a dedicated **Settings > Privacy & data** screen.
+- Made Firebase Analytics and Crashlytics opt-in per device and disabled both collection paths by default.
+- Explicitly removed the Android advertising-ID permission because Koinly has no advertising SDK.
+- Added a public `PRIVACY_POLICY.md`, static-hostable privacy-policy HTML, and a Play Console Data Safety audit checklist covering self-hosted sync, profile media, Telegram, Google Drive, Firebase telemetry, and exported reports/backups.
+- Added direct privacy-policy and account-deletion information links from the app and removed the previous placeholder Privacy Policy dialog.
+- Added privacy compliance regression coverage.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1217+261`.
+
+## [1.0.1216] - 2026-09-30
+
+- Added permanent self-service sync-account deletion from Settings > Account & sync, protected by the current password and an explicit `DELETE` confirmation.
+- Kept local device data by default during cloud-account deletion, with a separate opt-in to erase the local offline copy.
+- Added the Worker-hosted `/delete-account` browser flow so users can delete their account without reinstalling Koinly.
+- Account deletion now removes synchronized finance rows, profile media, sessions/devices, backup schedules, and stored Telegram/Google Drive credentials for that account.
+- Administrator self-deletion invalidates administrator sessions and deployment-recovery secrets; the oldest remaining account becomes administrator, or a final-account deletion resets the Worker to first-user registration.
+- Administrator self-deletion also removes that Worker's cached Cloudflare/Turso deployment credentials from the deleting device secure store.
+- Added a standalone account-deletion guide that can be published at a stable public URL for the Google Play account-deletion disclosure.
+- Added Worker and Flutter regression coverage for the account-deletion contract and advertised the capability in Worker health checks.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1216+260`.
+
 ## [1.0.1215] - 2026-09-30
 
 - Replaced the active SF Pro typography stack with Inter across the Flutter application.

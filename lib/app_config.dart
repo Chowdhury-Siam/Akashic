@@ -33,12 +33,15 @@ const String kSleekAccentHex = '#00BD91';
 const String kLegacyStarterCashIconHex = '#78D8E8';
 
 const appTitle = 'Koinly';
-const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1215');
+const appVersion = String.fromEnvironment('KOINLY_APP_VERSION', defaultValue: '1.0.1217');
 const kAndroidDistribution = appFlavor ?? String.fromEnvironment('KOINLY_ANDROID_DISTRIBUTION', defaultValue: 'direct');
 const bool kIsGooglePlayBuild = kAndroidDistribution == 'play';
 const kLowEndFriendlyUi = true;
 const backupPassword = 'YOUR_SECRET_PASSWORD';
 const kSyncAdminTelegramUrl = 'https://t.me/Ch0wdhury_Siam';
+const kPrivacyPolicyUrl = 'https://github.com/Chowdhury-Siam/Koinly/blob/main/PRIVACY_POLICY.md';
+const kAccountDeletionInfoUrl = 'https://github.com/Chowdhury-Siam/Koinly/blob/main/docs/ACCOUNT_DELETION.md';
+const kPrivacyTelemetryPreferenceKey = 'privacyTelemetryEnabled';
 const int kHomeTabIndex = 0;
 const int kAnalysisTabIndex = 1;
 const int kLoansTabIndex = 2;

@@ -7,9 +7,9 @@ For the easiest setup, follow the beginner-friendly guide in the repository's ma
 
 ## Registration model
 
-A fresh Worker accepts exactly one first sync account directly from the Koinly app. Email addresses are not used for authentication. **That first database account automatically becomes the Worker administrator** and is also the only account allowed to recover the encrypted deployment profile. After it exists, unrestricted app registration closes; additional accounts are created from `/profile`.
+A fresh Worker accepts exactly one first sync account directly from the Koinly app. Email addresses are not used for authentication. **That first database account automatically becomes the Worker administrator.** The current administrator is the only account allowed to recover the encrypted deployment profile. After the first account exists, unrestricted app registration closes; additional accounts are created from `/profile`.
 
-The administrator role is tied to the first account's user ID, not to its username text. Renaming that account therefore keeps it as administrator. The administrator account cannot be deleted from `/profile`, preventing the Worker from losing its management owner.
+The administrator role belongs to the earliest remaining account, not to its username text. Renaming that account therefore keeps it as administrator. `/profile` cannot delete the administrator from the account list, but the owner can self-delete through the authenticated app endpoint or `/delete-account`. If other accounts remain, the oldest remaining account becomes administrator; if none remain, first-user registration reopens.
 
 ## GitHub Actions deployment values
 
@@ -28,16 +28,16 @@ JWT_SECRET
 
 ## Administration portal
 
-**Existing self-hosted Worker owners must keep the Worker current.** GitHub-based deployments redeploy automatically when the fork receives the updated project. Workers deployed from Koinly's **Deploy Database** screen can also update automatically after future app updates when **Automatic Worker updates** is enabled. Koinly keeps the deployment profile in the device secure store and an encrypted recovery copy in `worker_state`. Only the first sync account can retrieve that copy. After reinstalling Koinly, paste the same Worker URL and sign in with that first account to restore the deployment values automatically. Existing Turso data and accounts are preserved.
+**Existing self-hosted Worker owners must keep the Worker current.** GitHub-based deployments redeploy automatically when the fork receives the updated project. Workers deployed from Koinly's **Deploy Database** screen can also update automatically after future app updates when **Automatic Worker updates** is enabled. Koinly keeps the deployment profile in the device secure store and an encrypted recovery copy in `worker_state`. Only the current Worker administrator can retrieve that copy. After reinstalling Koinly, paste the same Worker URL and sign in with the current administrator to restore the deployment values automatically. Existing Turso data and accounts are preserved.
 
-Visit `https://<worker-name>.<account-subdomain>.workers.dev/profile` and sign in with the **current username and password of the first Koinly account created on this Worker**. The portal uses the same charcoal/light surface palette and mint accent as the Koinly app.
+Visit `https://<worker-name>.<account-subdomain>.workers.dev/profile` and sign in with the **current username and password of the account currently marked Administrator**. The portal uses the same charcoal/light surface palette and mint accent as the Koinly app.
 
 From the account list you can:
 
 - **Create account** — add another Koinly sync account.
 - **Change username** — rename any account without changing its user ID or synchronized data. Renaming the administrator does not transfer its role.
 - **Change password** — replace an account password and revoke that account's existing app sessions/recovery key. Changing the administrator password also invalidates the current portal session.
-- **Delete** — permanently remove a non-administrator account and its Worker-side data. The administrator account cannot be deleted.
+- **Delete** — permanently remove a non-administrator account and its Worker-side data. Administrator self-deletion is intentionally separate and requires the account's own password through Koinly or `/delete-account`.
 
 Account lists expose only IDs, usernames, creation/update timestamps, status, and whether the row is the administrator. **Invited** means no currently unrevoked device exists; **Active** means at least one unrevoked device exists.
 
@@ -49,11 +49,11 @@ Security details:
 - Login is limited to eight attempts per client IP and fifty globally per fifteen minutes.
 - Passwords use salted PBKDF2-HMAC-SHA256 verifiers. Password hashes are never returned by the account API or embedded in HTML.
 
-If administrator access is lost, use Koinly's normal account-recovery path for that first account. A Worker redeployment does not create or replace administrator credentials.
+If administrator access is lost, use Koinly's normal account-recovery path for the current administrator account. A Worker redeployment does not create or replace administrator credentials.
 
 ## Administration API
 
-All routes are under `/profile`. POST requests use JSON, the same-origin administrator cookie, and `X-Profile-Request: 1`.
+Administrator-management routes are under `/profile`. Those POST requests use JSON, the same-origin administrator cookie, and `X-Profile-Request: 1`. Self-service deletion uses the authenticated app route `/v1/auth/account` or the browser route `/delete-account`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -65,8 +65,10 @@ All routes are under `/profile`. POST requests use JSON, the same-origin adminis
 | POST | `/profile/api/accounts/:id/username` | `{ "username": "..." }`; renames account |
 | POST | `/profile/api/accounts/:id/password` | `{ "password": "..." }`; resets password and revokes credentials |
 | DELETE | `/profile/api/accounts/:id` | Permanently deletes a non-administrator account and related cloud data |
+| DELETE | `/v1/auth/account` | Authenticated self-deletion with current password and `DELETE` confirmation |
+| GET/POST | `/delete-account` | Browser self-service deletion page for users without the app |
 
-Authenticated app deployment-recovery endpoints remain under `/v1/deployment-recovery/profile`; only the first account can use them.
+Authenticated app deployment-recovery endpoints remain under `/v1/deployment-recovery/profile`; only the current Worker administrator can use them.
 
 ## Health check
 
@@ -82,7 +84,7 @@ A ready Worker returns values equivalent to:
 {
   "ok": true,
   "service": "koinly-sync",
-  "workerVersion": "1.0.1215",
+  "workerVersion": "1.0.1217",
   "configured": true,
   "registrationMode": "first-user",
   "telegramBackupAvailable": true,
@@ -90,6 +92,7 @@ A ready Worker returns values equivalent to:
   "analyticsUploadAvailable": true,
   "realtimeSyncAvailable": true,
   "profileMediaSyncAvailable": true,
+  "accountDeletionAvailable": true,
   "databaseReachable": true,
   "schemaReady": true,
   "missingTables": []
@@ -106,6 +109,8 @@ A ready Worker returns values equivalent to:
 - `POST /v1/auth/recovery-key` (authenticated; rotates the key)
 - `POST /v1/auth/refresh`
 - `POST /v1/auth/logout`
+- `DELETE /v1/auth/account` (authenticated self-deletion; current password + `DELETE` confirmation)
+- `GET /delete-account` and `POST /delete-account` (browser self-service deletion)
 - `GET /v1/sync/live` (authenticated WebSocket upgrade)
 - `POST /v1/sync/initial`
 - `POST /v1/sync/push`

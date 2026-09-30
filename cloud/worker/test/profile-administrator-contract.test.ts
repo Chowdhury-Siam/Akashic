@@ -5,13 +5,14 @@ import test from 'node:test';
 const worker = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const profile = readFileSync(new URL('../src/profile.ts', import.meta.url), 'utf8');
 
-test('profile portal uses the first database account as administrator', () => {
+test('profile portal tracks the current administrator and can promote the oldest remaining account', () => {
   assert.match(worker, /administratorAccount\(db\)/);
   assert.match(worker, /deploymentRecoveryOwnerUserId\(db\)/);
   assert.match(worker, /SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1/);
   assert.match(worker, /administratorUserId/);
-  assert.match(worker, /first Koinly account in the app/);
-  assert.match(worker, /administrator account cannot be deleted/);
+  assert.match(worker, /administrator account can only delete itself/);
+  assert.match(worker, /deleteOwnAccount/);
+  assert.match(worker, /deleteAccountPortal/);
   assert.doesNotMatch(worker, /ADMIN_USERNAME|ADMIN_PASSWORD_HASH/);
 });
 

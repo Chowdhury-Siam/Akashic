@@ -239,6 +239,21 @@ class KoinlySyncApi {
     await _post('/v1/auth/logout', {'refreshToken': refreshToken}, accessToken: accessToken);
   }
 
+  Future<Map<String, dynamic>> deleteAccount({
+    required String accessToken,
+    required String password,
+    required String confirmation,
+  }) {
+    return _delete(
+      '/v1/auth/account',
+      accessToken: accessToken,
+      body: {
+        'password': password,
+        'confirmation': confirmation,
+      },
+    );
+  }
+
   Future<void> saveDeploymentRecoveryProfile({
     required String accessToken,
     required Map<String, dynamic> profile,
@@ -675,6 +690,7 @@ class KoinlySyncApi {
   Future<Map<String, dynamic>> _delete(
     String path, {
     required String accessToken,
+    Map<String, dynamic>? body,
     Duration timeout = const Duration(seconds: 30),
   }) async {
     try {
@@ -684,7 +700,9 @@ class KoinlySyncApi {
             headers: {
               'accept': 'application/json',
               'authorization': 'Bearer $accessToken',
+              if (body != null) 'content-type': 'application/json',
             },
+            body: body == null ? null : jsonEncode(body),
           )
           .timeout(timeout);
       return _decodeResponse(response);

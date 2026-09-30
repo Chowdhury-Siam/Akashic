@@ -29,6 +29,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_ffi;
 import 'package:url_launcher/url_launcher.dart';
@@ -66,6 +67,7 @@ part 'profile/worker_profile_ui.dart';
 part 'analytics/analytics.dart';
 
 const _uuid = Uuid();
+bool _privacyTelemetryRuntimeEnabled = false;
 
 String? _syncUsernameValidationError(String value) {
   final username = value.trim().toLowerCase();
@@ -101,14 +103,26 @@ Future<void> main() async {
   ));
 
   try {
+    final bootstrapPreferences = await SharedPreferences.getInstance();
+    final telemetryEnabled = bootstrapPreferences.getBool(kPrivacyTelemetryPreferenceKey) ?? false;
     await Firebase.initializeApp();
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    _privacyTelemetryRuntimeEnabled = telemetryEnabled;
+    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(telemetryEnabled);
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(telemetryEnabled);
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      if (_privacyTelemetryRuntimeEnabled) {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      }
+    };
     PlatformDispatcher.instance.onError = (error, stack) {
+      if (!_privacyTelemetryRuntimeEnabled) return false;
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       return true;
     };
   } catch (_) {
-    // Firebase remains optional for local builds without a generated FlutterFire options file.
+    // Firebase is optional. Telemetry is disabled by default and only becomes
+    // active after the user explicitly enables it from Privacy & data.
   }
 
   await ReminderService.ensureInitialized();
@@ -2103,6 +2117,7 @@ class AppController extends ChangeNotifier {
   CurrencyPosition currencyPosition = CurrencyPosition.suffix;
   bool useSeparators = true;
   bool amountsHidden = false;
+  bool privacyTelemetryEnabled = false;
   DateRangeType dateRangeType = DateRangeType.thisMonth;
   DateTime? customStart;
   DateTime? customEnd;
@@ -2269,9 +2284,11 @@ class AppController extends ChangeNotifier {
     }
     loading = false;
     notifyListeners();
-    try {
-      await FirebaseAnalytics.instance.logAppOpen();
-    } catch (_) {}
+    if (privacyTelemetryEnabled) {
+      try {
+        await FirebaseAnalytics.instance.logAppOpen();
+      } catch (_) {}
+    }
     if (_hasConfiguredSyncTarget() && !newSyncAccountAwaitingSetupChoice) {
       _schedulePendingSyncRetry(immediate: true);
       _startCloudAutoPull();
@@ -2287,6 +2304,24 @@ class AppController extends ChangeNotifier {
     } else {
       unawaited(runAutomaticBackupIfDue());
     }
+  }
+
+  Future<void> setPrivacyTelemetryEnabled(bool enabled) async {
+    if (privacyTelemetryEnabled == enabled) return;
+    privacyTelemetryEnabled = enabled;
+    _privacyTelemetryRuntimeEnabled = enabled;
+    await prefs.setBool(kPrivacyTelemetryPreferenceKey, enabled);
+    try {
+      await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(enabled);
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(enabled);
+      if (enabled) {
+        await FirebaseAnalytics.instance.logAppOpen();
+      }
+    } catch (_) {
+      // Firebase can be unavailable in local/source builds. The preference is
+      // still persisted so collection remains disabled by default everywhere.
+    }
+    notifyListeners();
   }
 
   void clearWorkerAutoUpdateMessage() {
@@ -2421,6 +2456,7 @@ class AppController extends ChangeNotifier {
     currencyPosition = await prefs.getEnum('currencyPosition', CurrencyPosition.values, CurrencyPosition.suffix);
     useSeparators = await prefs.getBool('useSeparators', true);
     amountsHidden = await prefs.getBool('amountsHidden', false);
+    privacyTelemetryEnabled = await prefs.getBool(kPrivacyTelemetryPreferenceKey, false);
     profileDisplayName = await prefs.getString('profileDisplayName', '');
     profileMediaPath = await prefs.getString('profileMediaPath', '');
     profileMediaOriginalName = await prefs.getString('profileMediaOriginalName', '');
@@ -3220,6 +3256,7 @@ class AppController extends ChangeNotifier {
       'newSyncAccountAwaitingSetupChoice',
       'cloudSyncLastAt',
       'automaticUpdatePopupEnabled',
+      kPrivacyTelemetryPreferenceKey,
       'cloudSyncApiBaseUrl',
       'selfHostedSyncApiBaseUrl',
       'selfHostedSyncEndpointValidated',
@@ -4975,6 +5012,98 @@ class AppController extends ChangeNotifier {
       // Entity versions/cursors belong to one authenticated backend/account.
       // Never carry them into another self-hosted account. When local finance
       // data is kept, it can be merged/adopted again after the next login.
+      await database.resetLocalSyncTracking();
+      await database.writeSyncState('serverCursor', '0');
+    } finally {
+      _syncAccountTransitionInProgress = false;
+      syncAuthBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteCurrentSyncAccount({
+    required String password,
+    required bool clearLocalData,
+  }) async {
+    if (syncAuthBusy) throw StateError('An account change is already in progress.');
+    if (!cloudSyncEnabled || syncAccountUsername.trim().isEmpty) {
+      throw StateError('Sign in to the account you want to delete first.');
+    }
+    if (password.length < 8) throw StateError('Enter your current account password.');
+
+    final deletedWorkerUrl = CloudSyncService.normalizeApiBaseUrl(cloudSyncApiBaseUrl);
+    final deletedUsername = syncAccountUsername.trim().toLowerCase();
+    syncAuthBusy = true;
+    _syncAccountTransitionInProgress = true;
+    notifyListeners();
+    try {
+      await _cancelActiveCloudSyncForAccountTransition();
+      final deletionResult = await _withSelfHostedSyncToken(
+        (api, accessToken) => api.deleteAccount(
+          accessToken: accessToken,
+          password: password,
+          confirmation: 'DELETE',
+        ),
+      );
+
+      // The deleted Worker administrator owned any locally cached Cloudflare /
+      // Turso deployment profile for this Worker. Remove those deployment
+      // credentials too so account deletion does not leave owner secrets in the
+      // device secure store. A non-administrator account never owns this vault.
+      if (deletionResult['wasAdministrator'] == true) {
+        try {
+          await WorkerDeploymentCredentialStore().clear(workerUrl: deletedWorkerUrl);
+        } catch (_) {
+          // Server-side deletion has already succeeded. Continue clearing the
+          // signed-in account even if the platform secure store is unavailable.
+        }
+      }
+
+      // The Worker has permanently removed the account. Clear every saved
+      // local login that points at that exact Worker/account pair so a stale
+      // refresh token cannot remain in the account switcher.
+      final removedProfileIds = savedSyncAccounts
+          .where((account) =>
+              CloudSyncService.normalizeApiBaseUrl(account.workerUrl) == deletedWorkerUrl &&
+              account.username.trim().toLowerCase() == deletedUsername)
+          .map((account) => account.id)
+          .toList(growable: false);
+      for (final profileId in removedProfileIds) {
+        await syncProfiles.deleteAccountTokens(profileId);
+      }
+      savedSyncAccounts = savedSyncAccounts
+          .where((account) => !removedProfileIds.contains(account.id))
+          .toList();
+      await syncProfiles.writeAccounts(savedSyncAccounts);
+      await secureCredentials.clearAccountTokens();
+
+      activeSyncAccountProfileId = '';
+      await syncProfiles.writeActiveAccountId('');
+      syncAccessToken = '';
+      syncRefreshToken = '';
+      syncAccountUsername = '';
+      cloudSyncEnabled = false;
+      newSyncAccountAwaitingSetupChoice = false;
+      syncStatus = 'Offline';
+      cloudSyncLastAt = null;
+      cloudSyncError = null;
+      cloudSyncErrorCode = null;
+      await prefs.setString('syncAccountUsername', '');
+      await prefs.setBool('cloudSyncEnabled', false);
+      await prefs.setBool('newSyncAccountAwaitingSetupChoice', false);
+      await prefs.setString('cloudSyncLastAt', '');
+
+      _stopCloudAutoPull();
+      _cloudSyncDebounce?.cancel();
+      _cloudSyncRetryTimer?.cancel();
+      await _setCloudSyncPending(false);
+
+      // Cloud deletion and device deletion are deliberately separate choices.
+      // Keeping this false leaves the local finance copy available offline.
+      if (clearLocalData) {
+        await _clearSignedOutCloudAccountLocalData();
+      }
+
       await database.resetLocalSyncTracking();
       await database.writeSyncState('serverCursor', '0');
     } finally {
@@ -20598,6 +20727,7 @@ class SettingsScreen extends StatelessWidget {
               const BatteryOptimizationSettingsTile(),
             ],
             const SectionHeader('App'),
+            SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy & data', subtitle: state.privacyTelemetryEnabled ? 'Telemetry enabled • policy and data controls' : 'Telemetry off • policy and data controls', color: '#B4A5FF', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyAndDataScreen()))),
             SettingsTile(icon: Icons.system_update_alt_rounded, title: 'Updates', subtitle: state.updateStatusMessage, color: kSleekAccentHex, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UpdatesScreen()))),
             SettingsTile(icon: Icons.tune_rounded, title: 'Advanced settings', subtitle: 'Defaults, account order, and data health', color: '#9AD0F5', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvancedSettingsScreen()))),
             SettingsTile(icon: Icons.info_rounded, title: 'About app', subtitle: 'Version, credits, licenses, and links', color: '#86E3CE', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
@@ -22445,6 +22575,119 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
     }
   }
 
+  Future<void> _confirmDeleteCloudAccount() async {
+    final state = context.read<AppController>();
+    if (!state.cloudSyncEnabled || state.syncAccountUsername.trim().isEmpty) return;
+    final passwordController = TextEditingController();
+    final confirmationController = TextEditingController();
+    var obscurePassword = true;
+    var clearLocalData = false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final ready = passwordController.text.length >= 8 && confirmationController.text.trim() == 'DELETE';
+          return AlertDialog(
+            title: const Text('Permanently delete account?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                  Text(
+                    'This permanently deletes ${state.syncAccountUsername} and its synchronized Worker data, profile media, device/session records, backup schedules, and stored Telegram/Google Drive credentials.',
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Files already exported to Telegram or Google Drive are not deleted automatically. This action cannot be undone.',
+                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                          color: kSleekExpense,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscurePassword,
+                    autofocus: true,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Current password',
+                      prefixIcon: const Icon(Icons.lock_rounded),
+                      suffixIcon: IconButton(
+                        onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                        icon: Icon(obscurePassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmationController,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Type DELETE to confirm',
+                      prefixIcon: Icon(Icons.warning_amber_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: clearLocalData,
+                    onChanged: (value) => setDialogState(() => clearLocalData = value),
+                    title: const Text('Also delete local data from this device'),
+                    subtitle: const Text('Off by default. Leave this off to keep the current offline copy on this device.'),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: kSleekExpense),
+                onPressed: ready ? () => Navigator.pop(dialogContext, true) : null,
+                child: const Text('Delete account'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    final password = passwordController.text;
+    final shouldClearLocalData = clearLocalData;
+    passwordController.dispose();
+    confirmationController.dispose();
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await state.deleteCurrentSyncAccount(
+        password: password,
+        clearLocalData: shouldClearLocalData,
+      );
+      if (!mounted) return;
+      _usernameController.clear();
+      _passwordController.clear();
+      setState(() => _workerCardExpanded = true);
+      showSnack(
+        context,
+        shouldClearLocalData
+            ? 'Account and Worker data deleted. Local account data was also cleared.'
+            : 'Account and Worker data deleted. The local offline copy was kept on this device.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
+      final normalized = message.toLowerCase();
+      showSnack(
+        context,
+        normalized.contains('not found') || normalized.contains('404')
+            ? 'Redeploy the latest Self-Hosted Sync Worker, then try deleting the account again.'
+            : message,
+      );
+    }
+  }
+
   Future<void> _confirmSignOut() async {
     final state = context.read<AppController>();
     final keepLocalData = await showDialog<bool>(
@@ -22747,6 +22990,13 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                     onPressed: accountActionBusy ? null : _confirmSignOut,
                     icon: const Icon(Icons.logout_rounded),
                     label: const Text('Sign out'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(foregroundColor: kSleekExpense),
+                    onPressed: accountActionBusy ? null : _confirmDeleteCloudAccount,
+                    icon: const Icon(Icons.delete_forever_rounded),
+                    label: const Text('Delete account'),
                   ),
                 ],
               )
@@ -25642,6 +25892,219 @@ Future<void> showDefaultSelection(BuildContext context, String mode) async {
   }
 }
 
+class PrivacyAndDataScreen extends StatelessWidget {
+  const PrivacyAndDataScreen({super.key});
+
+  Future<void> _openExternal(BuildContext context, String url) async {
+    final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) showSnack(context, 'Could not open the link.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppController>();
+    final scheme = Theme.of(context).colorScheme;
+    return PageScaffold(
+      title: 'Privacy & data',
+      child: ResponsiveContent(
+        desktopMaxWidth: 820,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeader('Local-first'),
+            ExpressiveCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: kSleekAccent.withOpacity(.14),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.shield_outlined, color: kSleekAccent),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Your finance data stays on this device by default', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Koinly only sends finance data off-device when you enable a network feature such as self-hosted sync, Telegram or Google Drive delivery, or optional diagnostics below.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.45),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SectionHeader('Diagnostics'),
+            ExpressiveCard(
+              child: SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: state.privacyTelemetryEnabled,
+                onChanged: (value) => context.read<AppController>().setPrivacyTelemetryEnabled(value),
+                title: const Text('Usage analytics & crash reports', style: TextStyle(fontWeight: FontWeight.w900)),
+                subtitle: Text(
+                  'Off by default. When enabled, Firebase may receive app-interaction, crash, diagnostic, and device/app-instance information. Koinly does not intentionally attach transaction titles, notes, balances, account names, passwords, or sync credentials to telemetry.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700, height: 1.4),
+                ),
+              ),
+            ),
+            const SectionHeader('Policy & controls'),
+            SettingsTile(
+              icon: Icons.policy_rounded,
+              title: 'Privacy Policy',
+              subtitle: 'Read the complete policy inside Koinly',
+              color: kSleekAccentHex,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+            ),
+            SettingsTile(
+              icon: Icons.open_in_new_rounded,
+              title: 'Public Privacy Policy',
+              subtitle: 'Open the policy used for store listings',
+              color: '#9AD0F5',
+              onTap: () => _openExternal(context, kPrivacyPolicyUrl),
+            ),
+            SettingsTile(
+              icon: Icons.delete_forever_rounded,
+              title: 'Account deletion information',
+              subtitle: 'How to permanently delete a self-hosted sync account',
+              color: '#FF8A80',
+              onTap: () => _openExternal(context, kAccountDeletionInfoUrl),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Telemetry is a device preference and is not synchronized to other devices. Each installation controls its own choice.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PrivacyPolicySection extends StatelessWidget {
+  const _PrivacyPolicySection(this.title, this.body);
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ExpressiveCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(body, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.55)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PrivacyPolicyScreen extends StatelessWidget {
+  const PrivacyPolicyScreen({super.key});
+
+  static const _sections = <(String, String)>[
+    (
+      '1. Local-first operation',
+      'Koinly stores finance data locally on your device first. You can use the app without creating a Koinly sync account. Local data can include accounts, balances, transactions, categories, budgets, loans and repayments, plans, subscriptions, notes, preferences, and locally selected profile media.',
+    ),
+    (
+      '2. Self-hosted sync',
+      'If you enable multi-device sync, Koinly sends the data required for synchronization to the Cloudflare Worker URL you configure and the database connected to that Worker. This infrastructure is controlled by you or the Worker administrator, not by a Koinly-operated central finance-data server. Sync authentication uses a username, password-derived server verifier, access/refresh tokens, and device/session records.',
+    ),
+    (
+      '3. Profile media and files',
+      'Profile photos, GIFs, or short videos are only processed after you choose them. A local copy is stored in Koinly app storage. If self-hosted sync is enabled, the selected profile media can also be uploaded to your configured Worker so it can appear on your other devices. Files you export or save remain under the control of the destination you select.',
+    ),
+    (
+      '4. Telegram and Google Drive',
+      'Telegram backup/report delivery and Google Drive backup/report delivery are optional. When you configure these integrations, Koinly or your self-hosted Worker sends the files and credentials needed to provide the feature to Telegram or Google. Google OAuth refresh tokens, configured Google client secrets, and Telegram bot tokens stored by the Worker are encrypted with Worker-side keys. Files already delivered to an external service are governed by that service and are not removed automatically when a Koinly account is deleted.',
+    ),
+    (
+      '5. Analytics and crash reporting',
+      'Usage analytics and crash reporting are off by default. If you enable them in Settings > Privacy & data, Firebase may receive app-interaction events, crash logs, diagnostics, app/device information, and an app-instance identifier. Koinly does not intentionally attach transaction titles, notes, balances, account names, passwords, Worker tokens, Telegram tokens, Google OAuth secrets, or backup contents to telemetry.',
+    ),
+    (
+      '6. Updates and network requests',
+      'Google Play builds use Google Play for Android updates. Direct builds can check GitHub Releases for updates. Inter font resources may be retrieved through Google Fonts when they are not already cached. Network providers can receive ordinary connection metadata such as IP address as part of serving these requests.',
+    ),
+    (
+      '7. Permissions',
+      'Koinly uses network access for optional online features, notification/alarm permissions for reminders, boot/background capabilities for scheduled work, battery-optimization access when you choose that flow, and media/storage access for files that you choose to import, export, or use as profile media. Koinly does not request contacts, SMS, call logs, microphone, or precise location access.',
+    ),
+    (
+      '8. Retention and deletion',
+      'Local data remains until you delete it, clear app storage, or uninstall the app subject to platform backup behavior. Self-hosted data remains in your Worker/database until it is deleted there. Koinly provides authenticated self-deletion in the app and a /delete-account page on each current self-hosted Worker. Account deletion removes the account and its Worker-side synchronized data, sessions, profile media, schedules, and stored integration credentials. Local copies and files already exported to Telegram or Google Drive must be removed separately.',
+    ),
+    (
+      '9. Security',
+      'Koinly uses HTTPS for supported remote services and platform secure storage for supported authentication/deployment secrets. Worker-stored integration credentials use encrypted storage as described above. Local finance data is stored in app-private storage, but no software or storage system can guarantee absolute security. Keep your device, Worker, database, OAuth credentials, and exported backup/report files secure.',
+    ),
+    (
+      '10. Data sale and advertising',
+      'Koinly does not sell your personal or financial data and does not include an advertising SDK. The Android manifest explicitly removes the advertising-ID permission. Optional third-party services are used only for the features described in this policy.',
+    ),
+    (
+      '11. Changes and contact',
+      'This policy may be updated when Koinly changes how data is handled. The current public copy is linked from the app. For privacy questions, contact Siam Chowdhury at ssiam4235@gmail.com.',
+    ),
+  ];
+
+  Future<void> _openPublicPolicy(BuildContext context) async {
+    final opened = await launchUrl(Uri.parse(kPrivacyPolicyUrl), mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) showSnack(context, 'Could not open the public policy.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PageScaffold(
+      title: 'Privacy Policy',
+      child: ResponsiveContent(
+        desktopMaxWidth: 820,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ExpressiveCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Koinly Privacy Policy', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Text('Effective and last updated: 30 September 2026', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  const Text('Koinly is a local-first personal finance application. This policy explains what data the app handles, when data leaves your device, and the controls available to you.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ..._sections.map((section) => _PrivacyPolicySection(section.$1, section.$2)),
+            OutlinedButton.icon(
+              onPressed: () => _openPublicPolicy(context),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Open public policy'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AboutLink {
   const _AboutLink(this.label, this.shortLabel, this.icon, this.url);
 
@@ -25691,7 +26154,7 @@ class AboutScreen extends StatelessWidget {
               ]),
             ),
             const SectionHeader('Legal'),
-            SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'Local data-first finance tracker', color: kSleekAccentHex, onTap: () => _showLegal(context, 'Privacy Policy')),
+            SettingsTile(icon: Icons.privacy_tip_rounded, title: 'Privacy Policy', subtitle: 'How Koinly handles and transfers data', color: kSleekAccentHex, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()))),
             SettingsTile(icon: Icons.description_rounded, title: 'Terms and conditions', subtitle: 'Usage terms', color: '#A6E3A1', onTap: () => _showLegal(context, 'Terms and conditions')),
             SettingsTile(icon: Icons.balance_rounded, title: 'Open-source licenses', subtitle: 'GNU GPL v3.0 and Flutter package notices', color: '#FBC879', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KoinlyLicenseScreen()))),
           ],
@@ -25701,7 +26164,14 @@ class AboutScreen extends StatelessWidget {
   }
 
   void _showLegal(BuildContext context, String title) {
-    showDialog(context: context, builder: (_) => AlertDialog(title: Text(title), content: const Text('This Flutter rebuild keeps the original local-first behavior. Replace this placeholder with the production policy text used by the Kotlin release.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: const Text('Koinly is provided under the terms distributed with this release and the GNU GPL v3.0 license. Do not use the app to violate applicable laws or third-party service terms.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
   }
 }
 

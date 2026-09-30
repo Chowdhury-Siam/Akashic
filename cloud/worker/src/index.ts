@@ -1,5 +1,6 @@
 import { createClient, type Client } from '@libsql/client/web';
 import { profilePage } from './profile.ts';
+import { deleteAccountPage } from './delete_account.ts';
 
 type Env = {
   TURSO_DATABASE_URL: string;
@@ -109,6 +110,9 @@ export default {
       if (url.pathname === '/profile' || url.pathname.startsWith('/profile/')) {
         return await profile(request, env);
       }
+      if (url.pathname === '/delete-account' || url.pathname === '/delete-account/') {
+        return await deleteAccountPortal(request, env);
+      }
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
       if (request.method === 'GET' && url.pathname === '/') return rootResponse(env);
       if (request.method === 'GET' && url.pathname === '/health') return healthResponse(env);
@@ -125,6 +129,7 @@ export default {
       }
       const auth = await requireAuth(request, env, db);
       if (request.method === 'POST' && url.pathname === '/v1/auth/logout') return await logout(request, db, auth);
+      if (request.method === 'DELETE' && url.pathname === '/v1/auth/account') return await deleteOwnAccount(request, env, db, auth);
       if (request.method === 'POST' && url.pathname === '/v1/auth/recovery-key') return await rotateRecoveryKey(env, db, auth);
       if (request.method === 'GET' && url.pathname === '/v1/deployment-recovery/profile') return await deploymentRecoveryProfile(db, env, auth);
       if (request.method === 'POST' && url.pathname === '/v1/deployment-recovery/profile') return await saveDeploymentRecoveryProfile(request, db, env, auth);
@@ -246,8 +251,8 @@ export async function profile(request: Request, env: Env, connect: () => Client 
     db = connect();
     const administrator = await administratorAccount(db);
     const token = (request.headers.get('cookie') ?? '').split(';').map(part => part.trim()).find(part => part.startsWith(adminCookie + '='))?.slice(adminCookie.length + 1) ?? '';
-    // The first sync account is the administrator. Bind web sessions to its
-    // immutable user id plus password/session state so password rotation revokes
+    // Bind web sessions to the current administrator account's immutable user id
+    // plus password/session state so password rotation revokes
     // the portal session while a username rename does not unexpectedly sign out
     // the administrator who just made the change.
     const sessionHash = await signDetached(env.JWT_SECRET, JSON.stringify(['profile', administrator.id, administrator.passwordHash, administrator.sessionVersion, token]));
@@ -430,14 +435,9 @@ async function manageAccounts(request: Request, url: URL, env: Env, db: Client):
   }
   if (request.method === 'DELETE' && !match[2]) {
     if (userId === await deploymentRecoveryOwnerUserId(db)) {
-      throw new HttpError(409, 'The administrator account cannot be deleted. Change its username or password instead.');
+      throw new HttpError(409, 'The administrator account can only delete itself from Koinly or /delete-account after confirming its password.');
     }
-    // Delete children before their parent. The batch rolls back completely on any error.
-    const results = await db.batch([
-      ...['profile_media_chunks', 'profile_media', 'analytics_pdf_schedules', 'analytics_upload_settings', 'google_drive_backup_settings', 'telegram_backup_settings', 'processed_operations', 'sync_changes', 'sync_entities', 'refresh_tokens', 'devices'].map(table => ({ sql: `DELETE FROM ${table} WHERE user_id = ?`, args: [userId] })),
-      { sql: 'DELETE FROM users WHERE id = ?', args: [userId] },
-    ], 'write');
-    if (!results[results.length - 1].rowsAffected) throw new HttpError(404, 'Account no longer exists.');
+    await deleteUserAccount(db, userId);
     return privateJson({ ok: true, message: 'Account deleted.' });
   }
   throw new HttpError(405, 'Method not allowed.');
@@ -447,6 +447,166 @@ function profilePassword(value: unknown): string {
   if (typeof value !== 'string' || value.length > 256) throw new HttpError(400, 'Password must be 8-256 characters.');
   validatePassword(value);
   return value;
+}
+
+const accountOwnedTables = [
+  'profile_media_chunks',
+  'profile_media',
+  'analytics_pdf_schedules',
+  'analytics_upload_settings',
+  'google_drive_backup_settings',
+  'telegram_backup_settings',
+  'processed_operations',
+  'sync_changes',
+  'sync_entities',
+  'refresh_tokens',
+  'devices',
+] as const;
+
+type DeletedAccountResult = {
+  username: string;
+  wasAdministrator: boolean;
+  remainingAccounts: number;
+};
+
+async function deleteUserAccount(db: Client, userId: string): Promise<DeletedAccountResult> {
+  const account = (await db.execute({
+    sql: 'SELECT id, username FROM users WHERE id = ?',
+    args: [userId],
+  })).rows[0];
+  if (!account) throw new HttpError(404, 'Account no longer exists.');
+  const username = String(account.username);
+  const administratorUserId = await deploymentRecoveryOwnerUserId(db);
+  const wasAdministrator = administratorUserId === userId;
+  const transaction = await db.transaction('write');
+  try {
+    for (const table of accountOwnedTables) {
+      await transaction.execute({ sql: `DELETE FROM ${table} WHERE user_id = ?`, args: [userId] });
+    }
+    await transaction.execute({
+      sql: 'DELETE FROM rate_limits WHERE key IN (?, ?, ?)',
+      args: [`recover:${username}`, `delete-account:${userId}`, `delete-web:${username}`],
+    });
+    const deleted = await transaction.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [userId] });
+    if (!deleted.rowsAffected) throw new HttpError(404, 'Account no longer exists.');
+
+    if (wasAdministrator) {
+      // Browser administrator sessions are not user-scoped, so deleting the
+      // current owner must invalidate every existing portal session.
+      await transaction.execute('DELETE FROM admin_sessions');
+      // Deployment recovery contains Cloudflare/Turso credentials belonging to
+      // the deleted owner. Never transfer those secrets to a successor account.
+      await transaction.execute(`DELETE FROM worker_state WHERE key IN ('deployment_recovery_ciphertext', 'deployment_recovery_iv', 'deployment_recovery_updated_at')`);
+      const nextOwner = (await transaction.execute('SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1')).rows[0];
+      if (nextOwner) {
+        await transaction.execute({
+          sql: `INSERT OR REPLACE INTO worker_state(key, value) VALUES ('deployment_owner_user_id', ?)`,
+          args: [String(nextOwner.id)],
+        });
+        await transaction.execute(`INSERT OR REPLACE INTO worker_state(key, value) VALUES ('registration_closed', '1')`);
+      } else {
+        // A Worker with no accounts returns to the same state as a fresh
+        // deployment, allowing exactly one new first-owner registration.
+        await transaction.execute(`DELETE FROM worker_state WHERE key IN ('deployment_owner_user_id', 'registration_closed')`);
+      }
+    }
+
+    const remaining = Number((await transaction.execute('SELECT COUNT(*) AS count FROM users')).rows[0]?.count ?? 0);
+    await transaction.commit();
+    return { username, wasAdministrator, remainingAccounts: remaining };
+  } finally {
+    transaction.close();
+  }
+}
+
+function deletionConfirmation(value: unknown): string {
+  const confirmation = String(value ?? '').trim();
+  if (confirmation !== 'DELETE') throw new HttpError(400, 'Type DELETE exactly to confirm account deletion.');
+  return confirmation;
+}
+
+export async function deleteOwnAccount(request: Request, env: Env, db: Client, auth: AuthContext): Promise<Response> {
+  const body = await readJson(request);
+  deletionConfirmation(body.confirmation);
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (password.length < 8 || password.length > 256) throw new HttpError(400, 'Enter your current account password.');
+  await enforceRateLimit(db, `delete-account:${auth.userId}`, 6, 15 * 60 * 1000);
+  const row = (await db.execute({
+    sql: 'SELECT password_hash FROM users WHERE id = ?',
+    args: [auth.userId],
+  })).rows[0];
+  if (!row || !(await verifyPassword(password, String(row.password_hash), env.JWT_SECRET))) {
+    throw new HttpError(401, 'Current password is incorrect.');
+  }
+  const deleted = await deleteUserAccount(db, auth.userId);
+  return privateJson({
+    ok: true,
+    deleted: true,
+    wasAdministrator: deleted.wasAdministrator,
+    remainingAccounts: deleted.remainingAccounts,
+    registrationReset: deleted.remainingAccounts === 0,
+  });
+}
+
+export async function deleteAccountPortal(
+  request: Request,
+  env: Env,
+  connect: () => Client = () => createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN }),
+): Promise<Response> {
+  const url = new URL(request.url);
+  const nonce = b64urlBytes(crypto.getRandomValues(new Uint8Array(18)));
+  let db: Client | undefined;
+  let response: Response;
+  let username = '';
+  try {
+    validateWorkerConfig(env);
+    if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+      throw new HttpError(400, 'Account deletion requires HTTPS.');
+    }
+    if (!['GET', 'POST'].includes(request.method)) throw new HttpError(405, 'Method not allowed.');
+    db = connect();
+    if (request.method === 'GET') {
+      response = new Response(deleteAccountPage({ nonce }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    } else {
+      const origin = request.headers.get('origin');
+      if (origin && origin !== url.origin) throw new HttpError(403, 'This deletion request must be submitted from this Worker.');
+      const contentType = request.headers.get('content-type')?.split(';')[0].trim() ?? '';
+      if (contentType !== 'application/x-www-form-urlencoded') throw new HttpError(415, 'Expected the account deletion form.');
+      const raw = await request.text();
+      if (raw.length > 4096) throw new HttpError(413, 'Request is too large.');
+      const form = new URLSearchParams(raw);
+      username = normalizeUsername(form.get('username'));
+      const password = String(form.get('password') ?? '');
+      deletionConfirmation(form.get('confirmation'));
+      if (password.length < 8 || password.length > 256) throw new HttpError(400, 'Enter your current account password.');
+      await enforceRateLimit(db, `delete-web:${username}`, 6, 15 * 60 * 1000);
+      await enforceRateLimit(db, `delete-web:ip:${request.headers.get('cf-connecting-ip') ?? 'local'}`, 12, 15 * 60 * 1000);
+      const row = (await db.execute({
+        sql: 'SELECT id, password_hash FROM users WHERE username = ?',
+        args: [username],
+      })).rows[0];
+      if (!row || !(await verifyPassword(password, String(row.password_hash), env.JWT_SECRET))) {
+        throw new HttpError(401, 'Username or password is incorrect.');
+      }
+      await deleteUserAccount(db, String(row.id));
+      response = new Response(deleteAccountPage({ nonce, success: true, username }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+  } catch (error) {
+    const status = error instanceof HttpError ? error.status : 503;
+    const message = error instanceof HttpError ? error.message : 'Server/database error. Try again; if it persists, check the Worker configuration.';
+    response = new Response(deleteAccountPage({ nonce, error: message, username }), {
+      status,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+  } finally {
+    db?.close();
+  }
+  response.headers.set('cache-control', 'no-store, private');
+  response.headers.set('content-security-policy', `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`);
+  response.headers.set('x-content-type-options', 'nosniff');
+  response.headers.set('x-frame-options', 'DENY');
+  response.headers.set('referrer-policy', 'no-referrer');
+  return response;
 }
 
 type GoogleDriveAnalyticsSettings = {
@@ -3045,6 +3205,7 @@ function rootResponse(env: Env): Response {
     registrationMode: 'first-user',
     endpoints: {
       profile: '/profile',
+      accountDeletionPage: '/delete-account',
       health: '/health',
       register: 'POST /v1/auth/register',
       login: 'POST /v1/auth/login',
@@ -3052,6 +3213,7 @@ function rootResponse(env: Env): Response {
       recoveryKey: 'POST /v1/auth/recovery-key',
       refresh: 'POST /v1/auth/refresh',
       logout: 'POST /v1/auth/logout',
+      deleteAccount: 'DELETE /v1/auth/account',
       initialSync: 'POST /v1/sync/initial',
       push: 'POST /v1/sync/push',
       replace: 'POST /v1/sync/replace',
@@ -3079,6 +3241,7 @@ async function healthResponse(env: Env): Promise<Response> {
       analyticsUploadAvailable: true,
       realtimeSyncAvailable: Boolean(env.SYNC_HUB),
       profileMediaSyncAvailable: true,
+      accountDeletionAvailable: true,
       deploymentRecoveryAvailable: false,
       databaseReachable: false,
       schemaReady: false,
@@ -3110,6 +3273,7 @@ async function healthResponse(env: Env): Promise<Response> {
       analyticsUploadAvailable: true,
       realtimeSyncAvailable: Boolean(env.SYNC_HUB),
       profileMediaSyncAvailable: true,
+      accountDeletionAvailable: true,
       deploymentRecoveryAvailable,
       databaseReachable: true,
       schemaReady,
@@ -3127,6 +3291,7 @@ async function healthResponse(env: Env): Promise<Response> {
       analyticsUploadAvailable: true,
       realtimeSyncAvailable: Boolean(env.SYNC_HUB),
       profileMediaSyncAvailable: true,
+      accountDeletionAvailable: true,
       deploymentRecoveryAvailable: false,
       databaseReachable: false,
       schemaReady: false,
@@ -3242,7 +3407,7 @@ export async function register(request: Request, env: Env, db: Client): Promise<
 
 async function deploymentRecoveryOwnerUserId(db: Client): Promise<string> {
   // Administrator identity is derived from the database itself: the earliest
-  // account is always the administrator. worker_state is only a cached pointer
+  // remaining account is the administrator. worker_state is only a cached pointer
   // used by deployment recovery and is repaired if an older deployment stored
   // a different account id.
   const firstUser = await db.execute({
@@ -3271,7 +3436,7 @@ async function requireDeploymentRecoveryOwner(db: Client, auth: AuthContext): Pr
   if (ownerUserId !== auth.userId) {
     throw new HttpError(
       403,
-      'Deployment values can only be recovered by the first Koinly sync account.',
+      'Deployment values can only be recovered by the current Worker administrator account.',
       'DEPLOYMENT_RECOVERY_OWNER_REQUIRED',
     );
   }

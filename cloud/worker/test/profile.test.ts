@@ -82,7 +82,7 @@ test('first sync account owns the profile portal and account lifecycle', async t
     assert.match(html, /id="dashboard"/);
     assert.match(html, /id="username-dialog"/);
     assert.match(html, /Change username/);
-    assert.match(html, /First-account administrator/);
+    assert.match(html, /Current administrator/);
     assert.match(html, /account-role/);
     assert.doesNotMatch(html, /ADMIN_USERNAME|ADMIN_PASSWORD/);
 

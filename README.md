@@ -300,7 +300,7 @@ Choose **`JWT_SECRET`** from the checklist in Section 4.1. Use your password man
 
 There is no separate Worker-administrator deployment username or password. After deployment, the **first Koinly account created in the app becomes the Worker administrator automatically**. That same username and password are used to sign in to `/profile`.
 
-When **Automatic Worker updates** is enabled in the in-app deployment page, Koinly securely stores the Cloudflare/Turso/JWT deployment values. After the first account exists, it also keeps an encrypted recovery copy on the Worker. If Koinly is reinstalled, paste the same Worker URL and sign in with that first account to restore the **Enter deployment values** fields automatically.
+When **Automatic Worker updates** is enabled in the in-app deployment page, Koinly securely stores the Cloudflare/Turso/JWT deployment values. After the first account exists, it also keeps an encrypted recovery copy on the Worker. If Koinly is reinstalled, paste the same Worker URL and sign in with the current Worker administrator account to restore the **Enter deployment values** fields automatically.
 
 ## 5.8 Step 8 — Add the values to GitHub (GitHub Actions method only)
 
@@ -397,9 +397,9 @@ After you have the values from Sections 5.2–5.7:
 8. Leave **Automatic Worker updates** enabled if you want this device to keep the Worker current after future Koinly app updates.
 9. When deployment succeeds, Koinly returns to **Account & sync**, automatically fills the **Cloudflare Worker URL**, and validates that Worker for use by the app.
 
-With **Automatic Worker updates** enabled, Koinly saves the deployment profile in the platform secure credential store. This includes the Cloudflare API token, Turso token, JWT secret, Worker/account identifiers, Worker URL, and Worker version. After the first sync account is created or the owner signs in, Koinly also stores an encrypted recovery copy in that user's Worker database. Only the first Koinly sync account can read that recovery copy.
+With **Automatic Worker updates** enabled, Koinly saves the deployment profile in the platform secure credential store. This includes the Cloudflare API token, Turso token, JWT secret, Worker/account identifiers, Worker URL, and Worker version. After the first sync account is created or the owner signs in, Koinly also stores an encrypted recovery copy in that user's Worker database. Only the current Worker administrator can read that recovery copy.
 
-This means a reinstall does not require entering all deployment values again. Paste and validate the same Worker URL, then sign in with the first sync account. Koinly restores the deployment profile to the device secure store automatically, so **Enter deployment values** is populated again and automatic Worker updates can continue.
+This means a reinstall does not require entering all deployment values again. Paste and validate the same Worker URL, then sign in with the current Worker administrator account. Koinly restores the deployment profile to the device secure store automatically, so **Enter deployment values** is populated again and automatic Worker updates can continue.
 
 On a later Koinly app version, the app checks the active Worker's `/health` version and redeploys only when the embedded Worker is newer. If the active Worker URL has been changed to a different Worker, that Worker's recovery profile is used only after its owner account signs in. Choosing **Forget saved deployment credentials** removes the local secure copy and, when the owner account is signed in, the Worker's encrypted recovery copy too.
 
@@ -411,7 +411,7 @@ The release workflow embeds the matching deployable Worker bundle into official 
 
 Automatic Worker updating applies only to the Worker deployed from that device through **Deploy Database** with **Automatic Worker updates** enabled. After a newer Koinly app version is installed and opened, Koinly checks the saved deployment profile and the active Worker URL. If they match, it reads the Worker's reported version from `/health`. A current Worker is left untouched; an older or legacy Worker is redeployed with the Worker bundle embedded in the installed app, the existing Turso database, and the same Worker identity.
 
-The update runs in the background so app startup is not blocked. **Account & sync** shows progress while a Worker update is running and displays a retryable error if Cloudflare, Turso, network, or credential validation fails. The existing deployed Worker is not deleted when an update attempt fails. If the app was reinstalled, sign in to the same Worker with the first sync account once; Koinly restores the encrypted deployment profile before checking for a newer Worker.
+The update runs in the background so app startup is not blocked. **Account & sync** shows progress while a Worker update is running and displays a retryable error if Cloudflare, Turso, network, or credential validation fails. The existing deployed Worker is not deleted when an update attempt fails. If the app was reinstalled, sign in to the same Worker with the current administrator account once; Koinly restores the encrypted deployment profile before checking for a newer Worker.
 
 Users who first deployed with Koinly `1.0.1155` or earlier must open **Deploy Database** once on `1.0.1156` or later and complete a deployment with **Automatic Worker updates** enabled so the secure deployment profile can be created.
 
@@ -428,15 +428,31 @@ To connect an account to the app:
 2. If you deployed through **Deploy Database**, the Worker URL is already filled and validated automatically. If you deployed through GitHub Actions, paste the Worker URL without `/profile` and select **Validate and use Worker**.
 3. On a fresh Worker with no sync accounts yet, enter the username and password you want and select **Create account**. This first database account automatically becomes the Worker administrator.
 4. On another device, select **Login** and use that same sync-account username and password.
-5. To create a second or later account, go to **Settings > Profile** and sign in with the first account (the Worker administrator), then use **Create account**.
+5. To create a second or later account, go to **Settings > Profile** and sign in with the current Worker administrator, then use **Create account**.
 
-**Settings > Profile** is shown only after a Worker URL has been successfully validated. It opens Koinly's native in-app Worker administration screen rather than launching a browser. The Worker `/profile` web portal remains available for direct web access. The first account remains the administrator and cannot be deleted, so further account creation stays administrator-managed.
+**Settings > Profile** is shown only after a Worker URL has been successfully validated. It opens Koinly's native in-app Worker administration screen rather than launching a browser. The Worker `/profile` web portal remains available for direct web access. The current administrator is the earliest remaining sync account. It cannot be deleted from the administrator account list, but its owner can permanently delete it through Koinly's self-service account deletion flow or the Worker's `/delete-account` page.
 
 ### 6.1 Password reset
 
 If an account holder needs a new password, open **Settings > Profile**, sign in as the Worker administrator, select the account, and use **Change password**. The same operation remains available from the Worker's direct `/profile` web portal. The reset signs out that account's existing sessions, and the user can then sign in again with the new password.
 
-### 6.2 Sync controls
+### 6.2 Account deletion
+
+A signed-in user can permanently delete their own self-hosted sync account from **Settings > Account & sync > Delete account**. Koinly requires the current password plus an explicit `DELETE` confirmation. The user separately chooses whether to delete the local offline finance copy on that device; local deletion is **off by default**.
+
+The same self-service flow is available without the app at:
+
+```text
+https://<your-worker-host>/delete-account
+```
+
+The browser page requires the account username, current password, and `DELETE` confirmation. It removes synchronized Worker data, profile media, device/session records, backup schedules, and stored Telegram/Google Drive credentials for that account. Files already exported to Telegram or Google Drive and local copies on devices are not automatically erased.
+
+If the deleted account is the Worker administrator, all administrator web sessions and its encrypted deployment-recovery vault are revoked. The oldest remaining account becomes administrator. If no accounts remain, the Worker clears its ownership/registration latch so one new first account can be created again.
+
+A standalone description of this process is available in [`docs/ACCOUNT_DELETION.md`](docs/ACCOUNT_DELETION.md). Publish that page (or equivalent content on your website) at a stable public URL before entering an account-deletion URL in Google Play Console.
+
+### 6.3 Sync controls
 
 - **Upload local changes** merges your current local data into the Worker copy.
 - **Restore cloud copy** downloads the Worker copy and merges it into the device.
@@ -446,15 +462,15 @@ Both are merge-based. Matching records are reconciled rather than blindly duplic
 When two signed-in devices are open, the Worker uses an authenticated Durable Object WebSocket hub to announce committed changes immediately. The receiving device then performs the normal versioned incremental pull. A slower periodic pull remains enabled as a fallback for dropped or suspended realtime connections.
 
 <a id="worker-administration-portal"></a>
-### 6.3 Worker administration portal (`/profile`)
+### 6.4 Worker administration portal (`/profile`)
 
-Koinly provides the same Worker account administration directly inside the app at **Settings > Profile** after the Worker URL is validated. The first Koinly account created on that Worker is the administrator. Sign in with that account's current username and password. The Worker also continues to expose the private `/profile` web dashboard for direct web administration.
+Koinly provides the same Worker account administration directly inside the app at **Settings > Profile** after the Worker URL is validated. Sign in with the current Worker administrator account. On a fresh Worker this is the first account created; if that administrator later self-deletes, the oldest remaining account becomes administrator. The Worker also continues to expose the private `/profile` web dashboard for direct web administration.
 
 > **Existing Worker owners:** Workers deployed through **Deploy Database** can now update automatically after future Koinly app updates when **Automatic Worker updates** is enabled and the saved deployment profile still matches the active Worker URL. Koinly compares the Worker's reported version with the Worker bundled into the installed app and redeploys only when the bundled Worker is newer. GitHub-based deployments continue to redeploy automatically when the fork receives the updated project. Keep the same Worker name, Turso database, and `JWT_SECRET` so the existing backend continues to use the same identity and encrypted data.
 
-The administrator is the first sync account in the database, not a separate deployment login. It appears in the account list with an **Administrator** badge and cannot be deleted, although its username and password can be changed.
+The administrator is the earliest remaining sync account in the database, not a separate deployment login. It appears in the account list with an **Administrator** badge. The administration list cannot delete that account, but the account holder can self-delete after password confirmation from Koinly or `/delete-account`.
 
-#### 6.3.1 Open the dashboard and sign in
+#### 6.4.1 Open the dashboard and sign in
 
 1. Open your Worker URL in a browser and add `/profile` to the end. For example:
 
@@ -462,13 +478,13 @@ The administrator is the first sync account in the database, not a separate depl
    https://koinly-test.sweets-4c4.workers.dev/profile
    ```
 
-2. Enter the username of the first Koinly account created on this Worker.
+2. Enter the username of the current Worker administrator account.
 3. Enter that account's current password. Use the eye button inside the password field when you need to verify what you typed.
 4. Select **Sign in**.
 
 The dashboard shows the total number of registered accounts and a list of their usernames, creation dates, and status. **Invited** means an account has not signed in yet. **Active** means it has signed in at least once; it does not indicate that the person is online. Use **Previous** and **Next** to browse lists larger than 50 accounts.
 
-#### 6.3.2 Create an account from the website
+#### 6.4.2 Create an account from the website
 
 1. In the dashboard, select **+ Create account**.
 2. Enter the new account's **Username**.
@@ -479,15 +495,15 @@ The dashboard shows the total number of registered accounts and a list of their 
 
 Each account keeps its own synchronized data. Creating an account here does not grant administrator access.
 
-#### 6.3.3 Change an account username
+#### 6.4.3 Change an account username
 
 1. Find the account in the list and select **Change username**.
 2. Enter the new username and select **Change username**.
 3. The account keeps the same synchronized data and identity. The account holder uses the new username on the next login.
 
-Changing the administrator username does not transfer administrator access; the first account remains the administrator because the Worker tracks its account ID, not the text of its username.
+Changing the administrator username does not transfer administrator access because the Worker tracks the administrator account ID, not the text of its username.
 
-#### 6.3.4 Change or reset an account password
+#### 6.4.4 Change or reset an account password
 
 1. Find the account in the list and select **Change password**.
 2. Enter and confirm the new password. Use either field's eye button if you need to verify the entry before saving.
@@ -496,30 +512,30 @@ Changing the administrator username does not transfer administrator access; the 
 
 You do not need the old password. The reset signs out the account's devices. The account holder must sign in again with the replacement password.
 
-#### 6.3.5 Delete an account
+#### 6.4.5 Delete an account
 
 1. Find the account and select **Delete**.
 2. Check the username in the confirmation dialog and read what will be removed.
 3. Select **Cancel** to keep the account, or **Delete account** to remove it permanently.
 4. Wait for **Account deleted** and confirm that the account is no longer listed.
 
-The administrator account cannot be deleted from `/profile`; change its username or password instead. Deletion of other accounts removes that account's synchronized cloud data, device and session records, and Telegram backup settings. It cannot be undone. Copies already saved on devices or sent to Telegram remain. Other accounts and the administrator account are preserved.
+The administrator account cannot be deleted by the administrator account list itself. For self-deletion, use **Settings > Account & sync > Delete account** in Koinly or open `<your Worker URL>/delete-account`. Account deletion removes that account's synchronized cloud data, profile media, device/session records, Telegram and Google Drive backup settings, and stored Analytics upload credentials. It cannot be undone. Local copies on devices and files already exported to Telegram or Google Drive remain unless the user removes them separately. If the administrator self-deletes while other accounts remain, the oldest remaining account becomes administrator and the deleted owner's deployment-recovery vault is erased. If the final account self-deletes, the Worker returns to first-user registration.
 
-#### 6.3.6 Change the administrator username or password
+#### 6.4.6 Change the administrator username or password
 
-The administrator is the first Koinly account, so its credentials are managed from the same account row as every other account:
+The administrator is a normal Koinly sync account with the Worker administrator role, so its credentials are managed from the same account row as every other account:
 
 - Select **Change username** to rename the administrator account. Its administrator role remains attached to the same account ID.
 - Select **Change password** to set a replacement password. This signs out that account's devices and invalidates its current `/profile` session, so sign in again with the new password.
 
 No Worker redeployment is required for either change.
 
-#### 6.3.7 Common messages
+#### 6.4.7 Common messages
 
 | Message or problem | What to do |
 | --- | --- |
 | No administrator account exists yet | Create the first Koinly account from the app. That first account automatically becomes the Worker administrator. |
-| Invalid administrator username or password | Use the current username and password of the first Koinly account created on this Worker. |
+| Invalid administrator username or password | Use the current username and password of the account currently marked **Administrator**. |
 | Duplicate username | Choose a different username, or find the existing account and change its password. |
 | Session expired | Sign in again. Dashboard sessions last one hour. |
 | Too many attempts | Wait fifteen minutes before trying again. |
@@ -612,6 +628,10 @@ On Android, automatic local backups run through a native WorkManager job using t
 <a id="data-safety-and-security"></a>
 ## 9. Data safety and security
 
+Koinly ships a production privacy surface under **Settings > Privacy & data**. The public policy source is [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md), a static-hostable HTML copy is available at [`docs/privacy-policy.html`](docs/privacy-policy.html), and the Play Console audit checklist is maintained in [`docs/PLAY_DATA_SAFETY.md`](docs/PLAY_DATA_SAFETY.md).
+
+- Firebase Analytics and Crashlytics collection are **off by default**. Users can explicitly opt in per device from **Settings > Privacy & data**.
+- The Android manifest explicitly removes the Google advertising-ID permission.
 - Finance data is written to local SQLite first.
 - Sync access and refresh tokens use platform secure storage.
 - Turso credentials and `JWT_SECRET` stay on your Cloudflare Worker.
@@ -623,6 +643,7 @@ On Android, automatic local backups run through a native WorkManager job using t
 - Telegram bot tokens saved for cloud backup are encrypted before Turso storage.
 - Google Drive OAuth Client Secrets and refresh tokens used by Analytics uploads are encrypted by the Worker before Turso storage.
 - Profile media can synchronize through authenticated Worker media endpoints and is kept separate from the normal finance sync payload.
+- Users can permanently delete their own sync account in-app or from the Worker's `/delete-account` web page. Worker-side finance data, media, sessions, schedules, and stored service credentials for that account are removed; deleting the local offline copy remains a separate user choice.
 
 ---
 
@@ -669,7 +690,7 @@ Koinly has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=KOINLY_ANDROID_DISTRIBUTION=play \
-  --dart-define=KOINLY_APP_VERSION=1.0.1215
+  --dart-define=KOINLY_APP_VERSION=1.0.1217
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -678,7 +699,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=KOINLY_ANDROID_DISTRIBUTION=direct \
-  --dart-define=KOINLY_APP_VERSION=1.0.1215
+  --dart-define=KOINLY_APP_VERSION=1.0.1217
 ```
 
 ## 10.4 Windows build
@@ -688,7 +709,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name koinly --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=KOINLY_APP_VERSION=1.0.1215
+  --dart-define=KOINLY_APP_VERSION=1.0.1217
 ```
 
 ## 10.5 Linux build
@@ -705,7 +726,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name koinly --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=KOINLY_APP_VERSION=1.0.1215
+  --dart-define=KOINLY_APP_VERSION=1.0.1217
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -724,7 +745,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name koinly --org com.koinly --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=KOINLY_APP_VERSION=1.0.1215
+  --dart-define=KOINLY_APP_VERSION=1.0.1217
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Koinly-v<version>-macos-universal.dmg` and a matching `.zip` containing `Koinly.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Koinly's icon and `com.koinly.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
@@ -811,7 +832,7 @@ TURSO_AUTH_TOKEN
 JWT_SECRET
 ```
 
-Also check that you did not accidentally add an extra space to a name or value. The `/profile` administrator is not a GitHub secret; it is the first Koinly account created on the Worker.
+Also check that you did not accidentally add an extra space to a name or value. The `/profile` administrator is not a GitHub secret; it is the account currently assigned the Worker administrator role.
 
 ## 12.2 `TURSO_DATABASE_URL` is rejected
 
