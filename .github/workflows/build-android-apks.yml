@@ -198,7 +198,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .pub-cache
-          key: koinly-${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          key: koinly-${{ runner.os }}-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
             koinly-${{ runner.os }}-pub-
 
@@ -264,6 +264,37 @@ jobs:
         shell: bash
         run: |
           flutter pub get --offline || flutter pub get
+
+      - name: Verify file picker Android 16 build compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_FILE_PICKER'
+          import json
+          import pathlib
+          import urllib.parse
+
+          config = json.loads(pathlib.Path('.dart_tool/package_config.json').read_text(encoding='utf-8'))
+          package = next((item for item in config['packages'] if item['name'] == 'file_picker'), None)
+          if package is None:
+              raise SystemExit('::error::file_picker is missing from the resolved package configuration.')
+
+          root_uri = package['rootUri']
+          parsed = urllib.parse.urlparse(root_uri)
+          if parsed.scheme != 'file':
+              raise SystemExit(f'::error::Unsupported file_picker package URI: {root_uri}')
+
+          package_root = pathlib.Path(urllib.parse.unquote(parsed.path))
+          gradle_file = package_root / 'android' / 'build.gradle'
+          if not gradle_file.is_file():
+              raise SystemExit(f'::error::file_picker Android build.gradle was not found: {gradle_file}')
+
+          gradle = gradle_file.read_text(encoding='utf-8')
+          if 'flutter.compileSdkVersion' not in gradle:
+              raise SystemExit('::error::Resolved file_picker does not inherit Flutter compileSdkVersion; API 36 builds can regress to android-34.')
+
+          print(f'file_picker Android configuration is API-36 compatible: {gradle_file}')
+          PY_VERIFY_FILE_PICKER
 
       - name: Prepare artifact folder
         run: mkdir -p artifacts
@@ -462,7 +493,7 @@ jobs:
           path: |
             .pub-cache
             build/windows/x64/extracted
-          key: koinly-${{ runner.os }}-deps-${{ hashFiles('pubspec.lock') }}
+          key: koinly-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
             koinly-${{ runner.os }}-deps-
 
@@ -835,7 +866,7 @@ jobs:
           path: |
             .pub-cache
             build/linux
-          key: koinly-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.lock') }}
+          key: koinly-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
             koinly-${{ runner.os }}-${{ matrix.arch }}-deps-
 
@@ -1034,7 +1065,7 @@ jobs:
             .pub-cache
             ~/Library/Caches/CocoaPods
             macos/Pods
-          key: koinly-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
+          key: koinly-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
           restore-keys: |
             koinly-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
 

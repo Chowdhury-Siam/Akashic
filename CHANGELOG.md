@@ -1,3 +1,11 @@
+## [1.0.1219] - 2026-10-01
+
+- Fixed Android release builds failing in `:file_picker:checkReleaseAarMetadata` because the old `file_picker` Android module compiled against API 34 while `flutter_plugin_android_lifecycle` requires API 36.
+- Upgraded `file_picker` to `10.3.10`, which inherits Flutter's `compileSdkVersion`, supports Gradle 9, preserves Koinly's existing `FilePicker.platform` API, and includes the maintained Android security fixes from the 10.3.x line.
+- Added a CI compatibility guard that verifies the resolved `file_picker` Android module inherits Flutter's compile SDK before building the Play AAB or direct APKs.
+- Updated dependency-cache invalidation so changes to either `pubspec.yaml` or `pubspec.lock` refresh the cached packages.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1219+263`.
+
 ## [1.0.1218] - 2026-10-01
 
 - Fixed direct ARM32/ARM64 GitHub Actions packaging by matching Flutter's actual flavored split-APK filenames (`app-armeabi-v7a-direct-release.apk` and `app-arm64-v8a-direct-release.apk`).
