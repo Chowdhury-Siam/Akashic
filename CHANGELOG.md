@@ -1,3 +1,11 @@
+## [1.0.1218] - 2026-10-01
+
+- Fixed direct ARM32/ARM64 GitHub Actions packaging by matching Flutter's actual flavored split-APK filenames (`app-armeabi-v7a-direct-release.apk` and `app-arm64-v8a-direct-release.apk`).
+- Added fail-fast artifact discovery diagnostics so a future Flutter output-name change reports the APKs that were actually generated instead of failing with a vague `cp` error.
+- Upgraded the Android build toolchain to Gradle `9.1.0`, Android Gradle Plugin `9.0.1`, and Kotlin Gradle Plugin `2.3.20`.
+- Added Flutter's AGP 9 compatibility flags (`android.newDsl=false` and `android.builtInKotlin=false`) while Koinly and its plugin graph still use the legacy Kotlin Gradle Plugin path.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1218+262`.
+
 ## [1.0.1217] - 2026-09-30
 
 - Replaced the placeholder privacy copy with a complete in-app Privacy Policy and added a dedicated **Settings > Privacy & data** screen.

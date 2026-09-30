@@ -99,19 +99,16 @@ jobs:
             label: direct universal APK
             package: apk
             target_platform: android-arm,android-arm64
-            source_apk: app-direct-release.apk
             split_per_abi: false
           - variant: arm32
             label: direct ARM32 APK
             package: apk
             target_platform: android-arm
-            source_apk: app-direct-armeabi-v7a-release.apk
             split_per_abi: true
           - variant: arm64
             label: direct ARM64 APK
             package: apk
             target_platform: android-arm64
-            source_apk: app-direct-arm64-v8a-release.apk
             split_per_abi: true
           - variant: play
             label: Google Play AAB
@@ -164,6 +161,16 @@ jobs:
           require_value('compileSdk', 36)
           require_value('targetSdk', 36)
           PY_VERIFY_API36
+
+      - name: Verify Android build toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'com.android.application" version "9.0.1"' android/settings.gradle
+          grep -q 'org.jetbrains.kotlin.android" version "2.3.20"' android/settings.gradle
+          grep -q 'gradle-9.1.0-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q '^android.newDsl=false$' android/gradle.properties
+          grep -q '^android.builtInKotlin=false$' android/gradle.properties
 
       - name: Verify preinstalled Android SDK 36 and NDK 28
         shell: bash
@@ -227,7 +234,7 @@ jobs:
           grep -q '@drawable/koinly_splash_icon' android/app/src/main/res/values-v31/styles.xml
           test -f android/app/src/main/res/drawable-nodpi/koinly_splash_icon.png
 
-      - name: Force Gradle wrapper 8.14.1
+      - name: Force Gradle wrapper 9.1.0
         run: |
           mkdir -p android/gradle/wrapper
           cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF_GRADLE'
@@ -235,7 +242,7 @@ jobs:
           distributionPath=wrapper/dists
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.1-bin.zip
+          distributionUrl=https\://services.gradle.org/distributions/gradle-9.1.0-bin.zip
           EOF_GRADLE
 
       - name: Read app version
@@ -366,7 +373,25 @@ jobs:
               --no-tree-shake-icons \
               --dart-define=KOINLY_APP_VERSION="$KOINLY_APP_VERSION_NAME" \
               --dart-define=KOINLY_ANDROID_DISTRIBUTION=direct
-            cp "build/app/outputs/flutter-apk/${{ matrix.source_apk }}" \
+            case "${{ matrix.variant }}" in
+              universal) expected_apk="app-direct-release.apk" ;;
+              arm32) expected_apk="app-armeabi-v7a-direct-release.apk" ;;
+              arm64) expected_apk="app-arm64-v8a-direct-release.apk" ;;
+              *)
+                echo "::error::Unknown direct APK variant: ${{ matrix.variant }}"
+                exit 1
+                ;;
+            esac
+
+            source_apk="build/app/outputs/flutter-apk/${expected_apk}"
+            if [ ! -f "$source_apk" ]; then
+              echo "::error::Expected direct APK was not produced: $source_apk"
+              echo "Available Flutter APK outputs:"
+              find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' -print || true
+              exit 1
+            fi
+
+            cp "$source_apk" \
               "artifacts/Koinly-v${KOINLY_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
           fi
 

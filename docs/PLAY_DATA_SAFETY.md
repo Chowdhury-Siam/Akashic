@@ -1,6 +1,6 @@
 # Google Play Data Safety checklist for Koinly
 
-**Release baseline:** Koinly 1.0.1217+261  
+**Release baseline:** Koinly 1.0.1218+262  
 **Reviewed:** 30 September 2026
 
 This file documents the current code paths so the Play Console Data safety form can be completed consistently with the shipped app. Re-check this document whenever dependencies, permissions, sync behavior, telemetry, or integrations change.
