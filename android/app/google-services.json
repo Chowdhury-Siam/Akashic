@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "293017387883",
+    "project_id": "yutaka-app",
+    "storage_bucket": "yutaka-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:293017387883:android:f4a83f38ea0ad4f426022e",
+        "android_client_info": {
+          "package_name": "com.yutaka.siam"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuTErh1Q_JdTfOvfZxW_KJhBn0kXnvbLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
