@@ -237,9 +237,7 @@ class AutomaticBackupWorker(
     }
 
     private fun exportDatabase(): JSONObject {
-        val canonicalDatabaseFile = applicationContext.getDatabasePath("koinly_flutter.db")
-        val transitionalDatabaseFile = applicationContext.getDatabasePath("yutaka_flutter.db")
-        val databaseFile = if (canonicalDatabaseFile.exists()) canonicalDatabaseFile else transitionalDatabaseFile
+        val databaseFile = applicationContext.getDatabasePath("yutaka_flutter.db")
         if (!databaseFile.exists()) throw IllegalStateException("Yutaka database is not available yet.")
         val database = SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY)
         return try {

@@ -9,8 +9,7 @@ test('Telegram backup implementation rejects empty finance snapshots and has his
   const fs = await import('node:fs');
   const source = fs.readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
   assert.match(source, /telegramBackupFinanceRecordCount\(database\) === 0/);
-  assert.match(source, /entity_type <> '__reset__'/);
-  assert.doesNotMatch(source, /sequence > last_reset\.reset_sequence/);
+  assert.match(source, /FROM sync_changes, last_reset/);
   assert.match(source, /an empty Telegram backup was not sent/);
   assert.match(source, /finance_record_count/);
 });

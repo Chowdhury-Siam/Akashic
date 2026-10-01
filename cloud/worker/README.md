@@ -114,7 +114,6 @@ A ready Worker returns values equivalent to:
 - `GET /v1/sync/live` (authenticated WebSocket upgrade)
 - `POST /v1/sync/initial`
 - `POST /v1/sync/push`
-- `POST /v1/sync/replace`
 - `GET /v1/sync/pull?cursor=0&limit=100`
 - `GET /v1/sync/status`
 - `POST /v1/profile-media/begin`
@@ -149,7 +148,7 @@ The Flutter client uses merge-first synchronization. Full local reconciliation c
 
 Profile photos, animated GIFs, and short profile videos use the authenticated `/v1/profile-media/*` API and dedicated Turso tables. The media transfer is chunked separately from finance records, and completion/framing/removal events notify the same realtime hub so another signed-in device can refresh the avatar immediately.
 
-`MAX_SYNC_BATCH_SIZE` defaults to `100`. `MAX_SYNC_REPLACE_SIZE` defaults to `25000`.
+`MAX_SYNC_BATCH_SIZE` defaults to `100`.
 
 ## Cloud `.yutakabackup`
 

@@ -18,7 +18,7 @@ android {
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.siamapps.koinly"
+        applicationId = "com.yutaka.siam"
         minSdk = 23
         targetSdk = 36
         versionCode = 270

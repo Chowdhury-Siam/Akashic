@@ -9,26 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:814713168543:android:278bd57b08be60bd3778aa",
         "android_client_info": {
-          "package_name": "com.siamapps.koinly"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDMIDhbpWqqK2ebT658_mtzJiZm3xQDMck"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:814713168543:android:278bd57b08be60bd3778aa",
-        "android_client_info": {
-          "package_name": "com.siamapps.koinly.debug"
+          "package_name": "com.yutaka.siam"
         }
       },
       "oauth_client": [],

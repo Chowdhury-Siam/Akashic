@@ -9,7 +9,6 @@ type Env = {
   ACCESS_TOKEN_TTL_SECONDS?: string;
   REFRESH_TOKEN_TTL_SECONDS?: string;
   MAX_SYNC_BATCH_SIZE?: string;
-  MAX_SYNC_REPLACE_SIZE?: string;
   YUTAKA_WORKER_VERSION?: string;
   SYNC_HUB?: DurableObjectNamespace;
 };
@@ -32,6 +31,24 @@ type SyncOperation = {
 };
 
 const enc = new TextEncoder();
+const syncEntityTypes = [
+  'accounts',
+  'categories',
+  'notes',
+  'planned_purchases',
+  'subscriptions',
+  'transactions',
+  'budgets',
+  'budget_accounts',
+  'budget_categories',
+  'loan_contacts',
+  'loans',
+  'loan_payments',
+  'preferences',
+] as const;
+const syncEntityTypeSet = new Set<string>(syncEntityTypes);
+const legacyResetRecoveryCheckedUsers = new Set<string>();
+
 const requiredTables = [
   'users',
   'refresh_tokens',
@@ -146,9 +163,7 @@ export default {
         return response;
       }
       if (request.method === 'POST' && url.pathname === '/v1/sync/replace') {
-        const response = await replaceAll(request, env, db, auth);
-        context.waitUntil(notifySyncHub(env, auth));
-        return response;
+        throw new HttpError(410, 'Legacy destructive replace sync is disabled. Update Yutaka and use merge sync.');
       }
       if (request.method === 'GET' && url.pathname === '/v1/sync/pull') return await pull(url, env, db, auth);
       if (request.method === 'GET' && url.pathname === '/v1/sync/status') return await status(db, auth);
@@ -906,6 +921,7 @@ type CloudFinanceSnapshot = {
 };
 
 async function readCloudFinanceSnapshot(db: Client, userId: string): Promise<CloudFinanceSnapshot> {
+  await recoverLegacyResetData(db, userId);
   const database: Record<string, Array<Record<string, unknown>>> = {};
   for (const table of telegramBackupEntityTables) database[table] = [];
   let preferences: Record<string, unknown> = {};
@@ -921,21 +937,27 @@ async function readCloudFinanceSnapshot(db: Client, userId: string): Promise<Clo
 
   if (telegramBackupFinanceRecordCount(database) === 0) {
     const historyRows = (await db.execute({
-      sql: `WITH ranked AS (
+      sql: `WITH last_reset AS (
+              SELECT COALESCE(MAX(sequence), 0) AS reset_sequence
+              FROM sync_changes
+              WHERE user_id = ? AND entity_type = '__reset__'
+            ),
+            ranked AS (
               SELECT entity_type, entity_id, operation, payload_json, sequence,
                      ROW_NUMBER() OVER (
                        PARTITION BY entity_type, entity_id
                        ORDER BY sequence DESC
                      ) AS rn
-              FROM sync_changes
+              FROM sync_changes, last_reset
               WHERE user_id = ?
+                AND sequence > last_reset.reset_sequence
                 AND entity_type <> '__reset__'
             )
             SELECT entity_type, entity_id, payload_json
             FROM ranked
             WHERE rn = 1 AND operation = 'upsert'
             ORDER BY entity_type, entity_id`,
-      args: [userId],
+      args: [userId, userId],
     })).rows;
     applyTelegramBackupRows(historyRows, database, value => { preferences = value; });
   }
@@ -3210,7 +3232,6 @@ function rootResponse(env: Env): Response {
       deleteAccount: 'DELETE /v1/auth/account',
       initialSync: 'POST /v1/sync/initial',
       push: 'POST /v1/sync/push',
-      replace: 'POST /v1/sync/replace',
       pull: 'GET /v1/sync/pull?cursor=0&limit=100',
       status: 'GET /v1/sync/status',
       profileMedia: '/v1/profile-media/*',
@@ -3936,8 +3957,149 @@ async function push(request: Request, env: Env, db: Client, auth: AuthContext): 
   return pushWithOperations(db, auth, body.operations, numberEnv(env.MAX_SYNC_BATCH_SIZE, 100));
 }
 
-async function replaceAll(_request: Request, _env: Env, _db: Client, _auth: AuthContext): Promise<Response> {
-  throw new HttpError(409, 'Destructive cloud replace is disabled. Update Yutaka and use merge sync.');
+
+async function recoverLegacyResetData(db: Client, userId: string): Promise<number> {
+  if (legacyResetRecoveryCheckedUsers.has(userId)) return 0;
+
+  // Most accounts never used the retired destructive replace flow. Avoid a
+  // write transaction on every pull when no legacy reset exists. Once this
+  // Worker version is deployed, new reset markers are rejected at the API.
+  const previewResetRow = (await db.execute({
+    sql: `SELECT COALESCE(MAX(sequence), 0) AS sequence
+          FROM sync_changes
+          WHERE user_id = ? AND entity_type = '__reset__'`,
+    args: [userId],
+  })).rows[0];
+  const previewResetSequence = Number(previewResetRow?.sequence ?? 0);
+  if (!Number.isFinite(previewResetSequence) || previewResetSequence <= 0) {
+    legacyResetRecoveryCheckedUsers.add(userId);
+    return 0;
+  }
+
+  const transaction = await db.transaction('write');
+  try {
+    // Re-read inside the write transaction so concurrent first requests cannot
+    // recover the same reset twice.
+    const resetRow = (await transaction.execute({
+      sql: `SELECT COALESCE(MAX(sequence), 0) AS sequence
+            FROM sync_changes
+            WHERE user_id = ? AND entity_type = '__reset__'`,
+      args: [userId],
+    })).rows[0];
+    const resetSequence = Number(resetRow?.sequence ?? 0);
+    if (!Number.isFinite(resetSequence) || resetSequence <= 0) {
+      await transaction.commit();
+      legacyResetRecoveryCheckedUsers.add(userId);
+      return 0;
+    }
+
+    const markerKey = `legacy_reset_merge_v1:${userId}:${resetSequence}`;
+    const marker = (await transaction.execute({
+      sql: 'SELECT value FROM worker_state WHERE key = ? LIMIT 1',
+      args: [markerKey],
+    })).rows[0];
+    if (marker) {
+      await transaction.commit();
+      legacyResetRecoveryCheckedUsers.add(userId);
+      return 0;
+    }
+
+    // A legacy replace meant "delete everything omitted from this snapshot".
+    // New Yutaka sync is merge-only: recover the latest pre-reset upsert for an
+    // entity only when there is no explicit post-reset mutation for that same
+    // stable ID. An explicit post-reset delete therefore remains authoritative.
+    const candidates = (await transaction.execute({
+      sql: `WITH before_ranked AS (
+              SELECT entity_type, entity_id, operation, version, payload_json, sequence,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY entity_type, entity_id
+                       ORDER BY sequence DESC
+                     ) AS rn
+              FROM sync_changes
+              WHERE user_id = ?
+                AND sequence < ?
+                AND entity_type <> '__reset__'
+            ),
+            after_ranked AS (
+              SELECT entity_type, entity_id, operation, sequence,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY entity_type, entity_id
+                       ORDER BY sequence DESC
+                     ) AS rn
+              FROM sync_changes
+              WHERE user_id = ?
+                AND sequence > ?
+                AND entity_type <> '__reset__'
+            )
+            SELECT before_ranked.entity_type,
+                   before_ranked.entity_id,
+                   before_ranked.version,
+                   before_ranked.payload_json,
+                   before_ranked.sequence
+            FROM before_ranked
+            LEFT JOIN after_ranked
+              ON after_ranked.entity_type = before_ranked.entity_type
+             AND after_ranked.entity_id = before_ranked.entity_id
+             AND after_ranked.rn = 1
+            WHERE before_ranked.rn = 1
+              AND before_ranked.operation = 'upsert'
+              AND after_ranked.entity_type IS NULL
+            ORDER BY before_ranked.sequence`,
+      args: [userId, resetSequence, userId, resetSequence],
+    })).rows;
+
+    const currentRows = (await transaction.execute({
+      sql: 'SELECT entity_type, entity_id FROM sync_entities WHERE user_id = ?',
+      args: [userId],
+    })).rows;
+    const currentKeys = new Set(currentRows.map(row => `${String(row.entity_type)}\u0000${String(row.entity_id)}`));
+    const recoverable = candidates
+      .filter(row => syncEntityTypeSet.has(String(row.entity_type)))
+      .filter(row => row.payload_json !== null && row.payload_json !== undefined)
+      .filter(row => !currentKeys.has(`${String(row.entity_type)}\u0000${String(row.entity_id)}`))
+      .sort((a, b) => {
+        const ai = syncEntityTypes.indexOf(String(a.entity_type) as typeof syncEntityTypes[number]);
+        const bi = syncEntityTypes.indexOf(String(b.entity_type) as typeof syncEntityTypes[number]);
+        return ai - bi || String(a.entity_id).localeCompare(String(b.entity_id));
+      });
+
+    const now = Date.now();
+    const chunkSize = 40;
+    for (let start = 0; start < recoverable.length; start += chunkSize) {
+      const chunk = recoverable.slice(start, start + chunkSize);
+      const statements = [];
+      for (let index = 0; index < chunk.length; index += 1) {
+        const row = chunk[index];
+        const operationId = crypto.randomUUID();
+        const version = Math.max(0, Number(row.version ?? 0)) + 1;
+        const changedAt = now + start + index;
+        statements.push(
+          {
+            sql: `INSERT INTO sync_entities(user_id, entity_type, entity_id, version, payload_json, deleted_at, updated_at, last_operation_id)
+                  VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                  ON CONFLICT(user_id, entity_type, entity_id) DO NOTHING`,
+            args: [userId, String(row.entity_type), String(row.entity_id), version, String(row.payload_json), changedAt, operationId],
+          },
+          {
+            sql: `INSERT INTO sync_changes(user_id, entity_type, entity_id, operation, version, payload_json, device_id, operation_id, changed_at)
+                  VALUES (?, ?, ?, 'upsert', ?, ?, 'worker-recovery', ?, ?)`,
+            args: [userId, String(row.entity_type), String(row.entity_id), version, String(row.payload_json), operationId, changedAt],
+          },
+        );
+      }
+      if (statements.length > 0) await transaction.batch(statements);
+    }
+
+    await transaction.execute({
+      sql: 'INSERT OR REPLACE INTO worker_state(key, value) VALUES (?, ?)',
+      args: [markerKey, JSON.stringify({ recovered: recoverable.length, recoveredAt: now })],
+    });
+    await transaction.commit();
+    legacyResetRecoveryCheckedUsers.add(userId);
+    return recoverable.length;
+  } finally {
+    transaction.close();
+  }
 }
 
 async function pushWithOperations(db: Client, auth: AuthContext, rawOperations: unknown, maxBatch: number): Promise<Response> {
@@ -4111,6 +4273,7 @@ async function pushWithOperations(db: Client, auth: AuthContext, rawOperations: 
 }
 
 async function pull(url: URL, env: Env, db: Client, auth: AuthContext): Promise<Response> {
+  await recoverLegacyResetData(db, auth.userId);
   const cursor = Math.max(0, Number(url.searchParams.get('cursor') ?? '0') || 0);
   const limit = Math.min(Math.max(1, Number(url.searchParams.get('limit') ?? '100') || 100), numberEnv(env.MAX_SYNC_BATCH_SIZE, 100));
   const rows = (await db.execute({
@@ -4305,7 +4468,7 @@ function validatePassword(password: string): void {
 
 function normalizeEntityType(value: unknown): string {
   const entityType = String(value ?? '').trim();
-  if (!/^[a-z_]{2,64}$/.test(entityType)) throw new HttpError(400, 'Invalid entity type.');
+  if (!syncEntityTypeSet.has(entityType)) throw new HttpError(400, 'Unsupported sync entity type.');
   return entityType;
 }
 

@@ -110,7 +110,7 @@ You do not need to write Cloudflare or Turso code yourself.
 <a id="getting-started"></a>
 ## 3. Getting started
 
-> **Rebrand migration:** Yutaka keeps Koinly's original Android application ID `com.siamapps.koinly`. The visible app name and branding change, but Android/Google Play continue to treat Yutaka as the same installed app, so the existing private app data remains in the same sandbox. The app also keeps the legacy SQLite database identity and can restore both `.yutakabackup` and legacy `.koinlybackup` files.
+> **Rebrand migration:** Yutaka uses the new Android application ID `com.yutaka.siam`. Android therefore treats it as a separate app from pre-rebrand builds that used the previous package ID. Before removing an older test build, create a backup there; Yutaka can restore both the new `.yutakabackup` format and legacy `.koinlybackup` files.
 
 ### 3.1 Use Yutaka without sync
 

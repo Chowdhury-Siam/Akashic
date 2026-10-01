@@ -17,7 +17,7 @@ void main() {
     expect(config, contains("const appTitle = 'Yutaka';"));
     expect(config, contains('github.com/Chowdhury-Siam/Yutaka'));
     expect(gradle, contains('namespace = "com.yutaka.siam"'));
-    expect(gradle, contains('applicationId = "com.siamapps.koinly"'));
+    expect(gradle, contains('applicationId = "com.yutaka.siam"'));
     expect(manifest, contains('android:label="Yutaka"'));
     expect(workflow, contains("github.repository == 'Chowdhury-Siam/Yutaka'"));
     expect(workflow, contains(r'Yutaka-v${YUTAKA_APP_VERSION_NAME}-play.aab'));

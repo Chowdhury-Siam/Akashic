@@ -111,4 +111,77 @@ void main() {
     // Explicit restore/merge adopts incoming scalar preferences.
     expect(preferences['currencyCode'], 'BDT');
   });
+
+  test('legacy reset history recovers omitted pre-reset entities instead of treating absence as deletion', () {
+    final result = mergeRemoteSyncHistoryNonDestructively([
+      {
+        'sequence': 1,
+        'entityType': 'transactions',
+        'entityId': 'tx-a',
+        'operation': 'upsert',
+        'version': 1,
+        'payload': {'id': 'tx-a', 'updated_on': 100},
+      },
+      {
+        'sequence': 2,
+        'entityType': 'transactions',
+        'entityId': 'tx-b',
+        'operation': 'upsert',
+        'version': 1,
+        'payload': {'id': 'tx-b', 'updated_on': 100},
+      },
+      {
+        'sequence': 3,
+        'entityType': '__reset__',
+        'entityId': 'finance',
+        'operation': 'delete',
+        'version': 0,
+      },
+      {
+        'sequence': 4,
+        'entityType': 'transactions',
+        'entityId': 'tx-b',
+        'operation': 'upsert',
+        'version': 1,
+        'payload': {'id': 'tx-b', 'updated_on': 200},
+      },
+    ]);
+
+    expect(result.hadLegacyReset, isTrue);
+    expect(result.recoveredLegacyEntityCount, 1);
+    expect(result.changes.map((change) => change['entityId']).toList(), ['tx-a', 'tx-b']);
+    expect(result.changes.last['sequence'], 4);
+  });
+
+  test('explicit post-reset delete still wins over a recoverable legacy row', () {
+    final result = mergeRemoteSyncHistoryNonDestructively([
+      {
+        'sequence': 1,
+        'entityType': 'transactions',
+        'entityId': 'tx-a',
+        'operation': 'upsert',
+        'version': 1,
+        'payload': {'id': 'tx-a', 'updated_on': 100},
+      },
+      {
+        'sequence': 2,
+        'entityType': '__reset__',
+        'entityId': 'finance',
+        'operation': 'delete',
+        'version': 0,
+      },
+      {
+        'sequence': 3,
+        'entityType': 'transactions',
+        'entityId': 'tx-a',
+        'operation': 'delete',
+        'version': 2,
+      },
+    ]);
+
+    expect(result.recoveredLegacyEntityCount, 0);
+    expect(result.changes, hasLength(1));
+    expect(result.changes.single['operation'], 'delete');
+  });
+
 }

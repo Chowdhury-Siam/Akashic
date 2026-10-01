@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sql;
@@ -22,16 +21,7 @@ class SubscriptionBackgroundService {
 
   static Future<sql.Database> _openDatabase() async {
     final dir = await sql.getDatabasesPath();
-    final canonicalPath = p.join(dir, 'koinly_flutter.db');
-    final transitionalPath = p.join(dir, 'yutaka_flutter.db');
-    if (!await File(canonicalPath).exists() && await File(transitionalPath).exists()) {
-      try {
-        await File(transitionalPath).rename(canonicalPath);
-      } catch (_) {
-        await File(transitionalPath).copy(canonicalPath);
-      }
-    }
-    return sql.openDatabase(canonicalPath, singleInstance: false);
+    return sql.openDatabase(p.join(dir, 'yutaka_flutter.db'), singleInstance: false);
   }
 
   static Future<int> processDueNow({DateTime? now}) async {

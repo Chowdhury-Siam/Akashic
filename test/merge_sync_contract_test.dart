@@ -51,20 +51,21 @@ void main() {
     expect(source, contains('sync_outbox.entity_type = sync_conflicts.entity_type'));
   });
 
-  test('legacy cloud reset history is recovered without destructive replace', () {
-    final source = File('lib/main.dart').readAsStringSync();
-    final worker = File('cloud/worker/src/index.ts').readAsStringSync();
-    expect(source, contains('legacyCloudResetHistoryRecoveryV1'));
-    expect(source, isNot(contains('remoteChanges.removeRange(0, lastResetIndex + 1)')));
-    expect(worker, contains('Destructive cloud replace is disabled'));
-    expect(worker, isNot(contains("DELETE FROM sync_entities WHERE user_id = ?")));
+  test('data-loss regression blocks legacy destructive Worker reset paths', () {
+    final appSource = File('lib/main.dart').readAsStringSync();
+    final mergeSource = File('lib/data_merge.dart').readAsStringSync();
+    final workerSource = File('cloud/worker/src/index.ts').readAsStringSync();
+    final workerDeploySource = File('lib/worker_deployment.dart').readAsStringSync();
+
+    expect(workerSource, contains("throw new HttpError(410, 'Legacy destructive replace sync is disabled."));
+    expect(workerSource, isNot(contains('async function replaceAll(')));
+    expect(workerSource, isNot(contains('MAX_SYNC_REPLACE_SIZE')));
+    expect(workerDeploySource, isNot(contains('MAX_SYNC_REPLACE_SIZE')));
+    expect(workerSource, contains('recoverLegacyResetData'));
+    expect(workerSource, contains('syncEntityTypeSet.has(entityType)'));
+    expect(mergeSource, contains('mergeRemoteSyncHistoryNonDestructively'));
+    expect(appSource, contains('remoteDeleteTimestamp'));
+    expect(appSource, contains('hasPendingLocalMutation'));
   });
 
-  test('rebrand preserves legacy Android identity and database', () {
-    final gradle = File('android/app/build.gradle').readAsStringSync();
-    final source = File('lib/main.dart').readAsStringSync();
-    expect(gradle, contains('applicationId = "com.siamapps.koinly"'));
-    expect(source, contains("_canonicalDatabaseFileName = 'koinly_flutter.db'"));
-    expect(source, contains("_transitionalDatabaseFileName = 'yutaka_flutter.db'"));
-  });
 }

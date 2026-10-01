@@ -131,8 +131,6 @@ class WorkerDeploymentCredentialStore {
 
   static const _profileKey = 'yutaka_worker_auto_deployment_profile_v1';
   static const _profileKeyPrefix = 'yutaka_worker_auto_deployment_profile_v2_';
-  static const _legacyProfileKey = 'koinly_worker_auto_deployment_profile_v1';
-  static const _legacyProfileKeyPrefix = 'koinly_worker_auto_deployment_profile_v2_';
   final FlutterSecureStorage _storage;
 
   Future<WorkerDeploymentProfile?> read({String workerUrl = ''}) async {
@@ -140,19 +138,9 @@ class WorkerDeploymentCredentialStore {
     if (normalizedWorkerUrl.isNotEmpty) {
       final keyed = await _readKey(_keyForWorkerUrl(normalizedWorkerUrl));
       if (keyed != null) return keyed;
-      final legacyKeyed = await _readKey(_legacyKeyForWorkerUrl(normalizedWorkerUrl));
-      if (legacyKeyed != null) {
-        await write(legacyKeyed);
-        return legacyKeyed;
-      }
     }
-    final current = await _readKey(_profileKey);
-    if (current != null && (normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(current.workerUrl) == normalizedWorkerUrl)) {
-      return current;
-    }
-    final legacy = await _readKey(_legacyProfileKey);
-    if (legacy != null && (normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(legacy.workerUrl) == normalizedWorkerUrl)) {
-      await write(legacy);
+    final legacy = await _readKey(_profileKey);
+    if (legacy == null || normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(legacy.workerUrl) == normalizedWorkerUrl) {
       return legacy;
     }
     return null;
@@ -181,24 +169,16 @@ class WorkerDeploymentCredentialStore {
     final normalizedWorkerUrl = _normalizeWorkerUrl(workerUrl);
     if (normalizedWorkerUrl.isNotEmpty) {
       await _storage.delete(key: _keyForWorkerUrl(normalizedWorkerUrl));
-      await _storage.delete(key: _legacyKeyForWorkerUrl(normalizedWorkerUrl));
-
-      final current = await _readKey(_profileKey);
-      if (_normalizeWorkerUrl(current?.workerUrl ?? '') == normalizedWorkerUrl) {
-        await _storage.delete(key: _profileKey);
-      }
-      final legacy = await _readKey(_legacyProfileKey);
+      final legacy = await read();
       if (_normalizeWorkerUrl(legacy?.workerUrl ?? '') == normalizedWorkerUrl) {
-        await _storage.delete(key: _legacyProfileKey);
+        await _storage.delete(key: _profileKey);
       }
       return;
     }
     await _storage.delete(key: _profileKey);
-    await _storage.delete(key: _legacyProfileKey);
   }
 
   String _keyForWorkerUrl(String workerUrl) => '$_profileKeyPrefix${base64Url.encode(utf8.encode(workerUrl))}';
-  String _legacyKeyForWorkerUrl(String workerUrl) => '$_legacyProfileKeyPrefix${base64Url.encode(utf8.encode(workerUrl))}';
 }
 
 enum WorkerAutoUpdateOutcome { noSavedDeployment, inactiveDeployment, alreadyCurrent, updated }
@@ -846,7 +826,6 @@ class WorkerDeploymentService {
         {'type': 'plain_text', 'name': 'ACCESS_TOKEN_TTL_SECONDS', 'text': '900'},
         {'type': 'plain_text', 'name': 'REFRESH_TOKEN_TTL_SECONDS', 'text': '2592000'},
         {'type': 'plain_text', 'name': 'MAX_SYNC_BATCH_SIZE', 'text': '100'},
-        {'type': 'plain_text', 'name': 'MAX_SYNC_REPLACE_SIZE', 'text': '25000'},
         {'type': 'plain_text', 'name': 'YUTAKA_WORKER_VERSION', 'text': appVersion},
         {'type': 'durable_object_namespace', 'name': 'SYNC_HUB', 'class_name': 'SyncHub'},
       ],

@@ -181,30 +181,10 @@ class CategoryDatabaseMergeResult {
 class YutakaDatabase {
   sql.Database? _db;
 
-  static const String _canonicalDatabaseFileName = 'koinly_flutter.db';
-  static const String _transitionalDatabaseFileName = 'yutaka_flutter.db';
-
-  Future<String> _resolveCanonicalDatabasePath(String directory) async {
-    final canonicalPath = p.join(directory, _canonicalDatabaseFileName);
-    final transitionalPath = p.join(directory, _transitionalDatabaseFileName);
-    final canonicalFile = File(canonicalPath);
-    if (await canonicalFile.exists()) return canonicalPath;
-
-    final transitionalFile = File(transitionalPath);
-    if (!await transitionalFile.exists()) return canonicalPath;
-
-    try {
-      await transitionalFile.rename(canonicalPath);
-    } catch (_) {
-      await transitionalFile.copy(canonicalPath);
-    }
-    return canonicalPath;
-  }
-
   Future<sql.Database> get db async {
     if (_db != null) return _db!;
     final dir = await sql.getDatabasesPath();
-    final path = await _resolveCanonicalDatabasePath(dir);
+    final path = p.join(dir, 'yutaka_flutter.db');
     _db = await sql.openDatabase(
       path,
       version: 15,
@@ -1490,13 +1470,16 @@ class YutakaDatabase {
     ''', [now, cutoff]);
   }
 
-  Future<bool> applyRemoteChanges(List<Map<String, dynamic>> changes, Future<void> Function(Map<String, dynamic>) applyPreferences) async {
-    // __reset__ is a legacy cloud marker from the old replace-all flow. Merge
-    // sync never clears local finance data because an item is absent remotely.
-    // For a matching stable ID, a newer local row is retained and rebased onto
-    // the server version so it can be pushed normally after the merge.
+  Future<bool> applyRemoteChanges(
+    List<Map<String, dynamic>> changes,
+    Future<void> Function(Map<String, dynamic>) applyPreferences,
+  ) async {
+    // Remote history is merged by stable ID. A cloud delete is authoritative
+    // only when there is no newer/pending local copy of that same entity. This
+    // prevents a stale tombstone from an older client/update from erasing a
+    // transaction that was edited or recreated locally after that tombstone.
     final database = await db;
-    final preservedLocalRows = <({String entityType, String entityId, Map<String, Object?> payload})>[];
+    final preservedLocalRows = <String, ({String entityType, String entityId, Map<String, Object?> payload})>{};
     await database.transaction((txn) async {
       for (final change in changes) {
         final entityType = change['entityType'] as String? ?? '';
@@ -1506,16 +1489,53 @@ class YutakaDatabase {
         if (entityType == '__reset__') continue;
         if (entityType == 'preferences') continue;
         if (!syncTables.contains(entityType) || entityId.isEmpty) continue;
+
+        final pendingLocalRows = await txn.query(
+          'sync_outbox',
+          columns: ['operation'],
+          where: 'entity_type = ? AND entity_id = ?',
+          whereArgs: [entityType, entityId],
+          orderBy: 'created_at DESC',
+          limit: 1,
+        );
+        final hasPendingLocalMutation = pendingLocalRows.isNotEmpty;
+
         if (operation == 'delete') {
-          if (entityType == 'budgets') {
-            await txn.delete('budget_accounts', where: 'budget_id = ?', whereArgs: [entityId]);
-            await txn.delete('budget_categories', where: 'budget_id = ?', whereArgs: [entityId]);
+          final localRows = await txn.query(
+            entityType,
+            where: _whereForEntity(entityType),
+            whereArgs: _whereArgsForEntity(entityType, entityId),
+            limit: 1,
+          );
+          final localRow = localRows.isEmpty ? null : Map<String, Object?>.from(localRows.first);
+          final localTimestamp = localRow == null ? 0 : _syncRowTimestamp(localRow);
+          final remoteDeleteTimestamp = _syncChangeTimestamp(change);
+          final keepLocal = localRow != null &&
+              (hasPendingLocalMutation ||
+                  (localTimestamp > 0 &&
+                      (remoteDeleteTimestamp <= 0 || localTimestamp > remoteDeleteTimestamp)));
+
+          if (keepLocal) {
+            preservedLocalRows['$entityType\u0000$entityId'] = (
+              entityType: entityType,
+              entityId: entityId,
+              payload: localRow,
+            );
+          } else {
+            if (entityType == 'budgets') {
+              await txn.delete('budget_accounts', where: 'budget_id = ?', whereArgs: [entityId]);
+              await txn.delete('budget_categories', where: 'budget_id = ?', whereArgs: [entityId]);
+            }
+            if (entityType == 'loans') {
+              await txn.delete('loan_payments', where: 'loan_id = ?', whereArgs: [entityId]);
+            }
+            await txn.delete(
+              entityType,
+              where: _whereForEntity(entityType),
+              whereArgs: _whereArgsForEntity(entityType, entityId),
+            );
           }
-          if (entityType == 'loans') {
-            await txn.delete('loan_payments', where: 'loan_id = ?', whereArgs: [entityId]);
-          }
-          await txn.delete(entityType, where: _whereForEntity(entityType), whereArgs: _whereArgsForEntity(entityType, entityId));
-        } else {
+        } else if (operation == 'upsert') {
           final payload = (change['payload'] as Map? ?? {}).cast<String, Object?>();
           var keepLocal = false;
           Map<String, Object?>? localRow;
@@ -1530,15 +1550,21 @@ class YutakaDatabase {
             );
             if (localRows.isNotEmpty) {
               localRow = Map<String, Object?>.from(localRows.first);
-              keepLocal = _syncRowTimestamp(localRow) > _syncRowTimestamp(payload);
+              keepLocal = hasPendingLocalMutation ||
+                  _syncRowTimestamp(localRow) > _syncRowTimestamp(payload);
             }
           }
           if (keepLocal && localRow != null) {
-            preservedLocalRows.add((entityType: entityType, entityId: entityId, payload: localRow));
-          } else {
+            preservedLocalRows['$entityType\u0000$entityId'] = (
+              entityType: entityType,
+              entityId: entityId,
+              payload: localRow,
+            );
+          } else if (payload.isNotEmpty) {
             await txn.insert(entityType, payload, conflictAlgorithm: sql.ConflictAlgorithm.replace);
           }
         }
+
         await txn.insert(
           'sync_entity_versions',
           {'entity_type': entityType, 'entity_id': entityId, 'version': version},
@@ -1546,6 +1572,7 @@ class YutakaDatabase {
         );
       }
     });
+
     for (final change in changes) {
       if (change['entityType'] == 'preferences' && change['operation'] == 'upsert') {
         final payload = (change['payload'] as Map? ?? {}).cast<String, dynamic>();
@@ -1553,7 +1580,7 @@ class YutakaDatabase {
         await saveEntityVersion('preferences', 'yutaka', (change['version'] as num? ?? 0).toInt());
       }
     }
-    for (final local in preservedLocalRows) {
+    for (final local in preservedLocalRows.values) {
       await enqueueSyncOperation(
         entityType: local.entityType,
         entityId: local.entityId,
@@ -1562,6 +1589,18 @@ class YutakaDatabase {
       );
     }
     return preservedLocalRows.isNotEmpty;
+  }
+
+  int _syncChangeTimestamp(Map<String, dynamic> change) {
+    final value = change['changedAt'];
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final parsedInt = int.tryParse(value);
+      if (parsedInt != null) return parsedInt;
+      final parsedDate = DateTime.tryParse(value);
+      if (parsedDate != null) return parsedDate.millisecondsSinceEpoch;
+    }
+    return 0;
   }
 
   int _syncRowTimestamp(Map<String, Object?> row) {
@@ -1621,10 +1660,12 @@ class _FullCloudSnapshot {
   const _FullCloudSnapshot({
     required this.changes,
     required this.cursor,
+    required this.recoveredLegacyEntityCount,
   });
 
   final List<Map<String, dynamic>> changes;
   final int cursor;
+  final int recoveredLegacyEntityCount;
 }
 
 class AutomaticBackupDirectorySelection {
@@ -2316,11 +2357,8 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
     }
     if (_hasConfiguredSyncTarget() && !newSyncAccountAwaitingSetupChoice) {
-      unawaited(() async {
-        await _recoverLegacyCloudHistoryOnce();
-        _schedulePendingSyncRetry(immediate: true);
-        _startCloudAutoPull();
-      }());
+      _schedulePendingSyncRetry(immediate: true);
+      _startCloudAutoPull();
     }
     if (selfHostedSyncApiBaseUrl.isNotEmpty) {
       unawaited(() async {
@@ -2332,27 +2370,6 @@ class AppController extends ChangeNotifier {
       unawaited(_syncAndroidAutomaticBackupWorker());
     } else {
       unawaited(runAutomaticBackupIfDue());
-    }
-  }
-
-  Future<void> _recoverLegacyCloudHistoryOnce() async {
-    const migrationKey = 'legacyCloudResetHistoryRecoveryV1';
-    if (await prefs.getBool(migrationKey, false)) return;
-    if (!_hasConfiguredSyncTarget() || newSyncAccountAwaitingSetupChoice) return;
-
-    try {
-      await performMultiDeviceSync(
-        silent: true,
-        pushLocalChanges: false,
-        pullFullCloudCopy: true,
-      );
-      if (cloudSyncError != null) return;
-      await syncToCloud(force: true, silent: true);
-      if (cloudSyncError == null) {
-        await prefs.setBool(migrationKey, true);
-      }
-    } catch (_) {
-      // Retry on a later launch; recovery failure must never clear local data.
     }
   }
 
@@ -5244,9 +5261,12 @@ class AppController extends ChangeNotifier {
       cursor = (response['cursor'] as num? ?? cursor).toInt();
       hasMore = response['hasMore'] == true;
     }
-    // Keep the full per-entity history. Legacy __reset__ markers are ignored
-    // downstream; explicit per-entity deletes still remain authoritative.
-    return _FullCloudSnapshot(changes: _latestRemoteChangePerEntity(remoteChanges), cursor: cursor);
+    final mergedHistory = mergeRemoteSyncHistoryNonDestructively(remoteChanges);
+    return _FullCloudSnapshot(
+      changes: mergedHistory.changes,
+      cursor: cursor,
+      recoveredLegacyEntityCount: mergedHistory.recoveredLegacyEntityCount,
+    );
   }
 
   Future<void> switchToSavedSyncAccount(String profileId) async {
@@ -5430,11 +5450,18 @@ class AppController extends ChangeNotifier {
     await prefs.setBool('cloudSyncEnabled', true);
     await prefs.setBool('newSyncAccountAwaitingSetupChoice', false);
     await database.writeSyncState('serverCursor', '${snapshot.cursor}');
+    if (snapshot.recoveredLegacyEntityCount > 0) {
+      await database.enqueueAllForAdoption(await exportPreferences());
+      await _setCloudSyncPending(true);
+    }
     cloudSyncLastAt = DateTime.now();
     await prefs.setString('cloudSyncLastAt', cloudSyncLastAt!.toIso8601String());
     await reload(queueSync: false);
     await _syncProfileMediaCloudState(api: YutakaSyncApi(baseUrl: cloudSyncApiBaseUrl));
     _startCloudAutoPull();
+    if (snapshot.recoveredLegacyEntityCount > 0) {
+      _schedulePendingSyncRetry();
+    }
     syncStatus = 'Switched account';
     cloudSyncError = null;
     cloudSyncErrorCode = null;
@@ -5474,26 +5501,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  List<Map<String, dynamic>> _latestRemoteChangePerEntity(List<Map<String, dynamic>> changes) {
-    if (changes.length < 2) return changes;
-    final lastIndexByEntity = <String, int>{};
-    for (var index = 0; index < changes.length; index += 1) {
-      final change = changes[index];
-      final entityType = change['entityType']?.toString() ?? '';
-      final entityId = change['entityId']?.toString() ?? '';
-      if (entityType.isEmpty || entityId.isEmpty) continue;
-      lastIndexByEntity['$entityType\u0000$entityId'] = index;
-    }
-    final latest = <Map<String, dynamic>>[];
-    for (var index = 0; index < changes.length; index += 1) {
-      final change = changes[index];
-      final entityType = change['entityType']?.toString() ?? '';
-      final entityId = change['entityId']?.toString() ?? '';
-      if (entityType.isEmpty || entityId.isEmpty) continue;
-      if (lastIndexByEntity['$entityType\u0000$entityId'] == index) latest.add(change);
-    }
-    return latest;
-  }
 
   Future<void> performMultiDeviceSync({bool silent = false, bool pushLocalChanges = true, bool pullFullCloudCopy = false}) async {
     if (_syncAccountTransitionInProgress) return;
@@ -5604,11 +5611,13 @@ class AppController extends ChangeNotifier {
         hasMore = response['hasMore'] == true;
       }
 
-      // Older releases could emit a destructive global __reset__ marker.
-      // Current restore semantics are merge-only, so do not truncate history
-      // at that marker. The latest explicit change for each entity wins, which
-      // preserves real deletes while allowing pre-reset transactions to recover.
-      final mergedRemoteChanges = _latestRemoteChangePerEntity(remoteChanges);
+      // Legacy clients emitted a destructive __reset__ marker. Treat that old
+      // history as a merge boundary rather than proof that omitted records were
+      // deleted. Only an explicit post-reset delete may remove an entity. This
+      // also lets an upgraded client recover records from an accidental empty
+      // legacy replace even before the Worker itself has been redeployed.
+      final mergedHistory = mergeRemoteSyncHistoryNonDestructively(remoteChanges);
+      final mergedRemoteChanges = mergedHistory.changes;
       final remotelyDeletedNoteIds = mergedRemoteChanges
           .where((change) => change['entityType'] == 'notes' && change['operation'] == 'delete')
           .map((change) => change['entityId']?.toString() ?? '')
@@ -5642,8 +5651,16 @@ class AppController extends ChangeNotifier {
         conflictedLocalOperations,
         remotelyDeletedNoteIds: remotelyDeletedNoteIds,
       );
+      if (mergedHistory.recoveredLegacyData) {
+        // Heal the server copy as ordinary merge upserts. The legacy reset is
+        // never replayed and absence can no longer delete cloud-only records.
+        await database.enqueueAllForAdoption(await exportPreferences());
+      }
       final repair = await _repairDuplicateCategories(queueSyncChanges: true);
-      final needsMergeCleanupUpload = preservedNewerLocal || rebased || repair.hasChanges;
+      final needsMergeCleanupUpload = preservedNewerLocal ||
+          rebased ||
+          repair.hasChanges ||
+          mergedHistory.recoveredLegacyData;
       await database.writeSyncState('serverCursor', '$cursor');
 
       cloudSyncLastAt = DateTime.now();

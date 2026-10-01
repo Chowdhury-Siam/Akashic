@@ -34,39 +34,27 @@ class SecureCredentialStore {
   static const _accessTokenKey = 'yutaka_account_access_token';
   static const _refreshTokenKey = 'yutaka_account_refresh_token';
 
-  Future<String> readCloudSyncPin() => _readMigrating(_cloudSyncPinKey, 'koinly_cloud_sync_pin');
+  Future<String> readCloudSyncPin() async => await _storage.read(key: _cloudSyncPinKey) ?? '';
   Future<void> writeCloudSyncPin(String value) => _writeOrDelete(_cloudSyncPinKey, value);
 
-  Future<String> readMongoDbUrl() => _readMigrating(_mongoUrlKey, 'koinly_sync_mongodb_url');
+  Future<String> readMongoDbUrl() async => await _storage.read(key: _mongoUrlKey) ?? '';
   Future<void> writeMongoDbUrl(String value) => _writeOrDelete(_mongoUrlKey, value);
 
-  Future<String> readMongoDbSyncPin() => _readMigrating(_mongoSyncPinKey, 'koinly_sync_mongodb_pin');
+  Future<String> readMongoDbSyncPin() async => await _storage.read(key: _mongoSyncPinKey) ?? '';
   Future<void> writeMongoDbSyncPin(String value) => _writeOrDelete(_mongoSyncPinKey, value);
 
-  Future<String> readTursoAuthToken() => _readMigrating(_tursoAuthTokenKey, 'koinly_sync_turso_auth_token');
+  Future<String> readTursoAuthToken() async => await _storage.read(key: _tursoAuthTokenKey) ?? '';
   Future<void> writeTursoAuthToken(String value) => _writeOrDelete(_tursoAuthTokenKey, value);
 
-  Future<String> readAccessToken() => _readMigrating(_accessTokenKey, 'koinly_account_access_token');
+  Future<String> readAccessToken() async => await _storage.read(key: _accessTokenKey) ?? '';
   Future<void> writeAccessToken(String value) => _writeOrDelete(_accessTokenKey, value);
 
-  Future<String> readRefreshToken() => _readMigrating(_refreshTokenKey, 'koinly_account_refresh_token');
+  Future<String> readRefreshToken() async => await _storage.read(key: _refreshTokenKey) ?? '';
   Future<void> writeRefreshToken(String value) => _writeOrDelete(_refreshTokenKey, value);
 
   Future<void> clearAccountTokens() async {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
-    await _storage.delete(key: 'koinly_account_access_token');
-    await _storage.delete(key: 'koinly_account_refresh_token');
-  }
-
-  Future<String> _readMigrating(String currentKey, String legacyKey) async {
-    final current = await _storage.read(key: currentKey);
-    if (current != null && current.trim().isNotEmpty) return current;
-    final legacy = await _storage.read(key: legacyKey) ?? '';
-    if (legacy.trim().isNotEmpty) {
-      await _storage.write(key: currentKey, value: legacy);
-    }
-    return legacy;
   }
 
   Future<void> _writeOrDelete(String key, String value) async {
@@ -88,15 +76,10 @@ class SyncProfileStore {
   static const _accountsKey = 'yutaka_saved_sync_accounts_v1';
   static const _activeAccountKey = 'yutaka_active_sync_account_profile_v1';
   static const _activeWorkerKey = 'yutaka_active_sync_worker_profile_v1';
-  static const _legacyWorkersKey = 'koinly_saved_sync_workers_v1';
-  static const _legacyAccountsKey = 'koinly_saved_sync_accounts_v1';
-  static const _legacyActiveAccountKey = 'koinly_active_sync_account_profile_v1';
-  static const _legacyActiveWorkerKey = 'koinly_active_sync_worker_profile_v1';
 
   Future<List<SavedSyncWorker>> readWorkers() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = await _readPreferenceMigrating(prefs, _workersKey, _legacyWorkersKey);
-    return _readList(raw, SavedSyncWorker.fromJson)
+    return _readList(prefs.getString(_workersKey), SavedSyncWorker.fromJson)
         .where((worker) => worker.id.isNotEmpty && worker.url.isNotEmpty)
         .toList();
   }
@@ -108,8 +91,7 @@ class SyncProfileStore {
 
   Future<List<SavedSyncAccount>> readAccounts() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = await _readPreferenceMigrating(prefs, _accountsKey, _legacyAccountsKey);
-    return _readList(raw, SavedSyncAccount.fromJson)
+    return _readList(prefs.getString(_accountsKey), SavedSyncAccount.fromJson)
         .where((account) => account.id.isNotEmpty && account.workerId.isNotEmpty && account.username.isNotEmpty)
         .toList();
   }
@@ -119,21 +101,15 @@ class SyncProfileStore {
     await prefs.setString(_accountsKey, jsonEncode(accounts.map((account) => account.toJson()).toList()));
   }
 
-  Future<String> readActiveAccountId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return await _readPreferenceMigrating(prefs, _activeAccountKey, _legacyActiveAccountKey) ?? '';
-  }
+  Future<String> readActiveAccountId() async => (await SharedPreferences.getInstance()).getString(_activeAccountKey) ?? '';
   Future<void> writeActiveAccountId(String value) async => (await SharedPreferences.getInstance()).setString(_activeAccountKey, value.trim());
 
-  Future<String> readActiveWorkerId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return await _readPreferenceMigrating(prefs, _activeWorkerKey, _legacyActiveWorkerKey) ?? '';
-  }
+  Future<String> readActiveWorkerId() async => (await SharedPreferences.getInstance()).getString(_activeWorkerKey) ?? '';
   Future<void> writeActiveWorkerId(String value) async => (await SharedPreferences.getInstance()).setString(_activeWorkerKey, value.trim());
 
   Future<SavedSyncAccountTokens> readAccountTokens(String profileId) async => SavedSyncAccountTokens(
-        accessToken: await _readTokenMigrating(_accessKey(profileId), 'koinly_sync_profile_access_v1_$profileId'),
-        refreshToken: await _readTokenMigrating(_refreshKey(profileId), 'koinly_sync_profile_refresh_v1_$profileId'),
+        accessToken: await _storage.read(key: _accessKey(profileId)) ?? '',
+        refreshToken: await _storage.read(key: _refreshKey(profileId)) ?? '',
       );
 
   Future<void> writeAccountTokens(String profileId, SavedSyncAccountTokens tokens) async {
@@ -144,27 +120,6 @@ class SyncProfileStore {
   Future<void> deleteAccountTokens(String profileId) async {
     await _storage.delete(key: _accessKey(profileId));
     await _storage.delete(key: _refreshKey(profileId));
-    await _storage.delete(key: 'koinly_sync_profile_access_v1_$profileId');
-    await _storage.delete(key: 'koinly_sync_profile_refresh_v1_$profileId');
-  }
-
-  Future<String?> _readPreferenceMigrating(SharedPreferences prefs, String currentKey, String legacyKey) async {
-    if (prefs.containsKey(currentKey)) return prefs.getString(currentKey);
-    final legacy = prefs.getString(legacyKey);
-    if (legacy != null && legacy.isNotEmpty) {
-      await prefs.setString(currentKey, legacy);
-    }
-    return legacy;
-  }
-
-  Future<String> _readTokenMigrating(String currentKey, String legacyKey) async {
-    final current = await _storage.read(key: currentKey);
-    if (current != null && current.trim().isNotEmpty) return current;
-    final legacy = await _storage.read(key: legacyKey) ?? '';
-    if (legacy.trim().isNotEmpty) {
-      await _storage.write(key: currentKey, value: legacy);
-    }
-    return legacy;
   }
 
   List<T> _readList<T>(String? raw, T Function(Map<String, dynamic>) parse) {

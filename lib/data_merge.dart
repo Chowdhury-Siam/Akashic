@@ -59,6 +59,96 @@ FinanceDatabaseMergeResult mergeFinanceDatabasePayloads(
   );
 }
 
+
+class RemoteSyncHistoryMergeResult {
+  const RemoteSyncHistoryMergeResult({
+    required this.changes,
+    required this.hadLegacyReset,
+    required this.recoveredLegacyEntityCount,
+  });
+
+  final List<Map<String, dynamic>> changes;
+  final bool hadLegacyReset;
+  final int recoveredLegacyEntityCount;
+
+  bool get recoveredLegacyData => recoveredLegacyEntityCount > 0;
+}
+
+/// Converts legacy destructive reset history into non-destructive merge history.
+///
+/// Older Yutaka/Koinly clients used a `__reset__` marker followed by only the
+/// rows present in that client's local snapshot. Absence after that marker used
+/// to mean deletion, which made an empty/stale client capable of erasing cloud
+/// history. New sync treats absence as "no change": the latest pre-reset upsert
+/// is retained unless the post-reset history contains an explicit mutation for
+/// that same stable entity ID. Explicit post-reset deletes still win.
+RemoteSyncHistoryMergeResult mergeRemoteSyncHistoryNonDestructively(
+  List<Map<String, dynamic>> changes,
+) {
+  if (changes.isEmpty) {
+    return const RemoteSyncHistoryMergeResult(
+      changes: <Map<String, dynamic>>[],
+      hadLegacyReset: false,
+      recoveredLegacyEntityCount: 0,
+    );
+  }
+
+  var lastResetIndex = -1;
+  for (var index = 0; index < changes.length; index += 1) {
+    if (changes[index]['entityType']?.toString() == '__reset__') {
+      lastResetIndex = index;
+    }
+  }
+
+  if (lastResetIndex < 0) {
+    return RemoteSyncHistoryMergeResult(
+      changes: _latestSyncChangesByEntity(changes).values.toList(growable: false),
+      hadLegacyReset: false,
+      recoveredLegacyEntityCount: 0,
+    );
+  }
+
+  final beforeReset = _latestSyncChangesByEntity(changes.take(lastResetIndex));
+  final afterReset = _latestSyncChangesByEntity(changes.skip(lastResetIndex + 1));
+  final merged = <Map<String, dynamic>>[];
+  var recovered = 0;
+
+  for (final entry in beforeReset.entries) {
+    if (afterReset.containsKey(entry.key)) continue;
+    final change = entry.value;
+    if (change['operation']?.toString() != 'upsert') continue;
+    merged.add(change);
+    recovered += 1;
+  }
+  merged.addAll(afterReset.values);
+  merged.sort((a, b) {
+    final aSequence = (a['sequence'] as num?)?.toInt() ?? 0;
+    final bSequence = (b['sequence'] as num?)?.toInt() ?? 0;
+    final bySequence = aSequence.compareTo(bSequence);
+    if (bySequence != 0) return bySequence;
+    final aKey = '${a['entityType'] ?? ''}\u0000${a['entityId'] ?? ''}';
+    final bKey = '${b['entityType'] ?? ''}\u0000${b['entityId'] ?? ''}';
+    return aKey.compareTo(bKey);
+  });
+
+  return RemoteSyncHistoryMergeResult(
+    changes: List.unmodifiable(merged),
+    hadLegacyReset: true,
+    recoveredLegacyEntityCount: recovered,
+  );
+}
+
+Map<String, Map<String, dynamic>> _latestSyncChangesByEntity(Iterable<Map<String, dynamic>> changes) {
+  final latest = <String, Map<String, dynamic>>{};
+  for (final change in changes) {
+    final entityType = change['entityType']?.toString() ?? '';
+    final entityId = change['entityId']?.toString() ?? '';
+    if (entityType.isEmpty || entityId.isEmpty || entityType == '__reset__') continue;
+    latest['$entityType\u0000$entityId'] = change;
+  }
+  return latest;
+}
+
 Map<String, dynamic> mergeFinancePreferences(
   Map<String, dynamic> current,
   Map<String, dynamic> incoming,

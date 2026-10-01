@@ -1,13 +1,20 @@
 ## [1.0.1226] - 2026-10-01
 
-- Preserved the legacy Android application ID and SQLite filename so the Yutaka rebrand upgrades Koinly in place instead of opening a new empty data sandbox.
-- Added migration fallbacks for legacy Koinly sync profiles, tokens, deployment credentials, and the transitional Yutaka database filename.
-- Disabled the legacy destructive cloud replace endpoint and added one-time full cloud-history recovery for transactions hidden by an older `__reset__` marker.
+- Removed the legacy destructive Worker `POST /v1/sync/replace` behavior; old clients now receive HTTP 410 instead of being able to delete an account's cloud sync entities.
+- Added Worker-side recovery for legacy `__reset__` history so records that existed before an old replace are restored when they were merely omitted, while explicit post-reset deletes remain authoritative.
+- Restricted Worker sync pushes to Yutaka's known entity types, preventing legacy or malformed clients from injecting new `__reset__` operations.
+- Updated the Flutter merge path to recover legacy reset history non-destructively and queue recovered records back to the Worker.
+- Hardened remote delete handling so a stale cloud tombstone cannot erase a newer or still-pending local transaction/entity during upgrade, login, restore, or merge sync.
+- Added regression coverage for destructive replace blocking, reset-history recovery, explicit-delete precedence, and preserved cloud state.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1226+270`.
+
+## [1.0.1225] - 2026-10-01
+
 - Added a public Google Play account-deletion gateway at `docs/delete-account/` that works without installing Yutaka and redirects users directly to their own self-hosted Worker's authenticated `/delete-account` portal.
 - Added a GitHub Pages deployment workflow for Yutaka's public privacy and account-deletion pages, and changed the in-app public links to the stable Pages URLs.
 - Kept usernames and passwords off the central Yutaka page: only the Worker URL is entered there, while credentials remain between the user and their own Worker.
 - Added regression coverage for the public deletion page, stable URLs, and Pages deployment contract.
-- Bumped synchronized app/Android/Worker release metadata to `1.0.1226+270`.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1225+269`.
 
 ## [1.0.1224] - 2026-10-01
 
