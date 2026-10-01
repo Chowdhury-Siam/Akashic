@@ -80,6 +80,9 @@ void main() {
     final workerRegression = File(
       'cloud/worker/test/data-loss-regression.test.ts',
     ).readAsStringSync();
+    final upgradeProbeBuilder = File(
+      'tools/android/build_upgrade_probe_apk.sh',
+    ).readAsStringSync();
 
     expect(workflow, contains('worker-data-integrity-gate:'));
     expect(workflow, contains('npm run typecheck'));
@@ -88,9 +91,16 @@ void main() {
     expect(workflow, contains('Resolve previous published stable release'));
     expect(workflow, contains('reactivecircus/android-emulator-runner@v2'));
     expect(workflow, contains('api-level: 36'));
-    expect(workflow, contains('--target-platform android-x64'));
-    expect(workflow, contains('--split-per-abi'));
+    expect(workflow, contains('build_upgrade_probe_apk.sh previous'));
+    expect(workflow, contains('build_upgrade_probe_apk.sh current'));
     expect(workflow, contains('run_upgrade_data_loss_test.sh'));
+    expect(upgradeProbeBuilder, contains('flutter pub get'));
+    expect(upgradeProbeBuilder, isNot(contains('flutter pub get --offline')));
+    expect(upgradeProbeBuilder, contains('--target-platform android-x64'));
+    expect(upgradeProbeBuilder, contains('--split-per-abi'));
+    expect(upgradeProbeBuilder, contains('android/app/build/outputs'));
+    expect(upgradeProbeBuilder, contains('lib/x86_64/(libflutter|libapp)'));
+    expect(upgradeProbeBuilder, contains('unzip -tq'));
     expect(
       workflow,
       contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),

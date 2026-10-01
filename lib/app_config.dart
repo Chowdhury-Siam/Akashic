@@ -33,7 +33,7 @@ const String kSleekAccentHex = '#00BD91';
 const String kLegacyStarterCashIconHex = '#78D8E8';
 
 const appTitle = 'Yutaka';
-const appVersion = String.fromEnvironment('YUTAKA_APP_VERSION', defaultValue: '1.0.1232');
+const appVersion = String.fromEnvironment('YUTAKA_APP_VERSION', defaultValue: '1.0.1233');
 const kAndroidDistribution = appFlavor ?? String.fromEnvironment('YUTAKA_ANDROID_DISTRIBUTION', defaultValue: 'direct');
 const bool kIsGooglePlayBuild = kAndroidDistribution == 'play';
 const kLowEndFriendlyUi = true;

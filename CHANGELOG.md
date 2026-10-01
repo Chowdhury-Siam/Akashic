@@ -1,3 +1,12 @@
+## [1.0.1233] - 2026-10-02
+
+### Fixed
+
+- Hardened the real Android upgrade/data-loss probe for older published source trees whose Gradle build succeeds but whose Flutter CLI cannot discover/copy the generated flavored APK. The gate now independently locates and validates a signed x86_64 `directRelease` APK across Flutter and native Gradle output directories, while still failing on genuine build/signing failures.
+- Replaced the probe's deliberate offline-first `flutter pub get` attempt with normal dependency resolution so a missing cached package such as `google_fonts` is fetched immediately instead of producing a misleading failure first.
+- Kept the emulator in-place upgrade, release signing, Flutter quality gate, Worker integrity gate, and Play 16 KB validation mandatory.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1233+277`.
+
 ## [1.0.1232] - 2026-10-02
 
 - Fixed the release test suite after the 1.0.1231 hardening pass without weakening any production release gate.
