@@ -1,0 +1,419 @@
+name: Build macOS Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "lib/**"
+      - "android/**"
+      - "windows/**"
+      - "linux/**"
+      - "macos/**"
+      - "tools/linux/**"
+      - "tools/android/**"
+      - "test/**"
+      - "assets/**"
+      - "cloud/worker/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "CHANGELOG.md"
+      - ".github/workflows/build-macos.yml"
+
+concurrency:
+  group: yutaka-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-worker-bundle:
+    name: Prepare in-app Worker deployment bundle
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Restore prepared Worker bundle cache
+        id: worker-bundle-cache
+        uses: actions/cache@v5
+        with:
+          path: assets/worker/yutaka_sync_worker.js
+          key: yutaka-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
+
+      - name: Set up Node 22
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Restore Worker dependency cache
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        id: worker-node-cache
+        uses: actions/cache@v5
+        with:
+          path: cloud/worker/node_modules
+          key: yutaka-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
+
+      - name: Install Worker dependencies
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true' && steps.worker-node-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Build deployable Worker bundle for the app
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm run bundle:app
+
+      - name: Verify embedded Worker bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="assets/worker/yutaka_sync_worker.js"
+          test -s "$bundle"
+          ! grep -q 'YUTAKA_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
+          test "$(wc -c < "$bundle")" -gt 10000
+
+      - name: Upload deployable Worker bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker/yutaka_sync_worker.js
+          if-no-files-found: error
+          compression-level: 0
+
+  build-macos:
+    needs: prepare-worker-bundle
+    name: Build macOS universal DMG and app archive
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    # Apple Silicon is substantially faster for Flutter/Xcode release compilation than
+    # the legacy Intel image. Flutter release builds remain universal when the ARM64-only
+    # feature is disabled, so this single job still emits both arm64 and x86_64 slices.
+    runs-on: macos-15
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+      FLUTTER_VERSION: "3.47.4"
+      FLUTTER_SDK_DIR: ${{ github.workspace }}/.ci-cache/flutter-macos-arm64
+      # Release builds are explicitly universal so one package supports Intel and Apple Silicon.
+      FLUTTER_MACOS_ARM64_ONLY: "false"
+      COCOAPODS_DISABLE_STATS: "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Restore pinned Flutter SDK cache
+        id: flutter-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: .ci-cache/flutter-macos-arm64
+          key: yutaka-flutter-${{ runner.os }}-${{ runner.arch }}-3.47.4-v1
+
+      - name: Set up pinned Flutter on Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x "$FLUTTER_SDK_DIR/bin/flutter" ]; then
+            rm -rf "$FLUTTER_SDK_DIR"
+            mkdir -p "$(dirname "$FLUTTER_SDK_DIR")"
+            git clone --filter=blob:none --single-branch --depth 1 \
+              --branch "$FLUTTER_VERSION" \
+              https://github.com/flutter/flutter.git "$FLUTTER_SDK_DIR"
+          fi
+          echo "FLUTTER_ROOT=$FLUTTER_SDK_DIR" >> "$GITHUB_ENV"
+          echo "$FLUTTER_SDK_DIR/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_SDK_DIR/bin/flutter" config --no-analytics
+          if [ "${{ steps.flutter-sdk-cache.outputs.cache-hit }}" != "true" ]; then
+            "$FLUTTER_SDK_DIR/bin/flutter" precache --macos
+          fi
+          "$FLUTTER_SDK_DIR/bin/flutter" --version
+
+      - name: Enable macOS desktop support
+        run: |
+          flutter config --enable-macos-desktop
+          flutter config --no-enable-macos-arm64-only || true
+
+      - name: Generate macOS platform files
+        run: flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
+
+      # Keep immutable dependency caches separate from the rolling Xcode/Flutter
+      # build cache. This avoids re-uploading pub/CocoaPods data on every commit
+      # while still restoring the latest incremental macOS compilation state.
+      - name: Restore macOS dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            ~/Library/Caches/CocoaPods
+            macos/Pods
+          key: yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Restore macOS incremental build cache
+        uses: actions/cache@v4
+        with:
+          path: build/macos
+          key: yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Apply Yutaka macOS identity, permissions, and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYMAC'
+          from pathlib import Path
+          import plistlib
+
+          config = Path('macos/Runner/Configs/AppInfo.xcconfig')
+          text = config.read_text()
+          replacements = {
+              'PRODUCT_NAME = yutaka': 'PRODUCT_NAME = Yutaka',
+              'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.yutaka': 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          if 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam' not in text:
+              lines = []
+              found = False
+              for line in text.splitlines():
+                  if line.startswith('PRODUCT_BUNDLE_IDENTIFIER ='):
+                      line = 'PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam'
+                      found = True
+                  lines.append(line)
+              if not found:
+                  lines.append('PRODUCT_BUNDLE_IDENTIFIER = com.yutaka.siam')
+              text = '\n'.join(lines) + '\n'
+          config.write_text(text)
+
+          for name in ('DebugProfile.entitlements', 'Release.entitlements'):
+              path = Path('macos/Runner') / name
+              with path.open('rb') as handle:
+                  data = plistlib.load(handle)
+              data['com.apple.security.app-sandbox'] = True
+              data['com.apple.security.network.client'] = True
+              data['com.apple.security.files.user-selected.read-write'] = True
+              with path.open('wb') as handle:
+                  plistlib.dump(data, handle, sort_keys=False)
+          PYMAC
+
+          ICONSET="macos/Runner/Assets.xcassets/AppIcon.appiconset"
+          test -d "$ICONSET"
+          python3 - <<'PYICON'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          source = Path('assets/icons/app_icon.png')
+          iconset = Path('macos/Runner/Assets.xcassets/AppIcon.appiconset')
+          contents = json.loads((iconset / 'Contents.json').read_text())
+          jobs = {}
+          for item in contents.get('images', []):
+              filename = item.get('filename')
+              logical_size = item.get('size', '').split('x', 1)[0]
+              scale = item.get('scale', '1x').rstrip('x')
+              if not filename or not logical_size:
+                  continue
+              pixels = int(round(float(logical_size) * float(scale or '1')))
+              jobs[filename] = pixels
+          if not jobs:
+              raise SystemExit('No macOS AppIcon images were generated from Contents.json')
+
+          # Several AppIcon slots resolve to the same backing filename. Generate each
+          # file only once, and let sips process the distinct sizes concurrently.
+          from concurrent.futures import ThreadPoolExecutor
+
+          def render(job):
+              filename, pixels = job
+              target = iconset / filename
+              subprocess.run(
+                  ['sips', '-s', 'format', 'png', '-z', str(pixels), str(pixels), str(source), '--out', str(target)],
+                  check=True,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+              return filename
+
+          with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as pool:
+              generated = sorted(pool.map(render, jobs.items()))
+          print('Generated macOS icons:', ', '.join(generated))
+          PYICON
+
+      - name: Read app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Install Flutter dependencies
+        shell: bash
+        run: |
+          flutter pub get --offline || flutter pub get
+
+      - name: Build universal macOS release
+        env:
+          COMPILER_INDEX_STORE_ENABLE: "NO"
+        run: |
+          flutter build macos --release --no-pub --no-tree-shake-icons \
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
+
+      - name: Verify Intel and Apple Silicon slices
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS .app bundle was not found."
+            exit 1
+          fi
+          MAIN_EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
+          MAIN_BINARY="$APP_PATH/Contents/MacOS/$MAIN_EXECUTABLE"
+          ARCHES="$(lipo -archs "$MAIN_BINARY")"
+          echo "Yutaka macOS architectures: $ARCHES"
+          case " $ARCHES " in *" arm64 "*) ;; *) echo "::error::macOS build is missing arm64."; exit 1;; esac
+          case " $ARCHES " in *" x86_64 "*) ;; *) echo "::error::macOS build is missing x86_64."; exit 1;; esac
+          echo "YUTAKA_MACOS_APP=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Prepare optional Developer ID signing
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$YUTAKA_MACOS_APP"
+
+          if [ -z "${MACOS_CERTIFICATE_BASE64:-}" ]; then
+            echo "::warning::MACOS_CERTIFICATE_BASE64 is not configured. The DMG will be distributed without Developer ID notarization."
+            echo "MACOS_SIGNING_ENABLED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]; then
+            echo "::error::MACOS_CERTIFICATE_PASSWORD is required when MACOS_CERTIFICATE_BASE64 is configured."
+            exit 1
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/yutaka-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/yutaka-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          export CERT_PATH
+          python3 - <<'PYCERT'
+          import base64
+          import os
+          from pathlib import Path
+
+          raw = os.environ['MACOS_CERTIFICATE_BASE64'].strip()
+          Path(os.environ['CERT_PATH']).write_bytes(base64.b64decode(raw, validate=True))
+          PYCERT
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          IDENTITY="${MACOS_SIGNING_IDENTITY:-}"
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          fi
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No Developer ID Application identity was found in the imported certificate."
+            exit 1
+          fi
+          echo "Signing macOS app with: $IDENTITY"
+          codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "MACOS_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+
+      - name: Notarize signed macOS app when credentials are configured
+        if: env.MACOS_SIGNING_ENABLED == 'true'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo "::warning::Apple notarization credentials are incomplete. The signed macOS packages will be published without notarization."
+            echo "MACOS_NOTARIZED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          NOTARY_ARCHIVE="$RUNNER_TEMP/Yutaka-notarization-universal.zip"
+          rm -f "$NOTARY_ARCHIVE"
+          ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$NOTARY_ARCHIVE"
+          xcrun notarytool submit "$NOTARY_ARCHIVE" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$YUTAKA_MACOS_APP"
+          xcrun stapler validate "$YUTAKA_MACOS_APP"
+          echo "MACOS_NOTARIZED=true" >> "$GITHUB_ENV"
+
+      - name: Package macOS universal DMG and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          STAGE="$RUNNER_TEMP/yutaka-dmg-stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          ditto "$YUTAKA_MACOS_APP" "$STAGE/Yutaka.app"
+          ln -s /Applications "$STAGE/Applications"
+          DMG="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.dmg"
+          ZIP="artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-macos-universal.zip"
+
+          # DMG creation and ZIP packaging are independent. Run them concurrently,
+          # and use fast zlib compression for the DMG to reduce release latency
+          # without changing its compatibility or install flow.
+          (
+            hdiutil create \
+              -volname "Yutaka" \
+              -srcfolder "$STAGE" \
+              -ov \
+              -format UDZO \
+              -imagekey zlib-level=1 \
+              "$DMG"
+          ) &
+          dmg_pid=$!
+          (
+            ditto -c -k --sequesterRsrc --keepParent "$YUTAKA_MACOS_APP" "$ZIP"
+          ) &
+          zip_pid=$!
+
+          wait "$dmg_pid"
+          wait "$zip_pid"
+          ls -lh artifacts
+
+      - name: Upload macOS release artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-macos-universal
+          path: |
+            artifacts/Yutaka-v*-macos-universal.dmg
+            artifacts/Yutaka-v*-macos-universal.zip
+          if-no-files-found: error
+          compression-level: 0
+

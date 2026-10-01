@@ -1,0 +1,286 @@
+name: Build Linux Releases
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "lib/**"
+      - "android/**"
+      - "windows/**"
+      - "linux/**"
+      - "macos/**"
+      - "tools/linux/**"
+      - "tools/android/**"
+      - "test/**"
+      - "assets/**"
+      - "cloud/worker/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "CHANGELOG.md"
+      - ".github/workflows/build-linux.yml"
+
+concurrency:
+  group: yutaka-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-worker-bundle:
+    name: Prepare in-app Worker deployment bundle
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Restore prepared Worker bundle cache
+        id: worker-bundle-cache
+        uses: actions/cache@v5
+        with:
+          path: assets/worker/yutaka_sync_worker.js
+          key: yutaka-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
+
+      - name: Set up Node 22
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Restore Worker dependency cache
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        id: worker-node-cache
+        uses: actions/cache@v5
+        with:
+          path: cloud/worker/node_modules
+          key: yutaka-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
+
+      - name: Install Worker dependencies
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true' && steps.worker-node-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Build deployable Worker bundle for the app
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm run bundle:app
+
+      - name: Verify embedded Worker bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="assets/worker/yutaka_sync_worker.js"
+          test -s "$bundle"
+          ! grep -q 'YUTAKA_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
+          test "$(wc -c < "$bundle")" -gt 10000
+
+      - name: Upload deployable Worker bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker/yutaka_sync_worker.js
+          if-no-files-found: error
+          compression-level: 0
+
+  build-linux:
+    needs: prepare-worker-bundle
+    name: Build Linux ${{ matrix.arch }} AppImage and portable archive
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+            appimage_arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Install Linux desktop build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick file \
+            libgtk-3-dev liblzma-dev libsecret-1-dev libsqlite3-dev libnotify-dev libjsoncpp-dev
+
+      - name: Set up Flutter on Linux x64
+        if: matrix.arch == 'x64'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Set up Flutter on Linux ARM64
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_ROOT="$RUNNER_TEMP/flutter-sdk"
+          rm -rf "$FLUTTER_ROOT"
+          git clone --depth 1 --branch 3.47.4 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          echo "FLUTTER_ROOT=$FLUTTER_ROOT" >> "$GITHUB_ENV"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" --version
+          "$FLUTTER_ROOT/bin/flutter" precache --linux
+
+      - name: Restore Linux dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            build/linux
+          key: yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-${{ matrix.arch }}-deps-
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Enable Linux desktop support
+        run: flutter config --enable-linux-desktop
+
+      - name: Generate Linux platform files
+        run: flutter create --platforms=linux --project-name yutaka --no-pub .
+
+      - name: Apply Yutaka Linux branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_file="linux/runner/my_application.cc"
+          test -f "$runner_file"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('linux/runner/my_application.cc')
+          text = path.read_text()
+          text = text.replace('gtk_window_set_title(window, "yutaka")', 'gtk_window_set_title(window, "Yutaka")')
+          text = text.replace('gtk_header_bar_set_title(header_bar, "yutaka")', 'gtk_header_bar_set_title(header_bar, "Yutaka")')
+          path.write_text(text)
+          PY
+
+      - name: Read app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          echo "YUTAKA_APP_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "YUTAKA_APP_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Linux release
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build linux --release --no-pub \
+            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
+
+      - name: Package portable Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          BUNDLE_DIR="$(find build/linux -type d -path '*/release/bundle' -print -quit)"
+          if [ -z "$BUNDLE_DIR" ] || [ ! -x "$BUNDLE_DIR/yutaka" ]; then
+            echo "::error::Linux release bundle was not found."
+            find build/linux -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+          tar -C "$BUNDLE_DIR" -czf "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz" .
+          echo "YUTAKA_LINUX_BUNDLE=$BUNDLE_DIR" >> "$GITHUB_ENV"
+
+      - name: Restore linuxdeploy tool cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/yutaka-linuxdeploy
+          key: yutaka-linuxdeploy-continuous-v1-${{ runner.os }}-${{ matrix.appimage_arch }}
+
+      - name: Package broad-distro AppImage
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APPDIR="$RUNNER_TEMP/Yutaka.AppDir"
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/lib/yutaka" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+          cp -a "$YUTAKA_LINUX_BUNDLE"/. "$APPDIR/usr/lib/yutaka/"
+          ln -s ../lib/yutaka/yutaka "$APPDIR/usr/bin/yutaka"
+          cp tools/linux/yutaka.desktop "$APPDIR/usr/share/applications/yutaka.desktop"
+          ICON_PATH="$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png"
+          convert assets/icons/app_icon.png -resize 512x512! "$ICON_PATH"
+          ICON_SIZE="$(identify -format '%wx%h' "$ICON_PATH")"
+          if [ "$ICON_SIZE" != "512x512" ]; then
+            echo "::error::AppImage icon must be exactly 512x512, got $ICON_SIZE."
+            exit 1
+          fi
+
+          cat > "$APPDIR/AppRun" <<'EOF_APPRUN'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/yutaka/lib:${LD_LIBRARY_PATH:-}"
+          export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+          exec "$HERE/usr/lib/yutaka/yutaka" "$@"
+          EOF_APPRUN
+          chmod +x "$APPDIR/AppRun"
+          ln -sf usr/share/icons/hicolor/512x512/apps/yutaka.png "$APPDIR/yutaka.png"
+          cp tools/linux/yutaka.desktop "$APPDIR/yutaka.desktop"
+
+          LINUXDEPLOY="$RUNNER_TOOL_CACHE/yutaka-linuxdeploy/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
+          bash tools/linux/fetch_linuxdeploy.sh "${{ matrix.appimage_arch }}" "$LINUXDEPLOY"
+          chmod +x "$LINUXDEPLOY"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          "$LINUXDEPLOY" \
+            --appdir "$APPDIR" \
+            --executable "$APPDIR/usr/lib/yutaka/yutaka" \
+            --desktop-file "$APPDIR/usr/share/applications/yutaka.desktop" \
+            --icon-file "$APPDIR/usr/share/icons/hicolor/512x512/apps/yutaka.png" \
+            --output appimage
+
+          GENERATED="$(find . -maxdepth 1 -type f -name '*.AppImage' ! -name 'linuxdeploy-*' -print -quit)"
+          if [ -z "$GENERATED" ]; then
+            echo "::error::linuxdeploy completed but no AppImage was produced."
+            exit 1
+          fi
+          mv "$GENERATED" "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          chmod +x "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
+          ls -lh artifacts
+
+      - name: Upload Linux release artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-linux-${{ matrix.arch }}
+          path: |
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.AppImage
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+

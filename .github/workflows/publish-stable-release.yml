@@ -1,0 +1,254 @@
+name: Publish Stable Release
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Build Android Releases
+      - Build Windows Release
+      - Build Linux Releases
+      - Build macOS Release
+    types:
+      - completed
+
+concurrency:
+  group: yutaka-publish-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish-stable-release:
+    name: Publish stable GitHub Release
+    if: >-
+      github.repository == 'Chowdhury-Siam/Yutaka' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Resolve matching successful platform runs
+        id: runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="${TRIGGER_SHA:-$GITHUB_SHA}"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          resolve_run() {
+            local workflow_file="$1"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs?head_sha=${HEAD_SHA}&status=completed&per_page=50" \
+              --jq '.workflow_runs | map(select(.conclusion == "success")) | sort_by(.run_number) | last | .id // empty'
+          }
+
+          android_run="$(resolve_run build-android-apks.yml)"
+          windows_run="$(resolve_run build-windows.yml)"
+          linux_run="$(resolve_run build-linux.yml)"
+          macos_run="$(resolve_run build-macos.yml)"
+
+          missing=()
+          [ -n "$android_run" ] || missing+=(Android)
+          [ -n "$windows_run" ] || missing+=(Windows)
+          [ -n "$linux_run" ] || missing+=(Linux)
+          [ -n "$macos_run" ] || missing+=(macOS)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Platform release set is not complete for ${HEAD_SHA}; still waiting for: ${missing[*]}"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "android_run=$android_run" >> "$GITHUB_OUTPUT"
+          echo "windows_run=$windows_run" >> "$GITHUB_OUTPUT"
+          echo "linux_run=$linux_run" >> "$GITHUB_OUTPUT"
+          echo "macos_run=$macos_run" >> "$GITHUB_OUTPUT"
+          printf 'Matched runs for %s: Android=%s Windows=%s Linux=%s macOS=%s\n' \
+            "$HEAD_SHA" "$android_run" "$windows_run" "$linux_run" "$macos_run"
+
+      - name: Checkout matching release source
+        if: steps.runs.outputs.ready == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.runs.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Download Android release artifacts
+        if: steps.runs.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          for artifact in yutaka-android-universal yutaka-android-arm32 yutaka-android-arm64; do
+            gh run download "${{ steps.runs.outputs.android_run }}" --name "$artifact" --dir release-assets
+          done
+
+      - name: Download Windows release artifact
+        if: steps.runs.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "${{ steps.runs.outputs.windows_run }}" --name yutaka-windows-installer --dir release-assets
+
+      - name: Download Linux release artifacts
+        if: steps.runs.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for artifact in yutaka-linux-x64 yutaka-linux-arm64; do
+            gh run download "${{ steps.runs.outputs.linux_run }}" --name "$artifact" --dir release-assets
+          done
+
+      - name: Download macOS release artifacts
+        if: steps.runs.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "${{ steps.runs.outputs.macos_run }}" --name yutaka-macos-universal --dir release-assets
+
+      - name: List release assets
+        if: steps.runs.outputs.ready == 'true'
+        run: ls -lh release-assets
+
+      - name: Publish versioned stable release
+        if: steps.runs.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid pubspec.yaml version: $FULL_VERSION"
+            exit 1
+          fi
+          RELEASE_TAG="v${VERSION_NAME}"
+          RELEASE_TITLE="Yutaka Stable ${VERSION_NAME}"
+
+          awk -v version="${VERSION_NAME}" '
+            BEGIN { capture=0; found=0 }
+            /^##[[:space:]]+\[?v?[0-9]+\.[0-9]+\.[0-9]+\]?/ {
+              if (capture) exit
+              if ($0 ~ version) { capture=1; found=1; next }
+            }
+            /^##[[:space:]]+/ && capture { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes-body.md
+
+          if [ ! -s release-notes-body.md ]; then
+            awk '
+              BEGIN { capture=0; in_section=0; emitted_any=0; emitted_in_section=0 }
+              /^##[[:space:]]+Unreleased/ { capture=1; next }
+              /^##[[:space:]]+/ && capture { exit }
+              /^###[[:space:]]+Previous development history/ && capture { exit }
+              capture && /^###[[:space:]]+/ {
+                if (emitted_any) print ""
+                print
+                print ""
+                in_section=1
+                emitted_in_section=0
+                next
+              }
+              capture && in_section && /^[[:space:]]*-[[:space:]]+/ && !emitted_in_section {
+                print
+                emitted_in_section=1
+                emitted_any=1
+                next
+              }
+            ' CHANGELOG.md > release-notes-body.md
+          fi
+
+          awk 'NF { seen=1 } seen { print }' release-notes-body.md > release-notes-trimmed.md
+          mv release-notes-trimmed.md release-notes-body.md
+          if [ ! -s release-notes-body.md ]; then
+            {
+              echo "### Changed"
+              echo
+              echo "- Stable Yutaka ${VERSION_NAME} maintenance update."
+            } > release-notes-body.md
+          fi
+          cp release-notes-body.md release-notes.md
+
+          VERSION_NAME="$VERSION_NAME" RELEASE_TAG="$RELEASE_TAG" RELEASE_TITLE="$RELEASE_TITLE" python3 - <<'PY_MANIFEST'
+          import datetime
+          import json
+          import os
+          import pathlib
+
+          release_assets = pathlib.Path("release-assets")
+          notes = pathlib.Path("release-notes.md").read_text(encoding="utf-8")
+          version_name = os.environ["VERSION_NAME"]
+          release_tag = os.environ["RELEASE_TAG"]
+          release_title = os.environ["RELEASE_TITLE"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          content_types = {
+              ".apk": "application/vnd.android.package-archive",
+              ".exe": "application/vnd.microsoft.portable-executable",
+              ".dmg": "application/x-apple-diskimage",
+              ".appimage": "application/octet-stream",
+              ".gz": "application/gzip",
+              ".zip": "application/zip",
+          }
+
+          assets = []
+          for path in sorted(release_assets.iterdir()):
+              if not path.is_file() or path.name == "yutaka-update.json":
+                  continue
+              assets.append({
+                  "id": 0,
+                  "name": path.name,
+                  "size": path.stat().st_size,
+                  "browser_download_url": f"https://github.com/{repository}/releases/download/{release_tag}/{path.name}",
+                  "content_type": content_types.get(path.suffix.lower(), "application/octet-stream"),
+              })
+
+          published_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          manifest = {
+              "id": 0,
+              "tag_name": release_tag,
+              "name": release_title,
+              "body": notes,
+              "html_url": f"https://github.com/{repository}/releases/tag/{release_tag}",
+              "draft": False,
+              "prerelease": False,
+              "published_at": published_at,
+              "assets": assets,
+          }
+          manifest_path = release_assets / "yutaka-update.json"
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          print(f"Wrote {manifest_path} for Yutaka {version_name} with {len(assets)} release assets.")
+          PY_MANIFEST
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            git tag "${RELEASE_TAG}" "${{ steps.runs.outputs.head_sha }}"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+            gh release edit "${RELEASE_TAG}" \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release-notes.md \
+              --latest
+          fi
+          RELEASE_ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -f draft=false -f prerelease=false -f make_latest=true

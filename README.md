@@ -769,8 +769,14 @@ When a signed-in user chooses a profile photo, animated GIF, or profile video, Y
 
 | Workflow | Purpose |
 | --- | --- |
-| `build-android-apks.yml` | Builds direct Android APKs plus a Google Play AAB, the Windows installer, Linux AppImage/portable archives, macOS DMG/ZIP packages, and publishes the stable GitHub Release |
+| `build-android-apks.yml` | Builds direct Android APKs plus the Google Play AAB and runs the Android quality, Worker-integrity, real upgrade/data-loss, and 16 KB page-size gates |
+| `build-windows.yml` | Builds the Windows x64 app and installer EXE independently from the other platforms |
+| `build-linux.yml` | Builds Linux x64/ARM64 AppImage and portable archives independently from the other platforms |
+| `build-macos.yml` | Builds the universal macOS DMG and app ZIP independently from the other platforms |
+| `publish-stable-release.yml` | Waits for successful Android, Windows, Linux, and macOS runs for the same commit, then publishes their artifacts together as the stable GitHub Release |
 | `deploy-sync-worker.yml` | Deploys a fork owner's self-hosted Cloudflare Worker |
+
+Workflow-only CI maintenance does **not** change Yutaka's app/build/Worker version. Version numbers are bumped only when the shipped app or Worker changes.
 
 ### 10.7.1 Android signing
 
@@ -928,6 +934,10 @@ Yutaka/
 ├── test/                        # Flutter/unit/source-contract tests
 ├── .github/workflows/
 │   ├── build-android-apks.yml
+│   ├── build-windows.yml
+│   ├── build-linux.yml
+│   ├── build-macos.yml
+│   ├── publish-stable-release.yml
 │   └── deploy-sync-worker.yml
 ├── pubspec.yaml
 └── README.md

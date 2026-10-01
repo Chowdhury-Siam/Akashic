@@ -6,7 +6,13 @@ void main() {
   test('account sync is self-hosted only', () {
     final app = File('lib/main.dart').readAsStringSync();
     final sync = File('lib/sync_services.dart').readAsStringSync();
-    final build = File('.github/workflows/build-android-apks.yml').readAsStringSync();
+    final build = <String>[
+      'build-android-apks.yml',
+      'build-windows.yml',
+      'build-linux.yml',
+      'build-macos.yml',
+      'publish-stable-release.yml',
+    ].map((name) => File('.github/workflows/$name').readAsStringSync()).join('\n');
     final worker = File('cloud/worker/src/index.ts').readAsStringSync();
 
     expect(app, contains("Text('Self-hosted Sync Worker'"));

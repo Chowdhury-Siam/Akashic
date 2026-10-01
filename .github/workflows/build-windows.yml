@@ -1,0 +1,427 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "lib/**"
+      - "android/**"
+      - "windows/**"
+      - "linux/**"
+      - "macos/**"
+      - "tools/linux/**"
+      - "tools/android/**"
+      - "test/**"
+      - "assets/**"
+      - "cloud/worker/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "CHANGELOG.md"
+      - ".github/workflows/build-windows.yml"
+
+concurrency:
+  group: yutaka-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-worker-bundle:
+    name: Prepare in-app Worker deployment bundle
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Restore prepared Worker bundle cache
+        id: worker-bundle-cache
+        uses: actions/cache@v5
+        with:
+          path: assets/worker/yutaka_sync_worker.js
+          key: yutaka-worker-bundle-v1-${{ hashFiles('cloud/worker/src/**', 'cloud/worker/package-lock.json', 'cloud/worker/wrangler.self-hosted.toml', 'cloud/worker/scripts/build-app-deploy-bundle.mjs') }}
+
+      - name: Set up Node 22
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Restore Worker dependency cache
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        id: worker-node-cache
+        uses: actions/cache@v5
+        with:
+          path: cloud/worker/node_modules
+          key: yutaka-worker-node22-${{ hashFiles('cloud/worker/package-lock.json') }}
+
+      - name: Install Worker dependencies
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true' && steps.worker-node-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Build deployable Worker bundle for the app
+        if: steps.worker-bundle-cache.outputs.cache-hit != 'true'
+        working-directory: cloud/worker
+        run: npm run bundle:app
+
+      - name: Verify embedded Worker bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="assets/worker/yutaka_sync_worker.js"
+          test -s "$bundle"
+          ! grep -q 'YUTAKA_WORKER_BUNDLE_PLACEHOLDER' "$bundle"
+          test "$(wc -c < "$bundle")" -gt 10000
+
+      - name: Upload deployable Worker bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker/yutaka_sync_worker.js
+          if-no-files-found: error
+          compression-level: 0
+
+  build-windows:
+    needs: prepare-worker-bundle
+    name: Build Windows x64 installer EXE
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}\.pub-cache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: assets/worker
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Restore Windows dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pub-cache
+            build/windows/x64/extracted
+          key: yutaka-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-deps-
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Enable Windows desktop support
+        run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows platform files
+        run: flutter create --platforms=windows --project-name yutaka --no-pub .
+
+      - name: Apply Yutaka Windows window title
+        shell: pwsh
+        run: |
+          $mainCpp = "windows/runner/main.cpp"
+          if (!(Test-Path $mainCpp)) {
+            throw "Windows runner main.cpp was not generated: $mainCpp"
+          }
+          $main = Get-Content $mainCpp -Raw
+          $main = $main -replace 'CreateAndShow\(L"[^"]+"', 'CreateAndShow(L"Yutaka"'
+          $main = $main -replace '\.Create\(L"[^"]+"', '.Create(L"Yutaka"'
+          Set-Content -Path $mainCpp -Value $main -Encoding UTF8
+
+          $resourceRc = "windows/runner/Runner.rc"
+          if (Test-Path $resourceRc) {
+            $rc = Get-Content $resourceRc -Raw
+            $rc = $rc -replace 'VALUE "FileDescription", "[^"]+"', 'VALUE "FileDescription", "Yutaka"'
+            $rc = $rc -replace 'VALUE "InternalName", "[^"]+"', 'VALUE "InternalName", "Yutaka"'
+            $rc = $rc -replace 'VALUE "OriginalFilename", "[^"]+"', 'VALUE "OriginalFilename", "Yutaka.exe"'
+            $rc = $rc -replace 'VALUE "ProductName", "[^"]+"', 'VALUE "ProductName", "Yutaka"'
+            Set-Content -Path $resourceRc -Value $rc -Encoding UTF8
+          }
+
+      - name: Apply Yutaka Windows app icon
+        shell: pwsh
+        run: |
+          $iconSource = "assets/icons/app_icon.ico"
+          $iconDest = "windows/runner/resources/app_icon.ico"
+          if (!(Test-Path $iconSource)) {
+            throw "Windows icon source was not found: $iconSource"
+          }
+          if (!(Test-Path "windows/runner/resources")) {
+            New-Item -ItemType Directory -Force "windows/runner/resources" | Out-Null
+          }
+          Copy-Item -Path $iconSource -Destination $iconDest -Force
+          if (!(Test-Path $iconDest)) {
+            throw "Windows icon was not copied: $iconDest"
+          }
+
+      - name: Read app version
+        shell: pwsh
+        run: |
+          $versionLine = Get-Content "pubspec.yaml" | Where-Object { $_ -match '^version:' } | Select-Object -First 1
+          $fullVersion = ($versionLine -replace '^version:\s*', '').Trim()
+          $parts = $fullVersion -split '\+', 2
+          if ($parts.Count -ne 2 -or $parts[0] -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or $parts[1] -notmatch '^[1-9]\d*$') {
+            throw "pubspec.yaml version must use semantic-version+positive-build-number, for example 1.2.3+123."
+          }
+          $versionName = $parts[0]
+          $buildNumber = $parts[1]
+          "YUTAKA_APP_VERSION_NAME=$versionName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "YUTAKA_APP_BUILD_NUMBER=$buildNumber" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Select-String -Path "pubspec.yaml" -Pattern "^version:"
+
+      - name: Patch Windows CMake for CMake 4/Firebase compatibility
+        shell: pwsh
+        run: |
+          $cmakeFile = "windows/CMakeLists.txt"
+          if (!(Test-Path $cmakeFile)) {
+            throw "Windows CMakeLists.txt was not generated: $cmakeFile"
+          }
+
+          $content = Get-Content $cmakeFile -Raw
+          if ($content -notmatch "CMAKE_POLICY_VERSION_MINIMUM") {
+            $lines = Get-Content $cmakeFile
+            $patched = New-Object System.Collections.Generic.List[string]
+            $inserted = $false
+
+            foreach ($line in $lines) {
+              $patched.Add($line)
+              if (!$inserted -and $line -match "^cmake_minimum_required\(VERSION") {
+                $patched.Add("")
+                $patched.Add("# Firebase's bundled Windows C++ SDK still declares an older CMake policy.")
+                $patched.Add("# CMake 4 rejects that by default, so keep policy compatibility at 3.5.")
+                $patched.Add('set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for legacy Firebase C++ SDK")')
+                $patched.Add("")
+                $patched.Add("# Older Flutter Windows plugins can include MSVC's deprecated experimental coroutine header.")
+                $patched.Add("# Visual Studio 2026/MSVC 14.51 treats that as a hard error unless this macro is defined.")
+                $patched.Add('add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)')
+                $patched.Add("")
+                $inserted = $true
+              }
+            }
+
+            Set-Content -Path $cmakeFile -Value $patched -Encoding UTF8
+          }
+
+          Get-Content $cmakeFile -TotalCount 24
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare optional Windows code signing
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ vars.WINDOWS_CODESIGN_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_BASE64)) {
+            Write-Host "::warning::WINDOWS_CODESIGN_PFX_BASE64 is not configured. The installer will build unsigned, and Microsoft Defender SmartScreen can still show 'Windows protected your PC'."
+            "WINDOWS_SIGNING_ENABLED=false" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            exit 0
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PASSWORD)) {
+            throw "WINDOWS_CODESIGN_PASSWORD is required when WINDOWS_CODESIGN_PFX_BASE64 is configured."
+          }
+
+          $timestampUrl = $env:WINDOWS_CODESIGN_TIMESTAMP_URL
+          if ([string]::IsNullOrWhiteSpace($timestampUrl)) {
+            $timestampUrl = "http://timestamp.digicert.com"
+          }
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found in the Windows SDK installation."
+          }
+
+          New-Item -ItemType Directory -Force signing | Out-Null
+          $certPath = (Join-Path (Resolve-Path "signing").Path "windows-codesign.pfx")
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+
+          "WINDOWS_SIGNING_ENABLED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_CODESIGN_CERT=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_CODESIGN_TIMESTAMP_URL=$timestampUrl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Windows code signing is enabled. SignTool: $($signtool.FullName)"
+
+      - name: Build Windows release
+        run: |
+          $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+          $env:CL = "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          flutter build windows --release --no-pub --dart-define=YUTAKA_APP_VERSION="$env:YUTAKA_APP_VERSION_NAME"
+
+      - name: Normalize Windows release executable name
+        shell: pwsh
+        run: |
+          $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
+          $defaultExe = Join-Path $releaseDir "yutaka.exe"
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
+          if (Test-Path $defaultExe) {
+            Move-Item -Path $defaultExe -Destination $namedExe -Force
+          }
+          if (!(Test-Path $namedExe)) {
+            throw "Expected Windows executable was not found: $namedExe"
+          }
+          Get-ChildItem $releaseDir | Format-Table Name,Length
+
+      - name: Sign Windows app executable if certificate is configured
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
+            Write-Host "Skipping Windows app signing because WINDOWS_CODESIGN_PFX_BASE64 is not configured."
+            exit 0
+          }
+
+          $exe = (Resolve-Path "build/windows/x64/runner/Release/Yutaka.exe").Path
+          & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to sign Yutaka.exe" }
+
+          & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "Yutaka.exe signature verification failed" }
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          } else {
+            Write-Host "Using preinstalled Inno Setup: $iscc"
+          }
+          if (!(Test-Path $iscc)) {
+            throw "ISCC.exe was not found: $iscc"
+          }
+          "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build Windows installer EXE
+        shell: pwsh
+        run: |
+          $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
+          if (!(Test-Path $releaseDir)) {
+            throw "Windows release directory was not found: $releaseDir"
+          }
+
+          $namedExe = Join-Path $releaseDir "Yutaka.exe"
+          if (!(Test-Path $namedExe)) {
+            throw "Expected Windows executable was not found before installer packaging: $namedExe"
+          }
+
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $sourceDir = $releaseDir.Path
+          $outputDir = (Resolve-Path "artifacts").Path
+          $iconFile = (Resolve-Path "assets/icons/app_icon.ico").Path
+          $pubspecVersionLine = (Get-Content "pubspec.yaml" | Where-Object { $_ -match "^version:" } | Select-Object -First 1)
+          if ([string]::IsNullOrWhiteSpace($pubspecVersionLine)) {
+            throw "pubspec.yaml version was not found."
+          }
+          $fullAppVersion = ($pubspecVersionLine -replace "^version:\s*", "").Trim()
+          $appVersionName = ($fullAppVersion -split "\+")[0]
+          if ([string]::IsNullOrWhiteSpace($appVersionName)) {
+            throw "Could not parse installer version from pubspec.yaml version: $fullAppVersion"
+          }
+          Write-Host "Packaging Yutaka Windows installer version $appVersionName from pubspec version $fullAppVersion"
+          $iss = @"
+          #define SourceDir "$sourceDir"
+          #define OutputDir "$outputDir"
+          #define IconFile "$iconFile"
+          #define MyAppName "Yutaka"
+          #define MyAppVersion "$appVersionName"
+          #define MyAppExeName "Yutaka.exe"
+
+          [Setup]
+          AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher=Yutaka
+          DefaultDirName={localappdata}\Programs\Yutaka
+          DefaultGroupName={#MyAppName}
+          DisableWelcomePage=no
+          DisableDirPage=no
+          DisableProgramGroupPage=no
+          DisableReadyPage=no
+          DisableFinishedPage=no
+          OutputDir={#OutputDir}
+          OutputBaseFilename=YutakaSetup
+          SetupIconFile={#IconFile}
+          UninstallDisplayIcon={app}\{#MyAppExeName}
+          VersionInfoDescription=Yutaka Installer
+          VersionInfoProductName=Yutaka
+          VersionInfoCompany=Yutaka
+          Compression=lzma2
+          SolidCompression=yes
+          WizardStyle=modern
+          PrivilegesRequired=lowest
+          ArchitecturesAllowed=x64
+          ArchitecturesInstallIn64BitMode=x64
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+          Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+          "@
+          $iss = ($iss -split "`r?`n" | ForEach-Object { $_.TrimStart() }) -join "`r`n"
+          Set-Content -Path "artifacts/yutaka-installer.iss" -Value $iss -Encoding UTF8
+          & "$env:ISCC_PATH" "artifacts/yutaka-installer.iss"
+          if (!(Test-Path "artifacts/YutakaSetup.exe")) {
+            throw "Installer was not created: artifacts/YutakaSetup.exe"
+          }
+          Get-ChildItem artifacts | Format-Table Name,Length
+
+      - name: Sign Windows installer if certificate is configured
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
+            Write-Host "Skipping Windows installer signing because WINDOWS_CODESIGN_PFX_BASE64 is not configured."
+          } else {
+            $installer = (Resolve-Path "artifacts/YutakaSetup.exe").Path
+            & "$env:WINDOWS_SIGNTOOL_PATH" sign /f "$env:WINDOWS_CODESIGN_CERT" /p "$env:WINDOWS_CODESIGN_PASSWORD" /fd SHA256 /tr "$env:WINDOWS_CODESIGN_TIMESTAMP_URL" /td SHA256 "$installer"
+            if ($LASTEXITCODE -ne 0) { throw "Failed to sign YutakaSetup.exe" }
+
+            & "$env:WINDOWS_SIGNTOOL_PATH" verify /pa /v "$installer"
+            if ($LASTEXITCODE -ne 0) { throw "YutakaSetup.exe signature verification failed" }
+          }
+          Copy-Item -Path "artifacts/YutakaSetup.exe" -Destination "artifacts/Yutaka-v$env:YUTAKA_APP_VERSION_NAME-Setup.exe" -Force
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-windows-installer
+          path: artifacts/Yutaka-v*-Setup.exe
+          if-no-files-found: error
+          compression-level: 0
+
+

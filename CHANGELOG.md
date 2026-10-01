@@ -2,6 +2,9 @@
 
 ### Fixed
 
+- Split the combined release workflow into independent Android, Windows, Linux, and macOS GitHub Actions so a platform failure is isolated to its own run.
+- Added a separate stable-release publisher that waits for successful artifacts from all four platform workflows for the same commit before publishing them together.
+- Workflow-only maintenance keeps the existing app/Android/Worker version unchanged.
 - Made the real Android upgrade/data-loss gate deterministic when a fresh previous APK has not created SQLite yet: CI now bootstraps the baseline schema from the checked-out previous release source instead of waiting on first-run/onboarding timing.
 - The source-derived fixture replays the previous release's static `CREATE TABLE` definitions and idempotent `ALTER TABLE ... ADD COLUMN` migrations, preserves its `PRAGMA user_version`, seeds sentinel finance data, then requires the previous APK itself to open and preserve that database before the in-place update.
 - The probe now creates the app-private `databases/` directory explicitly and captures private-storage diagnostics on failure.
