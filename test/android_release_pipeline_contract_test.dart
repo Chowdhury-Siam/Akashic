@@ -113,6 +113,15 @@ void main() {
     expect(runner, contains(r'PREVIOUS_PACKAGE="$(detect_apk_package "$PREVIOUS_APK")"'));
     expect(runner, contains(r'CURRENT_PACKAGE="$(detect_apk_package "$CURRENT_APK")"'));
     expect(runner, contains('Android cannot perform an in-place update across package IDs'));
+    expect(workflow, contains('YUTAKA_PREVIOUS_SOURCE_ROOT: \${{ github.workspace }}/previous'));
+    expect(runner, contains('previous-baseline.db'));
+    expect(runner, contains(r'--source-root "$PREVIOUS_SOURCE_ROOT"'));
+    expect(runner, contains('mkdir -p databases'));
+    expect(runner, isNot(contains('Yutaka did not create')));
+    expect(fixture, contains('def bootstrap('));
+    expect(fixture, contains('_extract_triple_quoted_execute_sql'));
+    expect(fixture, contains('_extract_add_column_sql'));
+    expect(fixture, contains('PRAGMA user_version'));
     expect(runner, contains(r'adb shell pm path "$PACKAGE"'));
     expect(runner, contains('cmd package resolve-activity --brief --user 0'));
     expect(runner, contains(r'-p "$PACKAGE"'));

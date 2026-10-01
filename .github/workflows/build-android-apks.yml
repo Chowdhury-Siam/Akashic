@@ -334,6 +334,8 @@ jobs:
 
       - name: Run real in-place Android upgrade data-loss test
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          YUTAKA_PREVIOUS_SOURCE_ROOT: ${{ github.workspace }}/previous
         with:
           api-level: 36
           arch: x86_64

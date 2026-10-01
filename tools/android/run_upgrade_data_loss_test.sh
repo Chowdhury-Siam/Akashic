@@ -11,6 +11,7 @@ CURRENT_APK="$2"
 PACKAGE=""
 DB_REL="databases/yutaka_flutter.db"
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+PREVIOUS_SOURCE_ROOT="${YUTAKA_PREVIOUS_SOURCE_ROOT:-$(cd "$ROOT_DIR/.." && pwd)/previous}"
 WORK_DIR="${RUNNER_TEMP:-/tmp}/yutaka-upgrade-data-loss"
 FIXTURE_TOOL="$ROOT_DIR/tools/android/upgrade_data_fixture.py"
 rm -rf "$WORK_DIR"
@@ -71,12 +72,13 @@ capture_diagnostics() {
   if [ -n "$PACKAGE" ]; then
     adb shell dumpsys package "$PACKAGE" > "$WORK_DIR/package.txt" 2>/dev/null || true
     adb shell pm list packages -f > "$WORK_DIR/packages.txt" 2>/dev/null || true
+    adb shell run-as "$PACKAGE" sh -c 'pwd; ls -la; echo "--- databases ---"; ls -la databases 2>/dev/null || true; echo "--- shared_prefs ---"; ls -la shared_prefs 2>/dev/null || true' > "$WORK_DIR/private-files.txt" 2>&1 || true
   fi
   adb shell getprop > "$WORK_DIR/device-properties.txt" 2>/dev/null || true
 }
 trap 'capture_diagnostics' ERR
 
-for file in "$PREVIOUS_APK" "$CURRENT_APK" "$FIXTURE_TOOL"; do
+for file in "$PREVIOUS_APK" "$CURRENT_APK" "$FIXTURE_TOOL" "$PREVIOUS_SOURCE_ROOT/lib/main.dart"; do
   test -f "$file" || { echo "::error::Required upgrade-test file is missing: $file"; exit 1; }
 done
 
@@ -99,18 +101,6 @@ wait_for_package() {
   done
   echo "::error::Android PackageManager did not register installed package $PACKAGE within 30 seconds." >&2
   adb shell pm list packages -f >&2 || true
-  return 1
-}
-
-wait_for_db() {
-  for _ in $(seq 1 60); do
-    if adb shell run-as "$PACKAGE" test -f "$DB_REL" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
-  echo "::error::Yutaka did not create $DB_REL within 60 seconds." >&2
-  adb logcat -d -t 300 || true
   return 1
 }
 
@@ -172,8 +162,8 @@ launch_app() {
     return 1
   fi
 
-  # Give Flutter startup/database initialization time to settle. The initial
-  # launch is additionally guarded by wait_for_db below.
+  # Give Flutter startup/database initialization time to settle before the
+  # private SQLite snapshot is captured.
   sleep 10
 }
 
@@ -200,7 +190,7 @@ install_private_db() {
   local db="$1"
   adb push "$db" /data/local/tmp/yutaka-upgrade-fixture.db >/dev/null
   adb shell chmod 0644 /data/local/tmp/yutaka-upgrade-fixture.db
-  adb shell "run-as $PACKAGE sh -c 'rm -f ${DB_REL}-wal ${DB_REL}-shm && cp /data/local/tmp/yutaka-upgrade-fixture.db ${DB_REL}'"
+  adb shell "run-as $PACKAGE sh -c 'mkdir -p databases && rm -f ${DB_REL}-wal ${DB_REL}-shm && cp /data/local/tmp/yutaka-upgrade-fixture.db ${DB_REL} && chmod 0600 ${DB_REL}'"
   adb shell rm -f /data/local/tmp/yutaka-upgrade-fixture.db
 }
 
@@ -228,14 +218,23 @@ echo "== Clean emulator and install previous signed release probe =="
 adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
 adb install "$PREVIOUS_APK"
 wait_for_package
-launch_app
-wait_for_db
-snapshot_db "previous-created"
-python3 "$FIXTURE_TOOL" seed --database "$WORK_DIR/previous-created.db" --manifest "$WORK_DIR/fixture.json"
-install_private_db "$WORK_DIR/previous-created.db"
+
+# A fresh Yutaka install does not guarantee that first-run/onboarding has created
+# SQLite yet. Build the baseline database deterministically from the checked-out
+# previous release's own CREATE TABLE statements, seed it, then place it in the
+# previous app's private databases directory. This keeps the migration fixture
+# tied to the real previous source while avoiding UI/lazy-initialization timing.
+python3 "$FIXTURE_TOOL" bootstrap \
+  --database "$WORK_DIR/previous-baseline.db" \
+  --source-root "$PREVIOUS_SOURCE_ROOT"
+python3 "$FIXTURE_TOOL" seed \
+  --database "$WORK_DIR/previous-baseline.db" \
+  --manifest "$WORK_DIR/fixture.json"
+install_private_db "$WORK_DIR/previous-baseline.db"
 install_offline_preferences
 
-# Prove the previous app can open the seeded dataset before attempting the upgrade.
+# Prove the previous APK itself can open the source-derived seeded database
+# before attempting the in-place upgrade. This catches an inaccurate fixture.
 launch_app
 snapshot_db "previous-seeded"
 python3 "$FIXTURE_TOOL" verify --database "$WORK_DIR/previous-seeded.db" --manifest "$WORK_DIR/fixture.json"

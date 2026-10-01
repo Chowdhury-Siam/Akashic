@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Seed and verify a deterministic finance dataset for Android in-place upgrade CI.
+"""Bootstrap, seed, and verify Android in-place upgrade data-loss fixtures.
 
-The fixture is inserted into a database created by the *previous published app*.
-After installing the new APK over that app, the same script verifies that every
-sentinel row and important value survived startup/migration unchanged.
+The baseline schema is extracted from the checked-out *previous published app*
+source, then the previous APK is required to open that seeded private database.
+After installing the new APK over it, this script verifies that every sentinel
+row and important value survived startup/migration unchanged.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import pathlib
+import re
 import sqlite3
 import sys
 
@@ -40,6 +42,109 @@ EXPECTED = {
     "sync_state": {"upgradeSentinel": {"value": "keep-me"}},
 }
 
+
+
+def _extract_triple_quoted_execute_sql(source: str) -> list[str]:
+    statements: list[str] = []
+    # Yutaka schema creation uses static database.execute() blocks. Support
+    # both triple-quote styles so older published source remains usable.
+    triple_single = "\'" * 3
+    triple_double = '"' * 3
+    patterns = (
+        r"database\.execute\(\s*(?:r)?" + triple_single + r"(.*?)" + triple_single + r"\s*\)",
+        r"database\.execute\(\s*(?:r)?" + triple_double + r"(.*?)" + triple_double + r"\s*\)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, source, re.DOTALL):
+            sql = match.group(1).strip()
+            if sql.upper().startswith("CREATE TABLE"):
+                statements.append(sql)
+    return statements
+
+
+def _extract_add_column_sql(source: str) -> list[str]:
+    statements: list[str] = []
+    patterns = (
+        r"database\.execute\(\s*'([^']*ALTER TABLE[^']*)'\s*\)",
+        r'database\.execute\(\s*"([^"]*ALTER TABLE[^"]*)"\s*\)',
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, source, re.IGNORECASE):
+            sql = match.group(1).strip()
+            if re.match(r"^ALTER\s+TABLE\s+\w+\s+ADD\s+COLUMN\s+\w+", sql, re.IGNORECASE):
+                statements.append(sql)
+    return statements
+
+
+def bootstrap(path: pathlib.Path, source_root: pathlib.Path) -> None:
+    lib_root = source_root / "lib"
+    if not lib_root.is_dir():
+        raise RuntimeError(f"Previous source lib directory not found: {lib_root}")
+
+    dart_files = sorted(lib_root.rglob("*.dart"))
+    if not dart_files:
+        raise RuntimeError(f"Previous source contains no Dart files under {lib_root}")
+    sources = [(file, file.read_text(encoding="utf-8")) for file in dart_files]
+
+    statements: list[str] = []
+    add_column_statements: list[str] = []
+    for _, source in sources:
+        statements.extend(_extract_triple_quoted_execute_sql(source))
+        add_column_statements.extend(_extract_add_column_sql(source))
+    if not statements:
+        raise RuntimeError("Could not extract any CREATE TABLE statements from previous release source")
+
+    versions: list[int] = []
+    for _, source in sources:
+        for match in re.finditer(
+            r"openDatabase\s*\((?:(?!\);).){0,2500}?\bversion\s*:\s*(\d+)",
+            source,
+            re.DOTALL,
+        ):
+            versions.append(int(match.group(1)))
+    if not versions:
+        raise RuntimeError("Could not determine previous SQLite schema version from openDatabase(version: ...)")
+    schema_version = max(versions)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
+    db = sqlite3.connect(path)
+    try:
+        db.execute("PRAGMA foreign_keys=OFF")
+        for sql in statements:
+            db.execute(sql)
+        for sql in add_column_statements:
+            match = re.match(
+                r"^ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)",
+                sql,
+                re.IGNORECASE,
+            )
+            if not match:
+                continue
+            table, column = match.groups()
+            if table in tables(db) and column not in columns(db, table):
+                db.execute(sql)
+        db.execute(f"PRAGMA user_version={schema_version}")
+        db.commit()
+        available = tables(db)
+        missing = sorted(set(EXPECTED) - available)
+        if missing:
+            raise RuntimeError(
+                "Previous release schema cannot support the upgrade preservation fixture; "
+                f"missing tables: {missing}"
+            )
+        integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise RuntimeError(f"Bootstrapped previous database integrity_check failed: {integrity}")
+        print(json.dumps({
+            "previous_source": str(source_root),
+            "schema_version": schema_version,
+            "create_table_statements": len(statements),
+            "add_column_migrations": len(add_column_statements),
+        }))
+    finally:
+        db.close()
 
 def columns(db: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
@@ -159,17 +264,26 @@ def verify(path: pathlib.Path, manifest: pathlib.Path | None) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
+
+    bootstrap_parser = sub.add_parser("bootstrap")
+    bootstrap_parser.add_argument("--database", required=True, type=pathlib.Path)
+    bootstrap_parser.add_argument("--source-root", required=True, type=pathlib.Path)
+
     for name in ("seed", "verify"):
-        p = sub.add_parser(name)
-        p.add_argument("--database", required=True, type=pathlib.Path)
-        p.add_argument("--manifest", type=pathlib.Path)
+        command_parser = sub.add_parser(name)
+        command_parser.add_argument("--database", required=True, type=pathlib.Path)
+        command_parser.add_argument("--manifest", type=pathlib.Path)
+
     args = parser.parse_args()
-    if not args.database.is_file():
-        raise RuntimeError(f"Database not found: {args.database}")
-    if args.command == "seed":
-        seed(args.database, args.manifest)
+    if args.command == "bootstrap":
+        bootstrap(args.database, args.source_root)
     else:
-        verify(args.database, args.manifest)
+        if not args.database.is_file():
+            raise RuntimeError(f"Database not found: {args.database}")
+        if args.command == "seed":
+            seed(args.database, args.manifest)
+        else:
+            verify(args.database, args.manifest)
     return 0
 
 

@@ -1,3 +1,12 @@
+## [1.0.1238] - 2026-10-02
+
+### Fixed
+
+- Made the real Android upgrade/data-loss gate deterministic when a fresh previous APK has not created SQLite yet: CI now bootstraps the baseline schema from the checked-out previous release source instead of waiting on first-run/onboarding timing.
+- The source-derived fixture replays the previous release's static `CREATE TABLE` definitions and idempotent `ALTER TABLE ... ADD COLUMN` migrations, preserves its `PRAGMA user_version`, seeds sentinel finance data, then requires the previous APK itself to open and preserve that database before the in-place update.
+- The probe now creates the app-private `databases/` directory explicitly and captures private-storage diagnostics on failure.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1238+282`.
+
 ## [1.0.1237] - 2026-10-02
 
 - Hardened the real Android upgrade/data-loss gate so it selects the latest prior stable release with the same Android application ID.
