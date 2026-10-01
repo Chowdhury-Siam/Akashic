@@ -26,7 +26,10 @@ void main() {
     );
     expect(
       source,
-      contains('if (_insideEditableText(context)) return child;'),
+      anyOf(
+        contains('if (_insideEditableText(context)) return child;'),
+        contains('if (_insideEditableText(context) || _insideTimePickerDialog(context)) return child;'),
+      ),
     );
   });
 }

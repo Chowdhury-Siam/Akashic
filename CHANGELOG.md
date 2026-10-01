@@ -1,3 +1,11 @@
+## [1.0.1231] - 2026-10-02
+
+### Fixed
+
+- Stabilized the mandatory Flutter release test gate against the current Yutaka UI architecture: editable-text scroll contracts now accept the shared text/time-picker overscroll guard, onboarding widget tests no longer wait forever on the intentionally repeating onboarding glyph, and the slidable/tab-stage contract now validates the current transaction quick-menu overlay instead of the removed standalone Plan button.
+- Made transaction date-range round-trip tests validate the preserved instant rather than `DateTime.isUtc` metadata, matching Yutaka's epoch-millisecond SQLite storage without changing production timestamp storage or migration behavior.
+- Kept all release gates mandatory and bumped synchronized app/Android/Worker metadata to `1.0.1231+275`.
+
 ## [1.0.1230] - 2026-10-02
 
 ### Fixed

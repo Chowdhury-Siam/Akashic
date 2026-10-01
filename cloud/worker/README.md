@@ -84,7 +84,7 @@ A ready Worker returns values equivalent to:
 {
   "ok": true,
   "service": "yutaka-sync",
-  "workerVersion": "1.0.1230",
+  "workerVersion": "1.0.1231",
   "configured": true,
   "registrationMode": "first-user",
   "telegramBackupAvailable": true,

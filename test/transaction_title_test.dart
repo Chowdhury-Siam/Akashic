@@ -39,7 +39,7 @@ void main() {
     final original = titledTransaction(endOn: end);
     final restored = MoneyTransaction.fromMap(original.toMap());
 
-    expect(restored.endOn, end);
+    expect(restored.endOn?.isAtSameMomentAs(end), isTrue);
     expect(restored.spansMultipleDays, isTrue);
     expect(restored.copyWith(endOn: DateTime.utc(2026, 9, 5, 12, 30)).endOn, DateTime.utc(2026, 9, 5, 12, 30));
   });
@@ -49,7 +49,7 @@ void main() {
     final original = titledTransaction(endOn: end);
     final restored = MoneyTransaction.fromMap(original.toMap());
 
-    expect(restored.endOn, end);
+    expect(restored.endOn?.isAtSameMomentAs(end), isTrue);
     expect(restored.spansMultipleDays, isFalse);
     expect(transactionDateTimeLabel(restored), contains('12:30 PM → 2:45 PM'));
   });

@@ -32,13 +32,15 @@ void main() {
     final switcherIndex = app.indexOf('child: AnimatedSwitcher(');
     final keyedStageIndex = app.indexOf('key: ValueKey<int>(tabIndex)', switcherIndex);
     final pageIndex = app.indexOf('Positioned.fill(child: pages[tabIndex])', keyedStageIndex);
-    final planIndex = app.indexOf('if (planButton != null)', keyedStageIndex);
+    final menuIndex = app.indexOf('if (transactionMenuButton != null) ...[', keyedStageIndex);
+    final actionIndex = app.indexOf('if (actionButton != null)', keyedStageIndex);
     final dockIndex = app.indexOf('child: _FloatingDockNavigation(', keyedStageIndex);
     expect(switcherIndex, greaterThanOrEqualTo(0));
     expect(keyedStageIndex, greaterThan(switcherIndex));
     expect(pageIndex, greaterThan(keyedStageIndex));
-    expect(planIndex, greaterThan(pageIndex));
-    expect(dockIndex, greaterThan(planIndex));
+    expect(menuIndex, greaterThan(pageIndex));
+    expect(actionIndex, greaterThan(menuIndex));
+    expect(dockIndex, greaterThan(actionIndex));
   });
 
   test('loan editor keeps Plan removed and exposes an account selector for money movement', () {
