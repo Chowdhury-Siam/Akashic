@@ -131,6 +131,8 @@ class WorkerDeploymentCredentialStore {
 
   static const _profileKey = 'yutaka_worker_auto_deployment_profile_v1';
   static const _profileKeyPrefix = 'yutaka_worker_auto_deployment_profile_v2_';
+  static const _legacyProfileKey = 'koinly_worker_auto_deployment_profile_v1';
+  static const _legacyProfileKeyPrefix = 'koinly_worker_auto_deployment_profile_v2_';
   final FlutterSecureStorage _storage;
 
   Future<WorkerDeploymentProfile?> read({String workerUrl = ''}) async {
@@ -138,9 +140,19 @@ class WorkerDeploymentCredentialStore {
     if (normalizedWorkerUrl.isNotEmpty) {
       final keyed = await _readKey(_keyForWorkerUrl(normalizedWorkerUrl));
       if (keyed != null) return keyed;
+      final legacyKeyed = await _readKey(_legacyKeyForWorkerUrl(normalizedWorkerUrl));
+      if (legacyKeyed != null) {
+        await write(legacyKeyed);
+        return legacyKeyed;
+      }
     }
-    final legacy = await _readKey(_profileKey);
-    if (legacy == null || normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(legacy.workerUrl) == normalizedWorkerUrl) {
+    final current = await _readKey(_profileKey);
+    if (current != null && (normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(current.workerUrl) == normalizedWorkerUrl)) {
+      return current;
+    }
+    final legacy = await _readKey(_legacyProfileKey);
+    if (legacy != null && (normalizedWorkerUrl.isEmpty || _normalizeWorkerUrl(legacy.workerUrl) == normalizedWorkerUrl)) {
+      await write(legacy);
       return legacy;
     }
     return null;
@@ -169,16 +181,24 @@ class WorkerDeploymentCredentialStore {
     final normalizedWorkerUrl = _normalizeWorkerUrl(workerUrl);
     if (normalizedWorkerUrl.isNotEmpty) {
       await _storage.delete(key: _keyForWorkerUrl(normalizedWorkerUrl));
-      final legacy = await read();
-      if (_normalizeWorkerUrl(legacy?.workerUrl ?? '') == normalizedWorkerUrl) {
+      await _storage.delete(key: _legacyKeyForWorkerUrl(normalizedWorkerUrl));
+
+      final current = await _readKey(_profileKey);
+      if (_normalizeWorkerUrl(current?.workerUrl ?? '') == normalizedWorkerUrl) {
         await _storage.delete(key: _profileKey);
+      }
+      final legacy = await _readKey(_legacyProfileKey);
+      if (_normalizeWorkerUrl(legacy?.workerUrl ?? '') == normalizedWorkerUrl) {
+        await _storage.delete(key: _legacyProfileKey);
       }
       return;
     }
     await _storage.delete(key: _profileKey);
+    await _storage.delete(key: _legacyProfileKey);
   }
 
   String _keyForWorkerUrl(String workerUrl) => '$_profileKeyPrefix${base64Url.encode(utf8.encode(workerUrl))}';
+  String _legacyKeyForWorkerUrl(String workerUrl) => '$_legacyProfileKeyPrefix${base64Url.encode(utf8.encode(workerUrl))}';
 }
 
 enum WorkerAutoUpdateOutcome { noSavedDeployment, inactiveDeployment, alreadyCurrent, updated }

@@ -181,10 +181,30 @@ class CategoryDatabaseMergeResult {
 class YutakaDatabase {
   sql.Database? _db;
 
+  static const String _canonicalDatabaseFileName = 'koinly_flutter.db';
+  static const String _transitionalDatabaseFileName = 'yutaka_flutter.db';
+
+  Future<String> _resolveCanonicalDatabasePath(String directory) async {
+    final canonicalPath = p.join(directory, _canonicalDatabaseFileName);
+    final transitionalPath = p.join(directory, _transitionalDatabaseFileName);
+    final canonicalFile = File(canonicalPath);
+    if (await canonicalFile.exists()) return canonicalPath;
+
+    final transitionalFile = File(transitionalPath);
+    if (!await transitionalFile.exists()) return canonicalPath;
+
+    try {
+      await transitionalFile.rename(canonicalPath);
+    } catch (_) {
+      await transitionalFile.copy(canonicalPath);
+    }
+    return canonicalPath;
+  }
+
   Future<sql.Database> get db async {
     if (_db != null) return _db!;
     final dir = await sql.getDatabasesPath();
-    final path = p.join(dir, 'yutaka_flutter.db');
+    final path = await _resolveCanonicalDatabasePath(dir);
     _db = await sql.openDatabase(
       path,
       version: 15,
@@ -2296,8 +2316,11 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
     }
     if (_hasConfiguredSyncTarget() && !newSyncAccountAwaitingSetupChoice) {
-      _schedulePendingSyncRetry(immediate: true);
-      _startCloudAutoPull();
+      unawaited(() async {
+        await _recoverLegacyCloudHistoryOnce();
+        _schedulePendingSyncRetry(immediate: true);
+        _startCloudAutoPull();
+      }());
     }
     if (selfHostedSyncApiBaseUrl.isNotEmpty) {
       unawaited(() async {
@@ -2309,6 +2332,27 @@ class AppController extends ChangeNotifier {
       unawaited(_syncAndroidAutomaticBackupWorker());
     } else {
       unawaited(runAutomaticBackupIfDue());
+    }
+  }
+
+  Future<void> _recoverLegacyCloudHistoryOnce() async {
+    const migrationKey = 'legacyCloudResetHistoryRecoveryV1';
+    if (await prefs.getBool(migrationKey, false)) return;
+    if (!_hasConfiguredSyncTarget() || newSyncAccountAwaitingSetupChoice) return;
+
+    try {
+      await performMultiDeviceSync(
+        silent: true,
+        pushLocalChanges: false,
+        pullFullCloudCopy: true,
+      );
+      if (cloudSyncError != null) return;
+      await syncToCloud(force: true, silent: true);
+      if (cloudSyncError == null) {
+        await prefs.setBool(migrationKey, true);
+      }
+    } catch (_) {
+      // Retry on a later launch; recovery failure must never clear local data.
     }
   }
 
@@ -5200,10 +5244,8 @@ class AppController extends ChangeNotifier {
       cursor = (response['cursor'] as num? ?? cursor).toInt();
       hasMore = response['hasMore'] == true;
     }
-    final lastResetIndex = remoteChanges.lastIndexWhere((change) => change['entityType'] == '__reset__');
-    if (lastResetIndex >= 0) {
-      remoteChanges.removeRange(0, lastResetIndex + 1);
-    }
+    // Keep the full per-entity history. Legacy __reset__ markers are ignored
+    // downstream; explicit per-entity deletes still remain authoritative.
     return _FullCloudSnapshot(changes: _latestRemoteChangePerEntity(remoteChanges), cursor: cursor);
   }
 
@@ -5562,14 +5604,10 @@ class AppController extends ChangeNotifier {
         hasMore = response['hasMore'] == true;
       }
 
-      // Older app versions could emit a destructive __reset__ marker. For a
-      // merge restore we never clear local data. We only discard obsolete cloud
-      // history before the most recent reset and merge the cloud snapshot that
-      // follows it.
-      final lastResetIndex = remoteChanges.lastIndexWhere((change) => change['entityType'] == '__reset__');
-      if (lastResetIndex >= 0) {
-        remoteChanges.removeRange(0, lastResetIndex + 1);
-      }
+      // Older releases could emit a destructive global __reset__ marker.
+      // Current restore semantics are merge-only, so do not truncate history
+      // at that marker. The latest explicit change for each entity wins, which
+      // preserves real deletes while allowing pre-reset transactions to recover.
       final mergedRemoteChanges = _latestRemoteChangePerEntity(remoteChanges);
       final remotelyDeletedNoteIds = mergedRemoteChanges
           .where((change) => change['entityType'] == 'notes' && change['operation'] == 'delete')

@@ -467,7 +467,7 @@ jobs:
               echo "::error::Google Play manifest unexpectedly requests REQUEST_INSTALL_PACKAGES."
               exit 1
             fi
-            if grep -q 'com.yutaka.siam.fileprovider' "$PLAY_MANIFEST"; then
+            if grep -q 'com.siamapps.koinly.fileprovider' "$PLAY_MANIFEST"; then
               echo "::error::Google Play manifest unexpectedly contains Yutaka's direct APK FileProvider."
               exit 1
             fi

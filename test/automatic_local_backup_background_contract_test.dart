@@ -51,7 +51,8 @@ void main() {
     expect(worker, contains('PeriodicWorkRequestBuilder<AutomaticBackupWorker>'));
     expect(worker, contains('yutaka-native-automatic-local-backup'));
     expect(worker, contains('FlutterSharedPreferences'));
-    expect(worker, contains('yutaka_flutter.db'));
+    expect(worker, contains('koinly_flutter.db'));
+    expect(worker, contains('yutaka_flutter.db')); // transitional fallback
     expect(worker, contains('DocumentsContract'));
     expect(worker, contains('lastAutoBackupAt'));
     expect(worker, contains('autoBackupBackgroundError'));

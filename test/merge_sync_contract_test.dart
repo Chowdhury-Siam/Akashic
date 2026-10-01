@@ -50,4 +50,21 @@ void main() {
     expect(source, contains('NOT EXISTS ('));
     expect(source, contains('sync_outbox.entity_type = sync_conflicts.entity_type'));
   });
+
+  test('legacy cloud reset history is recovered without destructive replace', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final worker = File('cloud/worker/src/index.ts').readAsStringSync();
+    expect(source, contains('legacyCloudResetHistoryRecoveryV1'));
+    expect(source, isNot(contains('remoteChanges.removeRange(0, lastResetIndex + 1)')));
+    expect(worker, contains('Destructive cloud replace is disabled'));
+    expect(worker, isNot(contains("DELETE FROM sync_entities WHERE user_id = ?")));
+  });
+
+  test('rebrand preserves legacy Android identity and database', () {
+    final gradle = File('android/app/build.gradle').readAsStringSync();
+    final source = File('lib/main.dart').readAsStringSync();
+    expect(gradle, contains('applicationId = "com.siamapps.koinly"'));
+    expect(source, contains("_canonicalDatabaseFileName = 'koinly_flutter.db'"));
+    expect(source, contains("_transitionalDatabaseFileName = 'yutaka_flutter.db'"));
+  });
 }

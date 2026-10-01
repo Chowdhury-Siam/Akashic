@@ -921,27 +921,21 @@ async function readCloudFinanceSnapshot(db: Client, userId: string): Promise<Clo
 
   if (telegramBackupFinanceRecordCount(database) === 0) {
     const historyRows = (await db.execute({
-      sql: `WITH last_reset AS (
-              SELECT COALESCE(MAX(sequence), 0) AS reset_sequence
-              FROM sync_changes
-              WHERE user_id = ? AND entity_type = '__reset__'
-            ),
-            ranked AS (
+      sql: `WITH ranked AS (
               SELECT entity_type, entity_id, operation, payload_json, sequence,
                      ROW_NUMBER() OVER (
                        PARTITION BY entity_type, entity_id
                        ORDER BY sequence DESC
                      ) AS rn
-              FROM sync_changes, last_reset
+              FROM sync_changes
               WHERE user_id = ?
-                AND sequence > last_reset.reset_sequence
                 AND entity_type <> '__reset__'
             )
             SELECT entity_type, entity_id, payload_json
             FROM ranked
             WHERE rn = 1 AND operation = 'upsert'
             ORDER BY entity_type, entity_id`,
-      args: [userId, userId],
+      args: [userId],
     })).rows;
     applyTelegramBackupRows(historyRows, database, value => { preferences = value; });
   }
@@ -3942,65 +3936,8 @@ async function push(request: Request, env: Env, db: Client, auth: AuthContext): 
   return pushWithOperations(db, auth, body.operations, numberEnv(env.MAX_SYNC_BATCH_SIZE, 100));
 }
 
-async function replaceAll(request: Request, env: Env, db: Client, auth: AuthContext): Promise<Response> {
-  const body = await readJson(request);
-  const rawOperations = body.operations;
-  if (!Array.isArray(rawOperations)) throw new HttpError(400, 'operations must be an array.');
-  const maxBatch = Math.max(numberEnv(env.MAX_SYNC_REPLACE_SIZE, 25000), 1000);
-  if (rawOperations.length > maxBatch) throw new HttpError(413, `Replace limit is ${maxBatch} operations.`);
-
-  const latestUpsertByEntity = new Map<string, SyncOperation>();
-  for (const raw of rawOperations) {
-    const op = validateOperation(raw);
-    if (op.operation !== 'upsert') continue;
-    latestUpsertByEntity.set(`${op.entityType}\u0000${op.entityId}`, op);
-  }
-  const operations = [...latestUpsertByEntity.values()];
-  const now = Date.now();
-  const resetOperationId = crypto.randomUUID();
-  const accepted: Array<{ operationId: string; entityType: string; entityId: string; sequence: number; version: number }> = [];
-
-  await db.batch([
-    { sql: 'DELETE FROM sync_entities WHERE user_id = ?', args: [auth.userId] },
-    {
-      sql: `INSERT INTO sync_changes(user_id, entity_type, entity_id, operation, version, payload_json, device_id, operation_id, changed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [auth.userId, '__reset__', 'finance', 'delete', 0, null, auth.deviceId, resetOperationId, now],
-    },
-  ], 'write');
-
-  const replaceChunkSize = 40;
-  for (let start = 0; start < operations.length; start += replaceChunkSize) {
-    const chunk = operations.slice(start, start + replaceChunkSize);
-    const statements = [];
-    for (const op of chunk) {
-      const version = 1;
-      const payloadJson = JSON.stringify(op.payload ?? {});
-      statements.push(
-        {
-          sql: `INSERT INTO sync_entities(user_id, entity_type, entity_id, version, payload_json, deleted_at, updated_at, last_operation_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, entity_type, entity_id) DO UPDATE SET
-                  version = excluded.version,
-                  payload_json = excluded.payload_json,
-                  deleted_at = excluded.deleted_at,
-                  updated_at = excluded.updated_at,
-                  last_operation_id = excluded.last_operation_id`,
-          args: [auth.userId, op.entityType, op.entityId, version, payloadJson, null, now, op.operationId],
-        },
-        {
-          sql: `INSERT INTO sync_changes(user_id, entity_type, entity_id, operation, version, payload_json, device_id, operation_id, changed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          args: [auth.userId, op.entityType, op.entityId, 'upsert', version, payloadJson, auth.deviceId, op.operationId, now],
-        },
-      );
-      accepted.push({ operationId: op.operationId, entityType: op.entityType, entityId: op.entityId, sequence: 0, version });
-    }
-    await db.batch(statements, 'write');
-  }
-
-  const cursor = await maxSequence(db, auth);
-  return json({ ok: true, mode: 'replace', cursor, accepted });
+async function replaceAll(_request: Request, _env: Env, _db: Client, _auth: AuthContext): Promise<Response> {
+  throw new HttpError(409, 'Destructive cloud replace is disabled. Update Yutaka and use merge sync.');
 }
 
 async function pushWithOperations(db: Client, auth: AuthContext, rawOperations: unknown, maxBatch: number): Promise<Response> {

@@ -62,7 +62,8 @@ void main() {
     expect(worker, contains('telegram_backup_settings'));
     expect(worker, contains('telegramBackupFinanceRecordCount(database) === 0'));
     expect(worker, contains('finance_record_count'));
-    expect(worker, contains('FROM sync_changes, last_reset'));
+    expect(worker, contains("entity_type <> '__reset__'"));
+    expect(worker, isNot(contains('sequence > last_reset.reset_sequence')));
     expect(worker, contains("registrationMode: 'first-user'"));
     expect(app, contains('await state.syncToCloud(force: true);'));
     expect(app, contains('while (settlePass < 4 && await database.pendingSyncOperationCount() > 0)'));

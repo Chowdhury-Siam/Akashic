@@ -1,10 +1,13 @@
-## [1.0.1225] - 2026-10-01
+## [1.0.1226] - 2026-10-01
 
+- Preserved the legacy Android application ID and SQLite filename so the Yutaka rebrand upgrades Koinly in place instead of opening a new empty data sandbox.
+- Added migration fallbacks for legacy Koinly sync profiles, tokens, deployment credentials, and the transitional Yutaka database filename.
+- Disabled the legacy destructive cloud replace endpoint and added one-time full cloud-history recovery for transactions hidden by an older `__reset__` marker.
 - Added a public Google Play account-deletion gateway at `docs/delete-account/` that works without installing Yutaka and redirects users directly to their own self-hosted Worker's authenticated `/delete-account` portal.
 - Added a GitHub Pages deployment workflow for Yutaka's public privacy and account-deletion pages, and changed the in-app public links to the stable Pages URLs.
 - Kept usernames and passwords off the central Yutaka page: only the Worker URL is entered there, while credentials remain between the user and their own Worker.
 - Added regression coverage for the public deletion page, stable URLs, and Pages deployment contract.
-- Bumped synchronized app/Android/Worker release metadata to `1.0.1225+269`.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1226+270`.
 
 ## [1.0.1224] - 2026-10-01
 
