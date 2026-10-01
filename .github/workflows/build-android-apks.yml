@@ -1203,7 +1203,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick \
+            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick file \
             libgtk-3-dev liblzma-dev libsecret-1-dev libsqlite3-dev libnotify-dev libjsoncpp-dev
 
       - name: Set up Flutter on Linux x64
@@ -1299,8 +1299,16 @@ jobs:
           tar -C "$BUNDLE_DIR" -czf "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.tar.gz" .
           echo "YUTAKA_LINUX_BUNDLE=$BUNDLE_DIR" >> "$GITHUB_ENV"
 
+      - name: Restore linuxdeploy tool cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/yutaka-linuxdeploy
+          key: yutaka-linuxdeploy-continuous-v1-${{ runner.os }}-${{ matrix.appimage_arch }}
+
       - name: Package broad-distro AppImage
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           APPDIR="$RUNNER_TEMP/Yutaka.AppDir"
@@ -1328,10 +1336,8 @@ jobs:
           ln -sf usr/share/icons/hicolor/512x512/apps/yutaka.png "$APPDIR/yutaka.png"
           cp tools/linux/yutaka.desktop "$APPDIR/yutaka.desktop"
 
-          LINUXDEPLOY="$RUNNER_TEMP/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
-          curl --fail --location --retry 3 \
-            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage" \
-            --output "$LINUXDEPLOY"
+          LINUXDEPLOY="$RUNNER_TOOL_CACHE/yutaka-linuxdeploy/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
+          bash tools/linux/fetch_linuxdeploy.sh "${{ matrix.appimage_arch }}" "$LINUXDEPLOY"
           chmod +x "$LINUXDEPLOY"
           export APPIMAGE_EXTRACT_AND_RUN=1
           "$LINUXDEPLOY" \

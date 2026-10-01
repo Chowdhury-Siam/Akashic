@@ -40,7 +40,38 @@ wait_for_db() {
 }
 
 launch_app() {
-  adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null
+  local component
+  local launch_output
+
+  # Avoid the legacy Monkey launcher here. On API 36 it can return
+  # exit code 252 even when the package is installed and has a valid launcher.
+  # Resolve the exported MAIN/LAUNCHER activity and start it deterministically.
+  component="$(
+    adb shell cmd package resolve-activity --brief \
+      -a android.intent.action.MAIN \
+      -c android.intent.category.LAUNCHER \
+      "$PACKAGE" 2>/dev/null | tr -d '\r' | tail -n 1
+  )"
+
+  if [ -z "$component" ] || [ "$component" = "No activity found" ]; then
+    component="$PACKAGE/.MainActivity"
+  fi
+
+  adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+  if ! launch_output="$(adb shell am start -W -S -n "$component" 2>&1)"; then
+    echo "::error::Failed to launch Yutaka activity $component" >&2
+    printf '%s\n' "$launch_output" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$launch_output"
+  if ! printf '%s\n' "$launch_output" | grep -Eq '^Status: ok$'; then
+    echo "::error::Android did not report a successful Yutaka activity launch for $component" >&2
+    return 1
+  fi
+
+  # Give Flutter startup/database initialization time to settle. The initial
+  # launch is additionally guarded by wait_for_db below.
   sleep 10
 }
 

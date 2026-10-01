@@ -18,6 +18,15 @@ void main() {
       workflow,
       contains(r'linuxdeploy-${{ matrix.appimage_arch }}.AppImage'),
     );
+    expect(workflow, contains('Restore linuxdeploy tool cache'));
+    expect(workflow, contains('tools/linux/fetch_linuxdeploy.sh'));
+    expect(workflow, contains(r'GH_TOKEN: ${{ github.token }}'));
+    final linuxdeployFetcher =
+        File('tools/linux/fetch_linuxdeploy.sh').readAsStringSync();
+    expect(linuxdeployFetcher, contains('gh release download'));
+    expect(linuxdeployFetcher, contains('--retry-all-errors'));
+    expect(linuxdeployFetcher, contains('validate_linuxdeploy'));
+    expect(linuxdeployFetcher, contains("file -b"));
     expect(
       workflow,
       contains(
@@ -91,10 +100,10 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1233+277'));
-    expect(config, contains("defaultValue: '1.0.1233'"));
-    expect(androidGradle, contains('versionCode = 277'));
-    expect(androidGradle, contains('versionName = "1.0.1233"'));
+    expect(pubspec, contains('version: 1.0.1235+279'));
+    expect(config, contains("defaultValue: '1.0.1235'"));
+    expect(androidGradle, contains('versionCode = 279'));
+    expect(androidGradle, contains('versionName = "1.0.1235"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);

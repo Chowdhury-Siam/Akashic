@@ -1,3 +1,20 @@
+## [1.0.1235] - 2026-10-02
+
+### Fixed
+
+- Replaced the Android upgrade/data-loss emulator probe's fragile `adb shell monkey` launcher with deterministic MAIN/LAUNCHER activity resolution plus `am start -W -S`.
+- The probe now requires Android to report `Status: ok` for each launch and emits the resolved component/output on failure, while keeping the real in-place upgrade and finance-data preservation checks mandatory.
+- Added release-contract coverage preventing the data-loss gate from reverting to `monkey`.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1235+279`.
+
+## [1.0.1234] - 2026-10-02
+
+- Hardened Linux AppImage packaging against transient GitHub `linuxdeploy` release-asset HTTP 5xx failures.
+- Added a cached `linuxdeploy` acquisition path with GitHub CLI/API first and a bounded direct-URL retry fallback.
+- Added ELF, CPU-architecture, and executable validation before any downloaded/cached `linuxdeploy` AppImage can run.
+- Added release-contract coverage for the resilient Linux packaging tool fetch.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1234+278`.
+
 ## [1.0.1233] - 2026-10-02
 
 ### Fixed
