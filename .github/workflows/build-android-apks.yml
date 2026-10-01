@@ -170,7 +170,7 @@ jobs:
           path: current
           fetch-depth: 0
 
-      - name: Resolve previous published stable release
+      - name: Resolve previous compatible published stable release
         id: previous-release
         shell: bash
         env:
@@ -180,15 +180,37 @@ jobs:
           CURRENT_VERSION="$(awk '/^version:/ { print $2; exit }' current/pubspec.yaml)"
           CURRENT_VERSION="${CURRENT_VERSION%%+*}"
           CURRENT_TAG="v${CURRENT_VERSION}"
-          PREVIOUS_TAG="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
-            | grep -Fvx "$CURRENT_TAG" | head -n 1 || true)"
-          if [ -z "$PREVIOUS_TAG" ]; then
-            echo "::error::A previously published stable Yutaka release is required for the real in-place upgrade gate."
+          CURRENT_APP_ID="$(sed -nE 's/^[[:space:]]*applicationId[[:space:]]*(=[[:space:]]*)?"([^"]+)".*/\2/p' current/android/app/build.gradle | head -n 1)"
+          if [ -z "$CURRENT_APP_ID" ]; then
+            echo "::error::Could not determine the current Android applicationId from current/android/app/build.gradle."
             exit 1
           fi
-          echo "Current candidate: $CURRENT_TAG"
-          echo "Previous published release: $PREVIOUS_TAG"
+
+          PREVIOUS_TAG=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            [ "$candidate" != "$CURRENT_TAG" ] || continue
+
+            encoded="$(gh api "repos/${GITHUB_REPOSITORY}/contents/android/app/build.gradle?ref=${candidate}" --jq '.content' 2>/dev/null || true)"
+            [ -n "$encoded" ] || continue
+            candidate_gradle="$(printf '%s' "$encoded" | tr -d '\n' | base64 --decode 2>/dev/null || true)"
+            candidate_app_id="$(printf '%s\n' "$candidate_gradle" | sed -nE 's/^[[:space:]]*applicationId[[:space:]]*(=[[:space:]]*)?"([^"]+)".*/\2/p' | head -n 1)"
+            if [ "$candidate_app_id" = "$CURRENT_APP_ID" ]; then
+              PREVIOUS_TAG="$candidate"
+              break
+            fi
+            if [ -n "$candidate_app_id" ]; then
+              echo "Skipping incompatible release $candidate (applicationId=$candidate_app_id)."
+            fi
+          done < <(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "::error::No previous stable Yutaka release with Android applicationId=$CURRENT_APP_ID was found for the real in-place upgrade gate."
+            exit 1
+          fi
+          echo "Current candidate: $CURRENT_TAG (applicationId=$CURRENT_APP_ID)"
+          echo "Previous compatible published release: $PREVIOUS_TAG"
           echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Checkout previous published release source

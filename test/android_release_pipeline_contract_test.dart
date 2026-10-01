@@ -88,7 +88,10 @@ void main() {
     expect(workflow, contains('npm run typecheck'));
     expect(workflow, contains('npm test'));
     expect(workflow, contains('android-upgrade-data-loss-gate:'));
-    expect(workflow, contains('Resolve previous published stable release'));
+    expect(workflow, contains('Resolve previous compatible published stable release'));
+    expect(workflow, contains('CURRENT_APP_ID='));
+    expect(workflow, contains('Skipping incompatible release'));
+    expect(workflow, contains('candidate_app_id'));
     expect(workflow, contains('reactivecircus/android-emulator-runner@v2'));
     expect(workflow, contains('api-level: 36'));
     expect(workflow, contains('build_upgrade_probe_apk.sh previous'));
@@ -106,6 +109,11 @@ void main() {
       contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),
     );
     expect(runner, contains(r'adb install -r "$CURRENT_APK"'));
+    expect(runner, contains('detect_apk_package'));
+    expect(runner, contains(r'PREVIOUS_PACKAGE="$(detect_apk_package "$PREVIOUS_APK")"'));
+    expect(runner, contains(r'CURRENT_PACKAGE="$(detect_apk_package "$CURRENT_APK")"'));
+    expect(runner, contains('Android cannot perform an in-place update across package IDs'));
+    expect(runner, contains(r'adb shell pm path "$PACKAGE"'));
     expect(runner, contains('cmd package resolve-activity --brief --user 0'));
     expect(runner, contains(r'-p "$PACKAGE"'));
     expect(runner, contains('cmd package query-activities --brief --user 0'));

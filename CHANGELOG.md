@@ -1,3 +1,10 @@
+## [1.0.1237] - 2026-10-02
+
+- Hardened the real Android upgrade/data-loss gate so it selects the latest prior stable release with the same Android application ID.
+- The emulator test now reads the application ID from both built APK manifests, rejects incompatible package IDs before install, and uses the detected ID for every PackageManager, launcher, run-as, database, and upgrade operation.
+- Added a PackageManager registration wait after both the initial install and in-place replacement, preventing launcher resolution races after a successful APK install.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1237+281`.
+
 ## [1.0.1236] - 2026-10-02
 
 ### Fixed

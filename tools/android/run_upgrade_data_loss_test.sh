@@ -8,7 +8,7 @@ fi
 
 PREVIOUS_APK="$1"
 CURRENT_APK="$2"
-PACKAGE="com.yutaka.siam"
+PACKAGE=""
 DB_REL="databases/yutaka_flutter.db"
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK_DIR="${RUNNER_TEMP:-/tmp}/yutaka-upgrade-data-loss"
@@ -16,9 +16,62 @@ FIXTURE_TOOL="$ROOT_DIR/tools/android/upgrade_data_fixture.py"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 
+find_android_tool() {
+  local tool="$1"
+  local candidate
+
+  if command -v "$tool" >/dev/null 2>&1; then
+    command -v "$tool"
+    return 0
+  fi
+
+  for root in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}"; do
+    [ -n "$root" ] || continue
+    if [ "$tool" = "apkanalyzer" ]; then
+      for candidate in "$root"/cmdline-tools/*/bin/apkanalyzer; do
+        [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+      done
+    else
+      for candidate in "$root"/build-tools/*/"$tool"; do
+        [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+      done
+    fi
+  done
+  return 1
+}
+
+detect_apk_package() {
+  local apk="$1"
+  local analyzer
+  local aapt
+  local package
+
+  if analyzer="$(find_android_tool apkanalyzer 2>/dev/null)"; then
+    package="$($analyzer manifest application-id "$apk" 2>/dev/null | tr -d '\r' | tail -n 1 | xargs || true)"
+    if [[ "$package" =~ ^[A-Za-z0-9_]+([.][A-Za-z0-9_]+)+$ ]]; then
+      printf '%s\n' "$package"
+      return 0
+    fi
+  fi
+
+  if aapt="$(find_android_tool aapt 2>/dev/null)"; then
+    package="$($aapt dump badging "$apk" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+    if [[ "$package" =~ ^[A-Za-z0-9_]+([.][A-Za-z0-9_]+)+$ ]]; then
+      printf '%s\n' "$package"
+      return 0
+    fi
+  fi
+
+  echo "::error::Could not determine Android application ID from APK: $apk" >&2
+  return 1
+}
+
 capture_diagnostics() {
   adb logcat -d > "$WORK_DIR/logcat.txt" 2>/dev/null || true
-  adb shell dumpsys package "$PACKAGE" > "$WORK_DIR/package.txt" 2>/dev/null || true
+  if [ -n "$PACKAGE" ]; then
+    adb shell dumpsys package "$PACKAGE" > "$WORK_DIR/package.txt" 2>/dev/null || true
+    adb shell pm list packages -f > "$WORK_DIR/packages.txt" 2>/dev/null || true
+  fi
   adb shell getprop > "$WORK_DIR/device-properties.txt" 2>/dev/null || true
 }
 trap 'capture_diagnostics' ERR
@@ -26,6 +79,28 @@ trap 'capture_diagnostics' ERR
 for file in "$PREVIOUS_APK" "$CURRENT_APK" "$FIXTURE_TOOL"; do
   test -f "$file" || { echo "::error::Required upgrade-test file is missing: $file"; exit 1; }
 done
+
+PREVIOUS_PACKAGE="$(detect_apk_package "$PREVIOUS_APK")"
+CURRENT_PACKAGE="$(detect_apk_package "$CURRENT_APK")"
+echo "Previous APK applicationId=$PREVIOUS_PACKAGE"
+echo "Current APK applicationId=$CURRENT_PACKAGE"
+if [ "$PREVIOUS_PACKAGE" != "$CURRENT_PACKAGE" ]; then
+  echo "::error::The upgrade probe APKs use different Android application IDs ($PREVIOUS_PACKAGE -> $CURRENT_PACKAGE). Android cannot perform an in-place update across package IDs." >&2
+  exit 1
+fi
+PACKAGE="$PREVIOUS_PACKAGE"
+
+wait_for_package() {
+  for _ in $(seq 1 30); do
+    if adb shell pm path "$PACKAGE" 2>/dev/null | tr -d '\r' | grep -q '^package:'; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "::error::Android PackageManager did not register installed package $PACKAGE within 30 seconds." >&2
+  adb shell pm list packages -f >&2 || true
+  return 1
+}
 
 wait_for_db() {
   for _ in $(seq 1 60); do
@@ -152,6 +227,7 @@ XML
 echo "== Clean emulator and install previous signed release probe =="
 adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
 adb install "$PREVIOUS_APK"
+wait_for_package
 launch_app
 wait_for_db
 snapshot_db "previous-created"
@@ -175,6 +251,7 @@ adb shell cmd connectivity airplane-mode enable >/dev/null 2>&1 || {
 
 # This is deliberately an in-place update. Never uninstall or clear app data here.
 adb install -r "$CURRENT_APK"
+wait_for_package
 CURRENT_VERSION="$(adb shell dumpsys package "$PACKAGE" | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
 echo "Current installed versionCode=$CURRENT_VERSION"
 if [ -z "$PREVIOUS_VERSION" ] || [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" -le "$PREVIOUS_VERSION" ]; then
