@@ -39,23 +39,50 @@ wait_for_db() {
   return 1
 }
 
+resolve_launcher_component() {
+  local resolved
+  local queried
+
+  # PackageManager's resolve-activity command parses an Intent. Restrict that
+  # Intent to Yutaka with -p; passing the package as a positional argument is
+  # interpreted as Intent data and can incorrectly produce "No activity found".
+  resolved="$(
+    adb shell cmd package resolve-activity --brief --user 0 \
+      -a android.intent.action.MAIN \
+      -c android.intent.category.LAUNCHER \
+      -p "$PACKAGE" 2>/dev/null | tr -d '\r' || true
+  )"
+
+  resolved="$(printf '%s\n' "$resolved" | awk '/^[[:alnum:]_.]+\/[[:alnum:]_.$]+$/ { candidate=$0 } END { print candidate }')"
+  if [ -n "$resolved" ]; then
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+
+  # Some platform builds are more reliable when querying all matching launcher
+  # activities. Use the first component owned by the installed Yutaka package.
+  queried="$(
+    adb shell cmd package query-activities --brief --user 0 \
+      -a android.intent.action.MAIN \
+      -c android.intent.category.LAUNCHER \
+      -p "$PACKAGE" 2>/dev/null | tr -d '\r' || true
+  )"
+  queried="$(printf '%s\n' "$queried" | awk -v pkg="$PACKAGE" '$0 ~ ("^" pkg "/") { print; exit }')"
+  if [ -n "$queried" ]; then
+    printf '%s\n' "$queried"
+    return 0
+  fi
+
+  echo "::error::Could not resolve Yutaka's installed MAIN/LAUNCHER activity for package $PACKAGE." >&2
+  adb shell dumpsys package "$PACKAGE" >&2 || true
+  return 1
+}
+
 launch_app() {
   local component
   local launch_output
 
-  # Avoid the legacy Monkey launcher here. On API 36 it can return
-  # exit code 252 even when the package is installed and has a valid launcher.
-  # Resolve the exported MAIN/LAUNCHER activity and start it deterministically.
-  component="$(
-    adb shell cmd package resolve-activity --brief \
-      -a android.intent.action.MAIN \
-      -c android.intent.category.LAUNCHER \
-      "$PACKAGE" 2>/dev/null | tr -d '\r' | tail -n 1
-  )"
-
-  if [ -z "$component" ] || [ "$component" = "No activity found" ]; then
-    component="$PACKAGE/.MainActivity"
-  fi
+  component="$(resolve_launcher_component)" || return 1
 
   adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
   if ! launch_output="$(adb shell am start -W -S -n "$component" 2>&1)"; then

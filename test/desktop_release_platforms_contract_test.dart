@@ -100,10 +100,10 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1235+279'));
-    expect(config, contains("defaultValue: '1.0.1235'"));
-    expect(androidGradle, contains('versionCode = 279'));
-    expect(androidGradle, contains('versionName = "1.0.1235"'));
+    expect(pubspec, contains('version: 1.0.1236+280'));
+    expect(config, contains("defaultValue: '1.0.1236'"));
+    expect(androidGradle, contains('versionCode = 280'));
+    expect(androidGradle, contains('versionName = "1.0.1236"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);

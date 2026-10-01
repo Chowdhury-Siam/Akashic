@@ -1,3 +1,12 @@
+## [1.0.1236] - 2026-10-02
+
+### Fixed
+
+- Fixed the Android upgrade/data-loss emulator launcher resolver so the package is supplied as the MAIN/LAUNCHER Intent package (`-p`) instead of being misread as positional Intent data.
+- Removed the fabricated `.MainActivity` fallback; the gate now resolves the actual installed launcher component, with a `query-activities` fallback and package diagnostics if Android cannot resolve one.
+- Kept strict `am start -W -S` / `Status: ok` startup verification and the real in-place data-preservation checks mandatory.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1236+280`.
+
 ## [1.0.1235] - 2026-10-02
 
 ### Fixed

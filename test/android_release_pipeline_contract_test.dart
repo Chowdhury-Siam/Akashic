@@ -106,7 +106,10 @@ void main() {
       contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),
     );
     expect(runner, contains(r'adb install -r "$CURRENT_APK"'));
-    expect(runner, contains('cmd package resolve-activity --brief'));
+    expect(runner, contains('cmd package resolve-activity --brief --user 0'));
+    expect(runner, contains(r'-p "$PACKAGE"'));
+    expect(runner, contains('cmd package query-activities --brief --user 0'));
+    expect(runner, isNot(contains(r'component="$PACKAGE/.MainActivity"')));
     expect(runner, contains(r'adb shell am start -W -S -n "$component"'));
     expect(runner, isNot(contains('adb shell monkey')));
     expect(RegExp(r'adb uninstall').allMatches(runner).length, 1);
