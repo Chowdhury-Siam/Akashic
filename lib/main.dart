@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -17,8 +16,8 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:lottie/lottie.dart';
 import 'package:timelines_plus/timelines_plus.dart';
 import 'package:flutter/foundation.dart' hide Category, Summary;
-import 'package:flutter/material.dart' hide Category, Summary;
-import 'package:flutter/cupertino.dart' hide Category, Summary;
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
@@ -1712,15 +1711,15 @@ class BackupService {
   }
 
   static String backupFileName() {
-    return 'yutaka_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.${backupExtension}';
+    return 'yutaka_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.$backupExtension';
   }
 
   static String safetyBackupFileName() {
-    return '${safetyBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.${backupExtension}';
+    return '$safetyBackupPrefix${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$backupExtension';
   }
 
   static String automaticBackupFileName() {
-    return '${automaticBackupPrefix}${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.${backupExtension}';
+    return '$automaticBackupPrefix${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$backupExtension';
   }
 
   static Future<Directory> backupStorageDirectory() async {
@@ -7348,6 +7347,7 @@ class AppController extends ChangeNotifier {
     await reload(queueSync: true);
   }
 
+  void _notifyLoanPreferenceListeners() => notifyListeners();
 
 }
 
@@ -9552,7 +9552,7 @@ Future<String?> showAppleWheelSelectionSheet(
                   child: OutlinedButton.icon(
                     onPressed: () => Navigator.pop(dialogContext, _selectionAddActionResult),
                     icon: const Icon(Icons.add_rounded),
-                    label: Text(addActionLabel!),
+                    label: Text(addActionLabel),
                   ),
                 ),
               ],
@@ -15187,16 +15187,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                   PopupMenuButton<String>(
                     tooltip: 'More',
                     position: PopupMenuPosition.under,
-                    child: SizedBox.square(
-                      dimension: circleSize,
-                      child: Center(
-                        child: Icon(
-                          Icons.more_vert_rounded,
-                          size: compact ? 22 : 24,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
                     offset: const Offset(0, 8),
                     constraints: const BoxConstraints.tightFor(width: 188),
                     color: scheme.surfaceContainerHighest,
@@ -15223,6 +15213,16 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                       if (widget.note != null) const PopupMenuDivider(height: 8),
                       if (widget.note != null) const PopupMenuItem(value: 'delete', height: 44, padding: EdgeInsets.zero, child: _NoteMenuItem(icon: Icons.delete_outline_rounded, label: 'Delete')),
                     ],
+                    child: SizedBox.square(
+                      dimension: circleSize,
+                      child: Center(
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          size: compact ? 22 : 24,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

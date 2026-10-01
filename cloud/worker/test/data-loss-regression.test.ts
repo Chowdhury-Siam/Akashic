@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createClient } from '@libsql/client';
-import worker from '../src/index.ts';
+import { handleRequest } from '../src/index.ts';
 import { deploymentSecrets } from '../scripts/prepare-secrets.mjs';
 
 const schema = fs.readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
@@ -30,7 +30,14 @@ test('legacy destructive replace is blocked and pre-reset finance history is rec
     TURSO_AUTH_TOKEN: 'local-test',
     JWT_SECRET: 'x'.repeat(40),
   });
-  const call = (route: string, method = 'GET', body?: unknown, accessToken = '') => worker.fetch(
+  const connect = () => new Proxy(db, {
+    get(target, property, receiver) {
+      if (property === 'close') return () => {};
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const call = (route: string, method = 'GET', body?: unknown, accessToken = '') => handleRequest(
     new Request(origin + route, {
       method,
       headers: {
@@ -41,6 +48,7 @@ test('legacy destructive replace is blocked and pre-reset finance history is rec
     }),
     env,
     context,
+    connect,
   );
 
   const registration = await call('/v1/auth/register', 'POST', {

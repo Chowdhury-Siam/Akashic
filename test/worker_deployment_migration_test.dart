@@ -120,7 +120,7 @@ class _MemoryCredentials extends WorkerDeploymentCredentialStore {
     workerUrl: 'https://test-worker.test-account.workers.dev', workerVersion: '1.0.1',
   );
   @override
-  Future<WorkerDeploymentProfile?> read() async => profile;
+  Future<WorkerDeploymentProfile?> read({String workerUrl = ''}) async => profile;
   @override
   Future<void> write(WorkerDeploymentProfile value) async { profile = value; }
 }

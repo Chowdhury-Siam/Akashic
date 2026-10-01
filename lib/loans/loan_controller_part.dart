@@ -480,7 +480,7 @@ extension LoanControllerActions on AppController {
       loanTransactionsVisibleInTransactionList = showTransactionsInTransactionList;
       await prefs.setBool('loanTransactionsVisibleInTransactionList', showTransactionsInTransactionList);
     }
-    notifyListeners();
+    _notifyLoanPreferenceListeners();
     await queuePreferenceSync();
   }
 }

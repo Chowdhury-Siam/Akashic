@@ -117,25 +117,29 @@ export class SyncHub {
   }
 }
 
-export default {
-  async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
+export async function handleRequest(
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
+  connect: () => Client = () => createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN }),
+): Promise<Response> {
     const url = new URL(request.url);
     let db: Client | undefined;
 
     try {
       // The browser portal has its own cookie authentication and never uses API CORS.
       if (url.pathname === '/profile' || url.pathname.startsWith('/profile/')) {
-        return await profile(request, env);
+        return await profile(request, env, connect);
       }
       if (url.pathname === '/delete-account' || url.pathname === '/delete-account/') {
-        return await deleteAccountPortal(request, env);
+        return await deleteAccountPortal(request, env, connect);
       }
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
       if (request.method === 'GET' && url.pathname === '/') return rootResponse(env);
       if (request.method === 'GET' && url.pathname === '/health') return healthResponse(env);
 
       validateWorkerConfig(env);
-      db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN });
+      db = connect();
 
       if (request.method === 'POST' && url.pathname === '/v1/auth/register') return await register(request, env, db);
       if (request.method === 'POST' && url.pathname === '/v1/auth/login') return await login(request, env, db);
@@ -218,6 +222,11 @@ export default {
     } finally {
       db?.close();
     }
+}
+
+export default {
+  async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
+    return handleRequest(request, env, context);
   },
 
   async scheduled(_controller: ScheduledController, env: Env, _context: ExecutionContext): Promise<void> {

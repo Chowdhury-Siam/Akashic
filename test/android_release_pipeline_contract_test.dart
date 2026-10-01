@@ -95,7 +95,7 @@ void main() {
       workflow,
       contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),
     );
-    expect(runner, contains('adb install -r "$CURRENT_APK"'));
+    expect(runner, contains(r'adb install -r "$CURRENT_APK"'));
     expect(RegExp(r'adb uninstall').allMatches(runner).length, 1);
     expect(runner, contains('current-offline'));
     expect(runner, contains('current-reconnected'));

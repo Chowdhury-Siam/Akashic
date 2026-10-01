@@ -30,9 +30,9 @@ void main() {
     expect(android12Styles, contains('android:windowSplashScreenAnimatedIcon'));
     expect(android12Styles, contains('@drawable/yutaka_splash_icon'));
     expect(launchBackground, contains('@drawable/yutaka_splash_icon'));
-    expect(workflow, contains('cp -a android \"\$ANDROID_SOURCE\"'));
+    expect(workflow, contains(r'cp -a android "$ANDROID_SOURCE"'));
     expect(workflow, contains('rm -rf android'));
-    expect(workflow, contains('cp -a \"\$ANDROID_SOURCE\" android'));
+    expect(workflow, contains(r'cp -a "$ANDROID_SOURCE" android'));
     expect(workflow, contains("grep -q '@drawable/yutaka_splash_icon'"));
   });
 

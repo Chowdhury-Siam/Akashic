@@ -17,25 +17,25 @@ void main() {
     expect(
       main,
       isNot(contains(
-        'Choose a parent location once. Yutaka creates and uses ' +
+        'Choose a parent location once. Yutaka creates and uses '
             'Yutaka/Backup there, with persistent Android folder access for scheduled backups.',
       )),
     );
     expect(
       main,
       isNot(contains(
-        'When on, Yutaka deletes previous automatic backups after a new one is saved, ' +
+        'When on, Yutaka deletes previous automatic backups after a new one is saved, '
             'so only the latest automatic backup remains. Turn it off to keep backup history.',
       )),
     );
     expect(
       main,
-      isNot(contains('Creates encrypted ' + '.yutakabackup files on this device.')),
+      isNot(contains('Creates encrypted .yutakabackup files on this device.')),
     );
     expect(
       main,
       isNot(contains(
-        'If Yutaka is closed at the scheduled time, the missed backup is created ' +
+        'If Yutaka is closed at the scheduled time, the missed backup is created '
             'the next time the app opens or resumes.',
       )),
     );

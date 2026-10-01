@@ -20,7 +20,7 @@ void main() {
     expect(nativeWorker, contains('ExistingPeriodicWorkPolicy.UPDATE'));
     expect(nativeWorker, contains('.getPackageInfo(applicationContext.packageName, 0)'));
     expect(nativeWorker, contains('https://api.github.com/repos/Chowdhury-Siam/Yutaka/releases/latest'));
-    expect(nativeWorker, contains('Yutaka ${release.version} is available'));
+    expect(nativeWorker, contains(r'Yutaka ${release.version} is available'));
     expect(nativeWorker, contains('lastNotifiedUpdateVersion'));
     expect(activity, contains('NativeUpdateCheckScheduler.sync(this, BuildConfig.DISTRIBUTION == "direct")'));
     expect(background, contains('enabled && !kIsGooglePlayBuild'));

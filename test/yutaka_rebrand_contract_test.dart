@@ -13,7 +13,7 @@ void main() {
     final backup = File('lib/main.dart').readAsStringSync();
 
     expect(pubspec, contains('name: yutaka'));
-    expect(pubspec, contains('version: 1.0.1229+273'));
+    expect(pubspec, contains('version: 1.0.1230+274'));
     expect(config, contains("const appTitle = 'Yutaka';"));
     expect(config, contains('github.com/Chowdhury-Siam/Yutaka'));
     expect(gradle, contains('namespace = "com.yutaka.siam"'));

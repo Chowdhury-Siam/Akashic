@@ -1,3 +1,12 @@
+## [1.0.1230] - 2026-10-02
+
+### Fixed
+
+- Fixed the Android release quality gate so `flutter analyze --no-pub` no longer fails on contract-test string interpolation, the Worker deployment credential-store override, the loan preference notifier, stale imports/hides, and the reported lint issues.
+- Fixed the Worker data-loss regression harness by injecting the local libSQL test client into the Worker request handler. Production requests still construct the standard Turso web client, while tests can now exercise the real Worker sync/recovery routes against a local `file:` database without sending that unsupported URL through `@libsql/client/web`.
+- Kept the Android upgrade/data-loss and Worker integrity release gates mandatory; no release check was weakened or bypassed.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1230+274`.
+
 ## [1.0.1229] - 2026-10-02
 
 ### Fixed
