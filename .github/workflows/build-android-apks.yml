@@ -13,6 +13,8 @@ on:
       - "linux/**"
       - "macos/**"
       - "tools/linux/**"
+      - "tools/android/**"
+      - "test/**"
       - "assets/**"
       - "cloud/worker/**"
       - "pubspec.yaml"
@@ -83,11 +85,281 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  android-release-quality-gate:
+    name: Android release quality gate
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Restore Dart package cache
+        uses: actions/cache@v4
+        with:
+          path: .pub-cache
+          key: yutaka-${{ runner.os }}-quality-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-quality-pub-
+            yutaka-${{ runner.os }}-pub-
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get --offline || flutter pub get
+
+      - name: Analyze release source
+        run: flutter analyze --no-pub
+
+      - name: Run release test suite
+        run: flutter test --no-pub
+
+  worker-data-integrity-gate:
+    name: Worker data-integrity gate
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cloud/worker/package-lock.json
+
+      - name: Install Worker dependencies
+        working-directory: cloud/worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck Worker
+        working-directory: cloud/worker
+        run: npm run typecheck
+
+      - name: Run Worker data-integrity regression suite
+        working-directory: cloud/worker
+        run: npm test
+
+  android-upgrade-data-loss-gate:
+    name: Android real upgrade data-loss gate
+    needs: [prepare-worker-bundle, android-release-quality-gate, worker-data-integrity-gate]
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+    steps:
+      - name: Checkout current release source
+        uses: actions/checkout@v5
+        with:
+          path: current
+          fetch-depth: 0
+
+      - name: Resolve previous published stable release
+        id: previous-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_VERSION="$(awk '/^version:/ { print $2; exit }' current/pubspec.yaml)"
+          CURRENT_VERSION="${CURRENT_VERSION%%+*}"
+          CURRENT_TAG="v${CURRENT_VERSION}"
+          PREVIOUS_TAG="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            | grep -Fvx "$CURRENT_TAG" | head -n 1 || true)"
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "::error::A previously published stable Yutaka release is required for the real in-place upgrade gate."
+            exit 1
+          fi
+          echo "Current candidate: $CURRENT_TAG"
+          echo "Previous published release: $PREVIOUS_TAG"
+          echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout previous published release source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.previous-release.outputs.tag }}
+          path: previous
+          fetch-depth: 1
+
+      - name: Add current deployable Worker bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: yutaka-worker-deploy-bundle
+          path: current/assets/worker
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+
+      - name: Restore Dart package cache
+        uses: actions/cache@v4
+        with:
+          path: .pub-cache
+          key: yutaka-${{ runner.os }}-upgrade-pub-${{ hashFiles('current/pubspec.yaml', 'current/pubspec.lock', 'previous/pubspec.yaml', 'previous/pubspec.lock') }}
+          restore-keys: |
+            yutaka-${{ runner.os }}-upgrade-pub-
+            yutaka-${{ runner.os }}-pub-
+
+      - name: Prepare permanent Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Permanent signing is required for an in-place upgrade test. Missing: ${missing[*]}"
+            exit 1
+          fi
+          KEYSTORE_FILE="$RUNNER_TEMP/yutaka-upgrade-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          keytool -list -keystore "$KEYSTORE_FILE" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Generate Gradle wrapper binaries for both source trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE="$RUNNER_TEMP/yutaka-wrapper-template"
+          rm -rf "$TEMPLATE"
+          flutter create --platforms=android --project-name yutaka_upgrade_probe --no-pub "$TEMPLATE"
+          for tree in previous current; do
+            cp "$TEMPLATE/android/gradlew" "$tree/android/gradlew"
+            cp "$TEMPLATE/android/gradlew.bat" "$tree/android/gradlew.bat"
+            cp "$TEMPLATE/android/gradle/wrapper/gradle-wrapper.jar" "$tree/android/gradle/wrapper/gradle-wrapper.jar"
+            chmod +x "$tree/android/gradlew"
+          done
+
+      - name: Prepare temporary release-signed upgrade probe builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_PREPARE_UPGRADE_PROBES'
+          from pathlib import Path
+          import re
+
+          for tree in ('previous', 'current'):
+              path = Path(tree) / 'android/app/build.gradle'
+              source = path.read_text(encoding='utf-8')
+              if 'YUTAKA_UPGRADE_PROBE_DEBUGGABLE' in source:
+                  continue
+              pattern = r'(buildTypes\s*\{\s*release\s*\{)'
+              inserted = (
+                  r'\1\n'
+                  '            // YUTAKA_UPGRADE_PROBE_DEBUGGABLE: CI-only patch. This is never\n'
+                  '            // committed into the production build; run-as is required only\n'
+                  '            // so the emulator can seed/read app-private SQLite.\n'
+                  '            debuggable true'
+              )
+              source, count = re.subn(pattern, inserted, source, count=1)
+              if count != 1:
+                  raise SystemExit(f'::error::Could not enable the temporary upgrade probe in {path}')
+              path.write_text(source, encoding='utf-8')
+          PY_PREPARE_UPGRADE_PROBES
+
+      - name: Build previous and current x86_64 release probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upgrade-artifacts
+          for tree in previous current; do
+            pushd "$tree" >/dev/null
+            flutter pub get --offline || flutter pub get
+            VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+            VERSION_NAME="${VERSION%%+*}"
+            BUILD_NUMBER="${VERSION##*+}"
+            flutter build apk \
+              --flavor direct \
+              --release \
+              --target-platform android-x64 \
+              --split-per-abi \
+              --build-name="$VERSION_NAME" \
+              --build-number="$BUILD_NUMBER" \
+              --no-pub \
+              --no-tree-shake-icons \
+              --dart-define=YUTAKA_APP_VERSION="$VERSION_NAME" \
+              --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct
+            APK="build/app/outputs/flutter-apk/app-x86_64-direct-release.apk"
+            if [ ! -f "$APK" ]; then
+              echo "::error::Upgrade probe APK was not produced for $tree: $APK"
+              find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' -print || true
+              exit 1
+            fi
+            cp "$APK" "../upgrade-artifacts/${tree}.apk"
+            popd >/dev/null
+          done
+          ls -lh upgrade-artifacts
+
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run real in-place Android upgrade data-loss test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash current/tools/android/run_upgrade_data_loss_test.sh upgrade-artifacts/previous.apk upgrade-artifacts/current.apk
+
+      - name: Upload upgrade diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-android-upgrade-data-loss-diagnostics
+          path: |
+            ${{ runner.temp }}/yutaka-upgrade-data-loss/**
+          if-no-files-found: ignore
+          retention-days: 7
+
   # GitHub copies workflow triggers into forks. Keep every release build job
   # restricted to the canonical repository so fork pushes and manual runs
   # cannot spend Actions minutes building Yutaka application packages.
   build-apks:
-    needs: prepare-worker-bundle
+    needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]
     name: Build Android ${{ matrix.label }}
     if: github.repository == 'Chowdhury-Siam/Yutaka'
     strategy:
@@ -514,6 +786,36 @@ jobs:
             cp "$source_apk" \
               "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-${{ matrix.variant }}.apk"
           fi
+
+      - name: Verify Google Play 16 KB page-size compatibility
+        if: matrix.package == 'aab'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLETOOL_VERSION=1.18.3
+          BUNDLETOOL_JAR="$RUNNER_TEMP/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          curl --fail --location --retry 3 --retry-all-errors --silent --show-error \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" \
+            --output "$BUNDLETOOL_JAR"
+          test -s "$BUNDLETOOL_JAR"
+          java -jar "$BUNDLETOOL_JAR" version
+
+          PLAY_AAB="$(find artifacts -maxdepth 1 -type f -name 'Yutaka-v*-play.aab' -print -quit)"
+          if [ -z "$PLAY_AAB" ]; then
+            echo "::error::Google Play AAB is missing before 16 KB validation."
+            exit 1
+          fi
+
+          READELF="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          if [ ! -x "$READELF" ]; then
+            echo "::error::NDK llvm-readelf was not found at $READELF"
+            exit 1
+          fi
+
+          python3 tools/android/verify_16kb_page_size.py \
+            --aab "$PLAY_AAB" \
+            --bundletool "$BUNDLETOOL_JAR" \
+            --readelf "$READELF"
 
       - name: List Android artifacts
         run: ls -lh artifacts

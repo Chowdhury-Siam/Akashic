@@ -21,8 +21,8 @@ android {
         applicationId = "com.yutaka.siam"
         minSdk = 23
         targetSdk = 36
-        versionCode = 270
-        versionName = "1.0.1226"
+        versionCode = 273
+        versionName = "1.0.1229"
         multiDexEnabled true
     }
 
@@ -40,6 +40,14 @@ android {
 
     buildFeatures {
         buildConfig true
+    }
+
+    // Google Play 16 KB page-size compatibility: keep native libraries
+    // uncompressed so AGP 9 can page-align them in generated APKs.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging false
+        }
     }
 
     compileOptions {

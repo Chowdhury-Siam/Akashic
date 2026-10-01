@@ -1,3 +1,27 @@
+## [1.0.1229] - 2026-10-02
+
+### Fixed
+
+- Added a real Android in-place upgrade data-loss release gate. CI now checks out the previous published stable Yutaka source, builds previous/current x86_64 release-signed probe APKs with the same permanent certificate, seeds a real app-private SQLite database, installs the new package with `adb install -r` without uninstalling or clearing data, and verifies finance/sync sentinel records after offline startup and after connectivity returns.
+- Added a Worker data-integrity release gate that runs TypeScript typechecking plus the full Worker test suite, and expanded destructive-reset recovery coverage across accounts, categories, transactions, budgets, plans, notes, subscriptions, loan contacts, loans, and repayments so cloud-side data loss blocks the Android release too.
+- The Android APK/AAB matrix now depends on this upgrade gate, so a failed upgrade-preservation check blocks Play and direct Android release artifacts.
+- Expanded release workflow path filters so Android validation-script and regression-test changes also trigger the release pipeline.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1229+273`.
+
+## [1.0.1228] - 2026-10-02
+
+### Changed
+- Added mandatory Google Play 16 KB page-size validation to the final signed AAB: CI now requires `PAGE_ALIGNMENT_16K` from bundletool and checks every bundled ARM64/x86_64 ELF library for 16 KB LOAD and GNU_RELRO alignment before artifact upload.
+- Explicitly kept Android native libraries on modern non-legacy JNI packaging so AGP 9 can preserve 16 KB ZIP alignment, while retaining NDK r28's default 16 KB ELF alignment.
+- Added regression coverage for the 16 KB Play release gate and bumped synchronized app/Android/Worker release metadata to `1.0.1228+272`.
+
+## [1.0.1227] - 2026-10-02
+
+### Changed
+- Added a mandatory Android release quality gate that runs `flutter analyze --no-pub` and the complete `flutter test --no-pub` suite before any Android APK or Google Play AAB matrix build can start.
+- Added a regression contract that verifies Android release artifacts remain dependent on the quality gate.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1227+271`.
+
 ## [1.0.1226] - 2026-10-01
 
 - Removed the legacy destructive Worker `POST /v1/sync/replace` behavior; old clients now receive HTTP 410 instead of being able to delete an account's cloud sync entities.

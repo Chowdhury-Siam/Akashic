@@ -687,6 +687,10 @@ Use `--flavor play --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play` only when tes
 
 Yutaka targets **Android 16 / API 36** (`compileSdk = 36`, `targetSdk = 36`) for both Android distribution flavors. The release workflow installs Android SDK Platform 36 and fails early if either target value is lowered accidentally.
 
+The Google Play build is also guarded for **16 KB memory page-size compatibility**. Android uses AGP `9.0.1`, NDK `28.2.13676358`, and non-legacy JNI packaging. After the signed Play AAB is built, CI runs Google's `bundletool` to require `PAGE_ALIGNMENT_16K`, then inspects every bundled `arm64-v8a` and `x86_64` `.so` with the NDK `llvm-readelf`. Any native library with a LOAD alignment below 16 KB or a misaligned GNU_RELRO end fails the release before the AAB is uploaded as an artifact.
+
+Android releases also have a **real in-place data-loss upgrade gate**. CI checks out the previous published stable release, builds previous/current x86_64 probe APKs with the same permanent release certificate, seeds a realistic app-private SQLite dataset, upgrades with `adb install -r` without clearing app data, and validates the database after an offline launch and again after connectivity returns. The Worker must separately pass TypeScript typechecking and its full data-integrity regression suite, including destructive-reset recovery across finance entity types. Any failure blocks Android release artifacts.
+
 Yutaka has separate Android distribution flavors so Play Store installs never use the direct APK updater.
 
 **Google Play AAB** — uses Google Play In-App Updates and does not request permission to install APK packages:
@@ -695,7 +699,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1226
+  --dart-define=YUTAKA_APP_VERSION=1.0.1229
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -704,7 +708,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1226
+  --dart-define=YUTAKA_APP_VERSION=1.0.1229
 ```
 
 ## 10.4 Windows build
@@ -714,7 +718,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1226
+  --dart-define=YUTAKA_APP_VERSION=1.0.1229
 ```
 
 ## 10.5 Linux build
@@ -731,7 +735,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1226
+  --dart-define=YUTAKA_APP_VERSION=1.0.1229
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -750,7 +754,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1226
+  --dart-define=YUTAKA_APP_VERSION=1.0.1229
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
