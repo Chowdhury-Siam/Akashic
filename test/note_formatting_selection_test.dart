@@ -54,7 +54,9 @@ void main() {
       text: 'Xone two',
       selection: TextSelection.collapsed(offset: 1),
     );
-    expect(ranges(note), contains({'start': 0, 'end': 1, 'style': 'bold'}));
+    expect(ranges(note), [
+      {'start': 0, 'end': 1, 'style': 'bold'},
+    ]);
 
     note.selection = const TextSelection.collapsed(offset: 7);
     expect(note.isStyleActive(NoteInlineStyle.bold), isFalse);
@@ -62,7 +64,9 @@ void main() {
       text: 'Xone twYo',
       selection: TextSelection.collapsed(offset: 8),
     );
-    expect(ranges(note), contains({'start': 0, 'end': 1, 'style': 'bold'}));
+    expect(ranges(note), [
+      {'start': 0, 'end': 1, 'style': 'bold'},
+    ]);
   });
 
   test('replacing an unformatted selection does not inherit prior bold word', () {

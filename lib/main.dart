@@ -12407,7 +12407,7 @@ class _DecorativeSparklineState extends State<_DecorativeSparkline> with SingleT
                 : (math.sin(animationValue * math.pi * 2) + 1) / 2;
             final glow = reduceMotion ? .025 : .025 + pulse * .015;
             final lineOpacity = reduceMotion ? 1.0 : .78 + pulse * .22;
-            final lineWidth = reduceMotion ? 2.3 : 2.3 + pulse * .2;
+            final lineWidth = reduceMotion ? 3.0 : 3.1 + pulse * .9;
             return LineChart(
               LineChartData(
                 minX: 0,
@@ -14573,6 +14573,8 @@ class _NoteScreenState extends State<NoteScreen> {
               controller: search,
               autofocus: true,
               contextMenuBuilder: yutakaTextFieldContextMenu,
+              enableInteractiveSelection: true,
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search_rounded),
@@ -15231,6 +15233,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
               padding: EdgeInsets.fromLTRB(sidePadding, compact ? 8 : 10, sidePadding, 0),
               child: TextField(
                 contextMenuBuilder: yutakaTextFieldContextMenu,
+                enableInteractiveSelection: true,
+                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: title,
                 textCapitalization: TextCapitalization.sentences,
                 style: theme.textTheme.headlineMedium?.copyWith(
@@ -15300,6 +15304,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                   onTap: () => _selectionBeforeToolbar = null,
                   contextMenuBuilder: yutakaTextFieldContextMenu,
                   enableInteractiveSelection: true,
+                  onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   controller: body,
                   expands: true,
                   maxLines: null,
@@ -17594,6 +17599,7 @@ Future<ServiceChargeConfiguration?> showServiceChargeConfiguration(
                     TextField(
                       contextMenuBuilder: yutakaTextFieldContextMenu,
                       enableInteractiveSelection: true,
+                      onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                       controller: valueController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       textInputAction: TextInputAction.done,
@@ -22694,6 +22700,9 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
+                contextMenuBuilder: yutakaTextFieldContextMenu,
+                enableInteractiveSelection: true,
+                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: workerController,
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(labelText: 'Worker URL', prefixIcon: Icon(Icons.link_rounded)),
@@ -22720,12 +22729,18 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
               ],
               const SizedBox(height: 12),
               TextField(
+                contextMenuBuilder: yutakaTextFieldContextMenu,
+                enableInteractiveSelection: true,
+                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: usernameController,
                 textCapitalization: TextCapitalization.none,
                 decoration: const InputDecoration(labelText: 'Username', prefixIcon: Icon(Icons.person_rounded)),
               ),
               const SizedBox(height: 12),
               TextField(
+                contextMenuBuilder: yutakaTextFieldContextMenu,
+                enableInteractiveSelection: true,
+                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 controller: passwordController,
                 obscureText: obscure,
                 decoration: InputDecoration(
@@ -22814,6 +22829,9 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
+                    contextMenuBuilder: yutakaTextFieldContextMenu,
+                    enableInteractiveSelection: true,
+                    onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                     controller: passwordController,
                     obscureText: obscurePassword,
                     autofocus: true,
@@ -22829,6 +22847,9 @@ class _MultiDeviceSyncScreenState extends State<MultiDeviceSyncScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
+                    contextMenuBuilder: yutakaTextFieldContextMenu,
+                    enableInteractiveSelection: true,
+                    onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                     controller: confirmationController,
                     autocorrect: false,
                     enableSuggestions: false,

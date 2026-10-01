@@ -58,13 +58,31 @@ void main() {
         ),
       ),
     );
-    expect(
-      RegExp(
-        r"^    if: github\.repository == 'Chowdhury-Siam/Yutaka'\s*$",
-        multiLine: true,
-      ).allMatches(workflow).length,
-      5,
-    );
+    const guardedJobs = <String>[
+      'prepare-worker-bundle',
+      'android-release-quality-gate',
+      'worker-data-integrity-gate',
+      'android-upgrade-data-loss-gate',
+      'build-apks',
+      'build-windows',
+      'build-linux',
+      'build-macos',
+      'publish-stable-release',
+    ];
+    for (final job in guardedJobs) {
+      final start = workflow.indexOf('\n  $job:');
+      expect(start, greaterThanOrEqualTo(0), reason: '$job is missing');
+      final next = workflow.indexOf(
+        RegExp(r'\n  [a-zA-Z0-9_-]+:'),
+        start + job.length + 4,
+      );
+      final block = workflow.substring(start, next < 0 ? workflow.length : next);
+      expect(
+        block,
+        contains("github.repository == 'Chowdhury-Siam/Yutaka'"),
+        reason: '$job must stay disabled in forks',
+      );
+    }
   });
 
   test('desktop platform metadata stays versioned and documented', () {
@@ -73,10 +91,10 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1231+275'));
-    expect(config, contains("defaultValue: '1.0.1231'"));
-    expect(androidGradle, contains('versionCode = 275'));
-    expect(androidGradle, contains('versionName = "1.0.1231"'));
+    expect(pubspec, contains('version: 1.0.1232+276'));
+    expect(config, contains("defaultValue: '1.0.1232'"));
+    expect(androidGradle, contains('versionCode = 276'));
+    expect(androidGradle, contains('versionName = "1.0.1232"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);

@@ -19,14 +19,14 @@ void main() {
     expect(source, isNot(contains('child: CalendarDatePicker(')));
   });
 
-  test('transaction date and time pickers support opt-in ranges and scrolling', () {
+  test('transaction date and time pickers support opt-in ranges in fixed popup content', () {
     final source = File('lib/main.dart').readAsStringSync();
 
     expect(source, contains('class TransactionDateSelection'));
     expect(source, contains("label: 'Single date'"));
     expect(source, contains("label: 'Use range'"));
     expect(source, contains("'Select transaction date'"));
-    expect(source, contains('thumbVisibility: true'));
+    expect(source, contains('child: YutakaPopupContent('));
     expect(source, contains('pickTransactionTimeSelection'));
     expect(source, contains("label: 'Single time'"));
     expect(source, contains("'Select transaction time range'"));

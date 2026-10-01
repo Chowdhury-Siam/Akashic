@@ -20,10 +20,12 @@ void main() {
     final launchBackground = File('android/app/src/main/res/drawable/launch_background.xml').readAsStringSync();
     final workflow = File('.github/workflows/build-android-apks.yml').readAsStringSync();
     final app = File('lib/main.dart').readAsStringSync();
+    final branding = File('lib/branding_widgets.dart').readAsStringSync();
 
     expect(File('android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png').existsSync(), isTrue);
     expect(File('assets/icons/yutaka_mark.png').existsSync(), isTrue);
-    expect(app, contains("Image.asset('assets/icons/yutaka_mark.png'"));
+    expect(branding, contains("'assets/icons/yutaka_mark.png'"));
+    expect(app, contains("'assets/icons/yutaka_mark.png'"));
     expect(app, contains('width: 88'));
     expect(app, contains('height: 104'));
     expect(baseStyles, contains('@drawable/launch_background'));

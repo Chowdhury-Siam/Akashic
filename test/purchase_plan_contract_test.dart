@@ -76,7 +76,7 @@ void main() {
 
     expect(source, contains("heroTag: 'transactionPlanFab'"));
     expect(source, contains("label: const Text('Plan')"));
-    expect(source, contains("child: const Text('Buy')"));
+    expect(source, contains('showPurchasePlannedItemDialog(context, item)'));
     expect(source, contains("message: 'Total planned price'"));
     expect(source, contains("final total = items.fold<double>(0"));
     expect(source, contains("title: 'Choose Account'"));

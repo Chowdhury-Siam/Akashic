@@ -1,3 +1,12 @@
+## [1.0.1232] - 2026-10-02
+
+- Fixed the release test suite after the 1.0.1231 hardening pass without weakening any production release gate.
+- Restored consistent tap-outside keyboard dismissal, adaptive copy/paste context menus, and interactive text selection for every app `TextField`.
+- Restored the stronger animated net-balance sparkline stroke while preserving reduced-motion behavior.
+- Updated brittle source-contract tests to validate the current Plan purchase flow, native Android background update scheduler, parameterized loan-visibility projection, fixed-size popup architecture, Worker administrator UI, splash branding, and fork-protected release jobs.
+- Corrected transaction local-first and rich-note tests so they validate the intended controller behavior/data instead of matching unrelated methods or map identity.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1232+276`.
+
 ## [1.0.1231] - 2026-10-02
 
 ### Fixed

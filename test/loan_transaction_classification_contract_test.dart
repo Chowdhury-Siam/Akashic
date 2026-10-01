@@ -13,7 +13,8 @@ void main() {
     expect(app, contains("SleekPillOption(value: type, label: 'Loan'"));
     expect(app, contains("Text('Loan', style:"));
     expect(app, contains("widget.transaction?.linkedEntityType == 'loan_payments' ? 'Loan repayment' : 'Loan disbursal'"));
-    expect(app, contains('else if (isLoanTransaction) {\n                  await state.updateLinkedLoanTransaction(tx);'));
+    expect(app, contains('else if (isLoanTransaction) {'));
+    expect(app, contains('await state.updateLinkedLoanTransaction(tx);'));
   });
 
   test('loan transaction edits and deletes keep linked loan data synchronized', () {

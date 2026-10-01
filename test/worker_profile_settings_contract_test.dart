@@ -18,7 +18,7 @@ void main() {
     expect(profile, contains("_uri('/profile/api/accounts?page=1')"));
     expect(profile, contains("'/profile/api/accounts/\$userId/username'"));
     expect(profile, contains("'/profile/api/accounts/\$userId/password'"));
-    expect(profile, contains("title: 'Administrator login'"));
+    expect(profile, contains("Text('Administrator login'"));
     expect(profile, contains("'Administrator'"));
     expect(profile, contains("administratorUserId"));
     expect(profile, contains('administratorFallback'));

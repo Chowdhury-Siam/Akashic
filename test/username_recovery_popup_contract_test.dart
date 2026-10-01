@@ -29,9 +29,10 @@ void main() {
     expect(app, contains('class YutakaPopupContent extends StatelessWidget'));
     expect(app, contains('fit: BoxFit.scaleDown'));
 
-    // The only remaining SingleChildScrollView in main.dart belongs to the
-    // full onboarding page, not a showYutakaPopup center dialog.
-    expect(RegExp(r'SingleChildScrollView\(').allMatches(app).length, 1);
+    final popupStart = app.indexOf('class YutakaPopupContent extends StatelessWidget');
+    final popupEnd = app.indexOf('// -----------------------------------------------------------------------------\n// Onboarding', popupStart);
+    final popupBody = app.substring(popupStart, popupEnd);
+    expect(popupBody, isNot(contains('SingleChildScrollView(')));
     expect(loans, isNot(contains('SingleChildScrollView(')));
     expect(profile, isNot(contains('SingleChildScrollView(')));
   });

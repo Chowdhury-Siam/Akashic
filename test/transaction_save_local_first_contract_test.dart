@@ -4,9 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final source = File('lib/main.dart').readAsStringSync();
+  final controllerStart = source.indexOf('class AppController extends ChangeNotifier');
 
   String methodBody(String signature, String nextSignature) {
-    final start = source.indexOf(signature);
+    final start = source.indexOf(signature, controllerStart);
     final end = source.indexOf(nextSignature, start + signature.length);
     expect(start, greaterThanOrEqualTo(0));
     expect(end, greaterThan(start));

@@ -6,6 +6,7 @@ void main() {
   test('Yutaka branding and release identity stay synchronized', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final config = File('lib/app_config.dart').readAsStringSync();
+    final updates = File('lib/update_service.dart').readAsStringSync();
     final gradle = File('android/app/build.gradle').readAsStringSync();
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     final workflow = File('.github/workflows/build-android-apks.yml').readAsStringSync();
@@ -13,9 +14,11 @@ void main() {
     final backup = File('lib/main.dart').readAsStringSync();
 
     expect(pubspec, contains('name: yutaka'));
-    expect(pubspec, contains('version: 1.0.1231+275'));
+    expect(pubspec, contains('version: 1.0.1232+276'));
     expect(config, contains("const appTitle = 'Yutaka';"));
-    expect(config, contains('github.com/Chowdhury-Siam/Yutaka'));
+    expect(updates, contains("const updateGithubOwner = 'Chowdhury-Siam';"));
+    expect(updates, contains("const updateGithubRepo = 'Yutaka';"));
+    expect(updates, contains("const updateGithubWebBase = 'https://github.com';"));
     expect(gradle, contains('namespace = "com.yutaka.siam"'));
     expect(gradle, contains('applicationId = "com.yutaka.siam"'));
     expect(manifest, contains('android:label="Yutaka"'));
