@@ -96,9 +96,11 @@ Local data remains on a device until you delete it, clear app storage, or uninst
 
 Self-hosted data remains in the configured Worker/database until it is deleted there or removed under the administrator's infrastructure retention rules.
 
-Yutaka provides authenticated self-deletion for sync accounts inside the app. Current self-hosted Workers also provide a browser deletion page at:
+Yutaka provides authenticated self-deletion for sync accounts inside the app. A public deletion gateway is also available without installing Yutaka at:
 
-`https://<your-worker-host>/delete-account`
+`https://chowdhury-siam.github.io/Yutaka/delete-account/`
+
+The gateway asks only for the user's self-hosted Worker URL and redirects to that Worker's authenticated `/delete-account` form. Usernames and passwords are entered only on the user's Worker. The Worker form can also be opened directly at `https://<your-worker-host>/delete-account`.
 
 Account deletion removes the account and its Worker-side synchronized finance data, profile media, device/session records, schedules, and stored integration credentials for that account. Local copies already present on devices and files already exported to Telegram or Google Drive must be removed separately.
 

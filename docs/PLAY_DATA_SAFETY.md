@@ -1,6 +1,6 @@
 # Google Play Data Safety checklist for Yutaka
 
-**Release baseline:** Yutaka 1.0.1224+268  
+**Release baseline:** Yutaka 1.0.1225+269  
 **Reviewed:** 1 October 2026
 
 This file documents the current code paths so the Play Console Data safety form can be completed consistently with the shipped app. Re-check this document whenever dependencies, permissions, sync behavior, telemetry, or integrations change.
@@ -64,6 +64,7 @@ The current Android app does not intentionally collect or request:
 - Sync authentication tokens and supported deployment secrets use platform secure storage.
 - Worker-stored Telegram and Google OAuth secrets are encrypted with Worker-side keys.
 - Users can request deletion of their self-hosted sync account and Worker-side data.
+- Google Play account-deletion URL: `https://chowdhury-siam.github.io/Yutaka/delete-account/` (public page; no app installation required).
 - Local device copies and previously exported external files are separate from Worker-side deletion and must be removed independently.
 - Telemetry is optional and off by default.
 

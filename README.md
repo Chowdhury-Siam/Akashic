@@ -453,7 +453,7 @@ The browser page requires the account username, current password, and `DELETE` c
 
 If the deleted account is the Worker administrator, all administrator web sessions and its encrypted deployment-recovery vault are revoked. The oldest remaining account becomes administrator. If no accounts remain, the Worker clears its ownership/registration latch so one new first account can be created again.
 
-A standalone description of this process is available in [`docs/ACCOUNT_DELETION.md`](docs/ACCOUNT_DELETION.md). Publish that page (or equivalent content on your website) at a stable public URL before entering an account-deletion URL in Google Play Console.
+A public account-deletion gateway is shipped at [`docs/delete-account/`](docs/delete-account/) and is published through the **Deploy Yutaka Public Pages** workflow at `https://chowdhury-siam.github.io/Yutaka/delete-account/`. It asks only for the Worker URL and redirects to that Worker's authenticated deletion form, so Yutaka's public page never receives account credentials. Use this public URL for the Google Play account-deletion disclosure.
 
 ### 6.3 Sync controls
 
@@ -633,6 +633,8 @@ On Android, automatic local backups run through a native WorkManager job using t
 
 Yutaka ships a production privacy surface under **Settings > Privacy & data**. The public policy source is [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md), a static-hostable HTML copy is available at [`docs/privacy-policy.html`](docs/privacy-policy.html), and the Play Console audit checklist is maintained in [`docs/PLAY_DATA_SAFETY.md`](docs/PLAY_DATA_SAFETY.md).
 
+The repository also includes **Deploy Yutaka Public Pages** (`.github/workflows/deploy-public-pages.yml`), which publishes the `docs/` directory to GitHub Pages. On the canonical repository, set **Settings > Pages > Build and deployment > Source** to **GitHub Actions** once before the first deployment. The published privacy policy is `https://chowdhury-siam.github.io/Yutaka/privacy-policy.html` and the account-deletion page is `https://chowdhury-siam.github.io/Yutaka/delete-account/`.
+
 - Firebase Analytics and Crashlytics collection are **off by default**. Users can explicitly opt in per device from **Settings > Privacy & data**.
 - The Android manifest explicitly removes the Google advertising-ID permission.
 - Finance data is written to local SQLite first.
@@ -693,7 +695,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1224
+  --dart-define=YUTAKA_APP_VERSION=1.0.1225
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -702,7 +704,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1224
+  --dart-define=YUTAKA_APP_VERSION=1.0.1225
 ```
 
 ## 10.4 Windows build
@@ -712,7 +714,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1224
+  --dart-define=YUTAKA_APP_VERSION=1.0.1225
 ```
 
 ## 10.5 Linux build
@@ -729,7 +731,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1224
+  --dart-define=YUTAKA_APP_VERSION=1.0.1225
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -748,7 +750,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1224
+  --dart-define=YUTAKA_APP_VERSION=1.0.1225
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Delete a Yutaka self-hosted sync account without installing the Yutaka app.">
+  <title>Delete your Yutaka account</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f9f6;
+      --surface: #ffffff;
+      --raised: #f3f8f4;
+      --line: #d9e7de;
+      --text: #0f1216;
+      --muted: #66736c;
+      --accent: #00bd91;
+      --danger: #d83a4e;
+      --danger-bg: #fff1f3;
+      --shadow: 0 18px 54px rgba(15, 18, 22, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #0f1216;
+        --surface: #13181d;
+        --raised: #192126;
+        --line: #272f35;
+        --text: #f0f2f3;
+        --muted: #adb5bb;
+        --accent: #27c6a0;
+        --danger: #ff5353;
+        --danger-bg: rgba(255, 83, 83, .10);
+        --shadow: 0 18px 54px rgba(0, 0, 0, .30);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 Inter, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, system-ui, sans-serif;
+      padding: 28px 18px 56px;
+    }
+    main { width: min(100%, 720px); margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+    .mark {
+      display: grid; place-items: center; width: 46px; height: 46px; border-radius: 16px;
+      background: linear-gradient(145deg, #0f9f70, #00bd91); color: #053a28;
+      font-size: 25px; font-weight: 950;
+    }
+    .brand strong { display: block; font-size: 22px; line-height: 1.05; letter-spacing: -.7px; }
+    .brand span { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: clamp(20px, 5vw, 30px); }
+    .danger-icon { width: 52px; height: 52px; border-radius: 18px; background: var(--danger-bg); color: var(--danger); display: grid; place-items: center; font-size: 26px; margin-bottom: 18px; }
+    h1 { font-size: clamp(28px, 6vw, 36px); line-height: 1.12; letter-spacing: -1px; margin: 0 0 8px; }
+    h2 { margin: 30px 0 8px; font-size: 18px; }
+    p { margin: 0; color: var(--muted); }
+    .notice { margin: 20px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--raised); color: var(--text); }
+    .notice strong { display: block; margin-bottom: 4px; }
+    form { display: grid; gap: 10px; margin: 22px 0 0; }
+    label { font-weight: 800; }
+    input {
+      width: 100%; min-height: 50px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--raised); color: var(--text); padding: 12px 14px; font: inherit; outline: none;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 78%); }
+    button {
+      min-height: 50px; border: 0; border-radius: 14px; padding: 12px 16px; margin-top: 4px;
+      font: inherit; font-weight: 850; cursor: pointer; background: var(--danger); color: #fff;
+    }
+    button:hover { filter: brightness(1.04); }
+    .hint, .error { font-size: 13px; }
+    .hint { color: var(--muted); }
+    .error { display: none; color: var(--danger); font-weight: 750; }
+    ul { margin: 10px 0 0; padding-left: 22px; color: var(--muted); }
+    li + li { margin-top: 5px; }
+    a { color: var(--accent); font-weight: 800; }
+    .footer { margin-top: 18px; text-align: center; color: var(--muted); font-size: 12px; }
+    noscript .notice { border-color: var(--danger); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">
+      <div class="mark" aria-hidden="true">Y</div>
+      <div><strong>Yutaka</strong><span>Account deletion</span></div>
+    </div>
+
+    <section class="card">
+      <div class="danger-icon" aria-hidden="true">×</div>
+      <h1>Delete your Yutaka account</h1>
+      <p>You can permanently delete a self-hosted Yutaka sync account here without installing the Yutaka app.</p>
+
+      <div class="notice">
+        <strong>Your credentials never pass through this page.</strong>
+        Enter only your Yutaka Sync Worker URL. You will continue to the deletion form hosted by your own Worker, where you enter your username, password, and the required <code>DELETE</code> confirmation.
+      </div>
+
+      <form id="worker-form" novalidate>
+        <label for="worker-url">Yutaka Sync Worker URL</label>
+        <input id="worker-url" name="worker-url" type="url" inputmode="url" autocomplete="url" placeholder="https://your-worker.workers.dev" required aria-describedby="worker-hint worker-error">
+        <div id="worker-hint" class="hint">Use the same HTTPS Worker URL configured in Yutaka. If you paste a Worker page such as <code>/profile</code>, Yutaka will still open the correct deletion page.</div>
+        <div id="worker-error" class="error" role="alert"></div>
+        <button type="submit">Continue to secure deletion</button>
+      </form>
+
+      <noscript>
+        <div class="notice"><strong>JavaScript is disabled.</strong> Open your Worker URL manually and append <code>/delete-account</code>, for example <code>https://your-worker.workers.dev/delete-account</code>.</div>
+      </noscript>
+
+      <h2>What Worker-side deletion removes</h2>
+      <ul>
+        <li>the sync account and password verifier;</li>
+        <li>synchronized finance data and change history;</li>
+        <li>profile media;</li>
+        <li>registered devices, access/refresh sessions, and recovery credentials;</li>
+        <li>backup and Analytics schedules; and</li>
+        <li>stored Telegram and Google Drive configuration for that account.</li>
+      </ul>
+
+      <h2>What is not removed automatically</h2>
+      <p>Local/offline copies already stored on your devices and files previously exported to Telegram or Google Drive remain until you delete them separately.</p>
+
+      <h2>Other deletion option</h2>
+      <p>If Yutaka is still installed and you are signed in, use <strong>Settings → Account &amp; sync → Delete account</strong>. Account deletion is permanent and cannot be undone.</p>
+
+      <h2>Privacy</h2>
+      <p>See the <a href="../privacy-policy.html">Yutaka Privacy Policy</a>. For support, contact <a href="mailto:ssiam4235@gmail.com">ssiam4235@gmail.com</a>.</p>
+    </section>
+    <div class="footer">Yutaka · local-first personal finance</div>
+  </main>
+
+  <script>
+    (() => {
+      const form = document.getElementById('worker-form');
+      const input = document.getElementById('worker-url');
+      const error = document.getElementById('worker-error');
+
+      const showError = (message) => {
+        error.textContent = message;
+        error.style.display = 'block';
+        input.setAttribute('aria-invalid', 'true');
+      };
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        error.textContent = '';
+        error.style.display = 'none';
+        input.removeAttribute('aria-invalid');
+
+        let raw = input.value.trim();
+        if (!raw) {
+          showError('Enter your Yutaka Sync Worker URL.');
+          input.focus();
+          return;
+        }
+        if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+
+        let worker;
+        try {
+          worker = new URL(raw);
+        } catch (_) {
+          showError('Enter a valid Worker URL, for example https://your-worker.workers.dev.');
+          input.focus();
+          return;
+        }
+
+        if (worker.protocol !== 'https:') {
+          showError('For account security, the Worker URL must use HTTPS.');
+          input.focus();
+          return;
+        }
+        if (!worker.hostname || worker.username || worker.password) {
+          showError('Enter a valid HTTPS Worker URL without embedded credentials.');
+          input.focus();
+          return;
+        }
+
+        const destination = new URL('/delete-account', worker.origin);
+        window.location.assign(destination.toString());
+      });
+    })();
+  </script>
+</body>
+</html>

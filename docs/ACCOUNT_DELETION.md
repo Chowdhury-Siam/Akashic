@@ -13,13 +13,15 @@ Yutaka can be used completely offline without an account. If you created an acco
 
 ## Without the app
 
-Open your own Worker URL and append `/delete-account`:
+Open Yutaka's public account-deletion page:
 
 ```text
-https://<your-worker-host>/delete-account
+https://chowdhury-siam.github.io/Yutaka/delete-account/
 ```
 
-Enter the username and current password, type **DELETE**, and submit the form. Reinstalling Yutaka is not required.
+Enter only your Yutaka Sync Worker URL. The page redirects your browser to that Worker's own `/delete-account` form. Your username and password are entered only on your self-hosted Worker and are not collected by the public Yutaka page. Type **DELETE** on the Worker form and submit it. Reinstalling Yutaka is not required.
+
+You can also open the Worker form directly at `https://<your-worker-host>/delete-account`.
 
 ## Data deleted from the Worker
 

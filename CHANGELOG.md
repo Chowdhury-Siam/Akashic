@@ -1,3 +1,11 @@
+## [1.0.1225] - 2026-10-01
+
+- Added a public Google Play account-deletion gateway at `docs/delete-account/` that works without installing Yutaka and redirects users directly to their own self-hosted Worker's authenticated `/delete-account` portal.
+- Added a GitHub Pages deployment workflow for Yutaka's public privacy and account-deletion pages, and changed the in-app public links to the stable Pages URLs.
+- Kept usernames and passwords off the central Yutaka page: only the Worker URL is entered there, while credentials remain between the user and their own Worker.
+- Added regression coverage for the public deletion page, stable URLs, and Pages deployment contract.
+- Bumped synchronized app/Android/Worker release metadata to `1.0.1225+269`.
+
 ## [1.0.1224] - 2026-10-01
 
 - Fixed the cross-platform release compile failure caused by the backup file picker referencing `backupExtension` outside `BackupService`; the save dialog now uses the scoped compile-time constant `BackupService.backupExtension`.

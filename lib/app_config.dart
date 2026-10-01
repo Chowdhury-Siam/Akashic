@@ -33,14 +33,14 @@ const String kSleekAccentHex = '#00BD91';
 const String kLegacyStarterCashIconHex = '#78D8E8';
 
 const appTitle = 'Yutaka';
-const appVersion = String.fromEnvironment('YUTAKA_APP_VERSION', defaultValue: '1.0.1224');
+const appVersion = String.fromEnvironment('YUTAKA_APP_VERSION', defaultValue: '1.0.1225');
 const kAndroidDistribution = appFlavor ?? String.fromEnvironment('YUTAKA_ANDROID_DISTRIBUTION', defaultValue: 'direct');
 const bool kIsGooglePlayBuild = kAndroidDistribution == 'play';
 const kLowEndFriendlyUi = true;
 const backupPassword = 'YOUR_SECRET_PASSWORD';
 const kSyncAdminTelegramUrl = 'https://t.me/Ch0wdhury_Siam';
-const kPrivacyPolicyUrl = 'https://github.com/Chowdhury-Siam/Yutaka/blob/main/PRIVACY_POLICY.md';
-const kAccountDeletionInfoUrl = 'https://github.com/Chowdhury-Siam/Yutaka/blob/main/docs/ACCOUNT_DELETION.md';
+const kPrivacyPolicyUrl = 'https://chowdhury-siam.github.io/Yutaka/privacy-policy.html';
+const kAccountDeletionInfoUrl = 'https://chowdhury-siam.github.io/Yutaka/delete-account/';
 const kPrivacyTelemetryPreferenceKey = 'privacyTelemetryEnabled';
 const int kHomeTabIndex = 0;
 const int kAnalysisTabIndex = 1;
