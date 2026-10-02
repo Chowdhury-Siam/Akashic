@@ -1492,7 +1492,9 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
       googleDrive: state.loadGoogleDriveAnalyticsSettings,
     );
     if (!mounted || generation != _loadGeneration ||
-        accountKey != _accountKey(context.read<AppController>())) return;
+        accountKey != _accountKey(context.read<AppController>())) {
+      return;
+    }
     final telegram = result.telegram.value;
     final drive = result.googleDrive.value;
     final errors = <String>[];

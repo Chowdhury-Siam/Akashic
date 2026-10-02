@@ -1,3 +1,9 @@
+## [1.0.1254] - 2026-10-03
+
+- Added the required block around the multiline credential-load account guard to resolve `curly_braces_in_flow_control_structures`.
+- Retained the credential restoration, keyboard visibility, and logo fixes.
+- Bumped synchronized release metadata to `1.0.1254+298`.
+
 ## [1.0.1253] - 2026-10-03
 
 - Restores saved Telegram/Google Drive credential metadata independently so a failed provider request cannot discard the other provider settings after a fresh login.
