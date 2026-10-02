@@ -1,5 +1,6 @@
 ## [1.0.1241] - 2026-10-02
 
+- Fixed release version parsing for Windows CRLF line endings across Android, Linux, macOS, and release publication.
 - Fixed browser account-deletion forms rejecting their own requests: the deletion page uses a same-origin referrer policy so native POSTs retain their Origin header. Cross-origin and opaque-origin submissions remain blocked.
 - Attached the signed Google Play `.aab` to GitHub Releases alongside the direct APK downloads.
 - Fixed the `libflutter.so` 16 KB validator false positive: RELRO that exactly covers an entire LOAD segment is accepted, matching Android's linker. Misaligned RELRO with a writable tail and LOAD alignment below 16 KB still fail. Added runnable Python regressions to the Android quality gate.

@@ -125,6 +125,9 @@ jobs:
       - name: Test 16 KB ELF validator
         run: python3 -m unittest discover -s tools/android -p 'test_*.py'
 
+      - name: Test release version readers
+        run: bash tools/test_release_version.sh
+
       - name: Run release test suite
         run: flutter test --no-pub
 
@@ -321,7 +324,7 @@ jobs:
 
       - name: Read app version
         run: |
-          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          FULL_VERSION="$(awk '/^version:/ { sub(/\r$/, "", $2); print $2; exit }' pubspec.yaml)"
           VERSION_NAME="${FULL_VERSION%%+*}"
           BUILD_NUMBER="${FULL_VERSION##*+}"
           if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
