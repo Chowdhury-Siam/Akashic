@@ -104,10 +104,22 @@ test('browser deletion page is self-service and requires password plus DELETE co
 
   const page = await deleteAccountPortal(new Request(origin + '/delete-account'), env, connect);
   assert.equal(page.status, 200);
+  assert.equal(page.headers.get('referrer-policy'), 'same-origin');
   const html = await page.text();
   assert.match(html, /Delete your Yutaka account/);
   assert.match(html, /Type DELETE to confirm/);
   assert.match(html, /Permanently delete account/);
+
+  for (const rejectedOrigin of ['https://other.example', 'null']) {
+    const rejected = await deleteAccountPortal(new Request(origin + '/delete-account', {
+      method: 'POST',
+      headers: { origin: rejectedOrigin, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: 'web-owner', password: 'password123', confirmation: 'DELETE' }),
+    }), env, connect);
+    assert.equal(rejected.status, 403);
+    assert.equal(rejected.headers.get('referrer-policy'), 'same-origin');
+    assert.equal(Number((await db.execute('SELECT COUNT(*) AS count FROM users')).rows[0].count), 1);
+  }
 
   const bad = await deleteAccountPortal(new Request(origin + '/delete-account', {
     method: 'POST',

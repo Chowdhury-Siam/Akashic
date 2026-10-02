@@ -629,7 +629,8 @@ export async function deleteAccountPortal(
   response.headers.set('content-security-policy', `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`);
   response.headers.set('x-content-type-options', 'nosniff');
   response.headers.set('x-frame-options', 'DENY');
-  response.headers.set('referrer-policy', 'no-referrer');
+  // no-referrer makes native form POSTs send Origin: null and fail our origin check.
+  response.headers.set('referrer-policy', 'same-origin');
   return response;
 }
 
