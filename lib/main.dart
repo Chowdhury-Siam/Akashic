@@ -2184,7 +2184,7 @@ class AppController extends ChangeNotifier {
   bool useSeparators = true;
   bool amountsHidden = false;
   bool privacyTelemetryEnabled = false;
-  DateRangeType dateRangeType = DateRangeType.thisMonth;
+  DateRangeType dateRangeType = DateRangeType.allTime;
   DateTime? customStart;
   DateTime? customEnd;
   List<String> filterAccountIds = [];
@@ -2573,7 +2573,7 @@ class AppController extends ChangeNotifier {
       await legacyProfilePrefs.remove(key);
     }
     dismissedFinancialHealthSummaryKeys = await prefs.getStringList('dismissedFinancialHealthSummaryKeys');
-    dateRangeType = await prefs.getEnum('dateRangeType', DateRangeType.values, DateRangeType.thisMonth);
+    dateRangeType = await prefs.getEnum('dateRangeType', DateRangeType.values, DateRangeType.allTime);
     final startRaw = await prefs.getString('customStart', '');
     final endRaw = await prefs.getString('customEnd', '');
     customStart = startRaw.isEmpty ? null : DateTime.tryParse(startRaw);
@@ -5476,7 +5476,7 @@ class AppController extends ChangeNotifier {
     await sp.setBool('amountsHidden', false);
     await sp.setString('profileDisplayName', '');
     await sp.setStringList('dismissedFinancialHealthSummaryKeys', const []);
-    await sp.setString('dateRangeType', enumName(DateRangeType.thisMonth));
+    await sp.setString('dateRangeType', enumName(DateRangeType.allTime));
     await sp.setString('customStart', '');
     await sp.setString('customEnd', '');
     await sp.setStringList('filterAccountIds', const []);
@@ -17723,6 +17723,8 @@ class _TransactionEditorState extends State<TransactionEditor> {
   final notes = TextEditingController();
   final amount = TextEditingController();
   final amountFocus = FocusNode();
+  final notesFocus = FocusNode();
+  final notesKey = GlobalKey();
   MoneyTransactionType type = MoneyTransactionType.expense;
   String? categoryId;
   String? fromAccountId;
@@ -17741,6 +17743,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
   void initState() {
     super.initState();
     amountFocus.addListener(_handleAmountFocusChanged);
+    notesFocus.addListener(_handleNotesFocusChanged);
     final state = context.read<AppController>();
     final tx = widget.transaction;
     if (tx != null) {
@@ -17777,10 +17780,26 @@ class _TransactionEditorState extends State<TransactionEditor> {
     FocusScope.of(context).unfocus();
   }
 
+  void _handleNotesFocusChanged() {
+    if (!notesFocus.hasFocus) return;
+    _scrollNotesIntoView();
+    Future<void>.delayed(AppMotion.medium, _scrollNotesIntoView);
+  }
+
+  void _scrollNotesIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = notesKey.currentContext;
+      if (!mounted || target == null) return;
+      Scrollable.ensureVisible(target, duration: AppMotion.medium, curve: AppMotion.emphasized, alignment: .72);
+    });
+  }
+
   @override
   void dispose() {
     amountFocus.removeListener(_handleAmountFocusChanged);
+    notesFocus.removeListener(_handleNotesFocusChanged);
     amountFocus.dispose();
+    notesFocus.dispose();
     title.dispose();
     notes.dispose();
     amount.dispose();
@@ -17802,11 +17821,14 @@ class _TransactionEditorState extends State<TransactionEditor> {
     if (!isLoanTransaction && type == MoneyTransactionType.transfer) categoryId = '';
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: YutakaPopupContent(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: YutakaPopupContent(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Text(widget.transaction == null ? 'Add transaction' : 'Edit transaction', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 12),
             if (isLoanTransaction)
@@ -18066,9 +18088,17 @@ class _TransactionEditorState extends State<TransactionEditor> {
               label: const Text('Service charge'),
             ),
             const SizedBox(height: 12),
-            TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
+            TextField(
+              key: notesKey,
+              focusNode: notesFocus,
+              contextMenuBuilder: yutakaTextFieldContextMenu,
+              enableInteractiveSelection: true,
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-              controller: notes, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+              controller: notes,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Notes'),
+            ),
             const SizedBox(height: 18),
             Row(children: [
               if (widget.transaction != null) Expanded(child: OutlinedButton(onPressed: () async {
@@ -18165,7 +18195,8 @@ class _TransactionEditorState extends State<TransactionEditor> {
                 ),
               ),
             ]),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -18379,7 +18410,18 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     return PageScaffold(
       title: 'Analysis',
       subtitle: range.label,
-      actions: [IconButton(onPressed: () => showFilterSheet(context), icon: const Icon(Icons.filter_alt_rounded))],
+      actions: [
+        IconButton(
+          onPressed: () => showDateRangeSheet(context),
+          tooltip: 'Change date range',
+          icon: const Icon(Icons.date_range_rounded),
+        ),
+        IconButton(
+          onPressed: () => showFilterSheet(context),
+          tooltip: 'Filter analysis',
+          icon: const Icon(Icons.filter_alt_rounded),
+        ),
+      ],
       child: ResponsiveContent(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -19626,12 +19668,6 @@ class _AnalysisTrendChartState extends State<AnalysisTrendChart> {
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: () => showDateRangeSheet(context),
-                tooltip: 'Change date range',
-                icon: const Icon(Icons.date_range_rounded),
               ),
             ],
           ),

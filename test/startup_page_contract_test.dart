@@ -13,6 +13,9 @@ void main() {
     expect(main, contains('tabIndex = _tabIndexForStartupPage(startupPage);'));
     expect(main, contains("title: 'Startup page'"));
     expect(main, contains("title: 'Choose Startup Page'"));
+    expect(main, contains('DateRangeType dateRangeType = DateRangeType.allTime;'));
+    expect(main, contains("prefs.getEnum('dateRangeType', DateRangeType.values, DateRangeType.allTime)"));
+    expect(main, contains("sp.setString('dateRangeType', enumName(DateRangeType.allTime))"));
 
     for (final value in ['home', 'analysis', 'loans', 'transaction', 'categories']) {
       expect(main, contains('StartupPage.$value'));

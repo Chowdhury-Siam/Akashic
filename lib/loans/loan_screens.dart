@@ -147,14 +147,7 @@ class _LoansScreenState extends State<LoansScreen> {
             selected: filter,
             onChanged: (value) => setState(() => filter = value),
           ),
-          SectionHeader(
-            filter == _LoanFilter.settled ? 'Settled records' : 'People',
-            trailing: TextButton.icon(
-              onPressed: () => showLoanEditorSheet(context, defaultDirection: filter == _LoanFilter.pay ? LoanDirection.borrowed : LoanDirection.lent),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('New loan'),
-            ),
-          ),
+          SectionHeader(filter == _LoanFilter.settled ? 'Settled records' : 'People'),
         ],
         empty: EmptyCard(
           icon: Icons.currency_exchange_rounded,
@@ -376,7 +369,7 @@ class LoanDetailScreen extends StatelessWidget {
             if (loan.status == LoanStatus.active)
               PopupMenuItem(value: 'close', child: Text(remaining <= 0.005 ? 'Mark as settled' : 'Settle with final payment')),
             if (loan.status != LoanStatus.active) const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-            if (loan.status != LoanStatus.writtenOff) const PopupMenuItem(value: 'writeoff', child: Text('Write off')),
+            if (loan.status == LoanStatus.active) const PopupMenuItem(value: 'writeoff', child: Text('Write off')),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'delete', child: Text('Delete')),
           ],

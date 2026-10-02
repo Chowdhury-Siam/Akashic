@@ -60,4 +60,10 @@ void main() {
     expect(editor, contains('accountId ??= state.defaultAccountId ?? state.accounts.firstOrNull?.id'));
     expect(editor, contains('installmentCount: old?.installmentCount'));
   });
+
+  test('loan detail only offers write off for active records', () {
+    final file = File('lib/loans/loan_screens.dart').readAsStringSync();
+    expect(file, contains("if (loan.status == LoanStatus.active) const PopupMenuItem(value: 'writeoff', child: Text('Write off'))"));
+    expect(file, isNot(contains("if (loan.status != LoanStatus.writtenOff) const PopupMenuItem(value: 'writeoff', child: Text('Write off'))")));
+  });
 }

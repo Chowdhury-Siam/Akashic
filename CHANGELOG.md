@@ -1,3 +1,9 @@
+## [1.0.1242] - 2026-10-02
+
+- Moved the Analysis date-range control from the Cash flow trend card into the top app-bar actions, immediately before the Analysis filter.
+- Kept the existing date-range picker behavior unchanged while reducing controls inside the chart card.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1242+286`.
+
 ## [1.0.1241] - 2026-10-02
 
 - Fixed release version parsing for Windows CRLF line endings across Android, Linux, macOS, and release publication.
