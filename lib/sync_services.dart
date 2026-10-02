@@ -452,7 +452,11 @@ class YutakaSyncApi {
 
   Future<TelegramBackupSettings> telegramBackupSettings({required String accessToken}) async {
     final data = await _get('/v1/telegram-backup/settings', accessToken: accessToken);
-    return TelegramBackupSettings.fromJson((data['settings'] as Map? ?? const {}).cast<String, dynamic>());
+    final settings = data['settings'];
+    if (settings is! Map || settings['tokenConfigured'] is! bool) {
+      throw StateError('The Worker returned incomplete Telegram settings. Refresh or update your Worker.');
+    }
+    return TelegramBackupSettings.fromJson(settings.cast<String, dynamic>());
   }
 
   Future<TelegramBackupSettings> saveTelegramBackupSettings({
@@ -548,7 +552,11 @@ class YutakaSyncApi {
 
   Future<GoogleDriveAnalyticsSettings> googleDriveAnalyticsSettings({required String accessToken}) async {
     final data = await _get('/v1/analytics-upload/google-drive/settings', accessToken: accessToken);
-    return GoogleDriveAnalyticsSettings.fromJson((data['settings'] as Map? ?? const {}).cast<String, dynamic>());
+    final settings = data['settings'];
+    if (settings is! Map || settings['clientSecretConfigured'] is! bool || settings['connected'] is! bool) {
+      throw StateError('The Worker returned incomplete Google Drive settings. Refresh or update your Worker.');
+    }
+    return GoogleDriveAnalyticsSettings.fromJson(settings.cast<String, dynamic>());
   }
 
   Future<GoogleDriveAnalyticsSettings> saveGoogleDriveAnalyticsSettings({

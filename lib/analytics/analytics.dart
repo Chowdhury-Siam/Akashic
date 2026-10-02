@@ -1419,11 +1419,35 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
   bool _botTokenVisible = false;
   bool _clientSecretVisible = false;
   String? _loadError;
+  bool _telegramLoaded = false;
+  bool _driveLoaded = false;
+  String? _loadedAccountKey;
+  int _loadGeneration = 0;
+
+  String _accountKey(AppController state) => _signedIn(state)
+      ? '${state.cloudSyncApiBaseUrl}|${state.syncAccountUsername}'
+      : '';
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final key = _accountKey(context.watch<AppController>());
+    if (_loadedAccountKey == key) return;
+    _loadedAccountKey = key;
+    _loadGeneration++;
+    _telegram = const TelegramBackupSettings.defaults();
+    _drive = const GoogleDriveAnalyticsSettings.defaults();
+    _telegramLoaded = false;
+    _driveLoaded = false;
+    _botTokenController.clear();
+    _chatIdController.clear();
+    _clientIdController.clear();
+    _clientSecretController.clear();
+    _driveFolderIdController.clear();
+    _loading = key.isNotEmpty;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _loadedAccountKey == key) unawaited(_load());
+    });
   }
 
   @override
@@ -1449,6 +1473,8 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
   Future<void> _load({bool quiet = false}) async {
     if (!mounted) return;
     final state = context.read<AppController>();
+    final accountKey = _accountKey(state);
+    final generation = ++_loadGeneration;
     if (!_signedIn(state)) {
       setState(() {
         _loading = false;
@@ -1456,34 +1482,45 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
       });
       return;
     }
-    if (!quiet) setState(() => _loading = true);
-    try {
-      final telegram = await state.loadSelfHostedTelegramBackupSettings();
-      final drive = await state.loadGoogleDriveAnalyticsSettings();
-      if (!mounted) return;
-      setState(() {
+    setState(() {
+      if (!quiet) _loading = true;
+      _telegramLoaded = false;
+      _driveLoaded = false;
+    });
+    final result = await loadCloudCredentials(
+      telegram: state.loadSelfHostedTelegramBackupSettings,
+      googleDrive: state.loadGoogleDriveAnalyticsSettings,
+    );
+    if (!mounted || generation != _loadGeneration ||
+        accountKey != _accountKey(context.read<AppController>())) return;
+    final telegram = result.telegram.value;
+    final drive = result.googleDrive.value;
+    final errors = <String>[];
+    if (result.telegram.error != null) {
+      errors.add('Telegram settings could not be loaded. Tap Refresh to retry. ${_analyticsUploadError(result.telegram.error!)}');
+    }
+    if (result.googleDrive.error != null) {
+      errors.add('Google Drive settings could not be loaded. Tap Refresh to retry. ${_analyticsUploadError(result.googleDrive.error!)}');
+    }
+    setState(() {
+      _telegramLoaded = result.telegram.loaded;
+      _driveLoaded = result.googleDrive.loaded;
+      if (telegram != null) {
         _telegram = telegram;
-        _drive = drive;
         _chatIdController.text = telegram.chatId;
+      }
+      if (drive != null) {
+        _drive = drive;
         _clientIdController.text = drive.clientId;
         _driveFolderIdController.text = drive.folderId;
-        _loadError = null;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      final message = _analyticsUploadError(error);
-      setState(() {
-        _loadError = message == 'Not found.'
-            ? 'Redeploy the latest Self-Hosted Sync Worker to use cloud credentials.'
-            : message;
-        _loading = false;
-      });
-    }
+      }
+      _loadError = errors.isEmpty ? null : errors.join('\n');
+      _loading = false;
+    });
   }
 
   Future<void> _saveTelegramCredentials() async {
-    if (_busy) return;
+    if (_busy || !_telegramLoaded) return;
     final chatId = _chatIdController.text.trim();
     if (chatId.isEmpty) {
       showSnack(context, 'Enter the Telegram group or channel Chat ID.');
@@ -1521,7 +1558,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
   }
 
   Future<void> _testTelegramCredentials() async {
-    if (_busy) return;
+    if (_busy || !_telegramLoaded) return;
     final chatId = _chatIdController.text.trim();
     if (chatId.isEmpty) {
       showSnack(context, 'Enter the Telegram group or channel Chat ID.');
@@ -1556,7 +1593,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
   }
 
   Future<void> _connectGoogleDrive() async {
-    if (_busy) return;
+    if (_busy || !_driveLoaded) return;
     final state = context.read<AppController>();
     if (!_signedIn(state)) {
       showSnack(context, 'Sign in to your Self-Hosted Sync Worker first.');
@@ -1614,7 +1651,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
   }
 
   Future<void> _disconnectGoogleDrive() async {
-    if (_busy) return;
+    if (_busy || !_driveLoaded) return;
     setState(() => _busy = true);
     try {
       final next = await context.read<AppController>().disconnectGoogleDriveAnalytics();
@@ -1697,7 +1734,9 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                               Text('Telegram', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
                               const SizedBox(height: 2),
                               Text(
-                                _telegram.tokenConfigured && _telegram.chatId.isNotEmpty
+                                !_telegramLoaded
+                                    ? 'Saved settings unavailable • tap Refresh'
+                                    : _telegram.tokenConfigured && _telegram.chatId.isNotEmpty
                                     ? 'Configured • ${_telegram.chatId}'
                                     : 'Used for automatic backups and report delivery',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
@@ -1721,7 +1760,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                           enableSuggestions: false,
                           decoration: InputDecoration(
                             labelText: _telegram.tokenConfigured ? 'Bot token (saved)' : 'Bot token',
-                            hintText: _telegram.tokenConfigured ? 'Leave blank to keep the current token' : '123456789:AA...',
+                            hintText: !_telegramLoaded ? 'Refresh to load saved credentials' : _telegram.tokenConfigured ? 'Saved in your account' : '123456789:AA...',
                             prefixIcon: const Icon(Icons.smart_toy_rounded),
                             suffixIcon: IconButton(
                               tooltip: _botTokenVisible ? 'Hide token' : 'Show token',
@@ -1749,7 +1788,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                         Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _busy ? null : _testTelegramCredentials,
+                              onPressed: _busy || !_telegramLoaded ? null : _testTelegramCredentials,
                               icon: const Icon(Icons.verified_rounded),
                               label: const Text('Test'),
                             ),
@@ -1757,7 +1796,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: _busy ? null : _saveTelegramCredentials,
+                              onPressed: _busy || !_telegramLoaded ? null : _saveTelegramCredentials,
                               icon: const Icon(Icons.save_rounded),
                               label: const Text('Save'),
                             ),
@@ -1847,19 +1886,19 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                         const SizedBox(height: 12),
                         if (_drive.connected) ...[
                           FilledButton.icon(
-                            onPressed: _busy ? null : _connectGoogleDrive,
+                            onPressed: _busy || !_driveLoaded ? null : _connectGoogleDrive,
                             icon: _busy ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync_rounded),
                             label: const Text('Save and reconnect Google Drive'),
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
-                            onPressed: _busy ? null : _disconnectGoogleDrive,
+                            onPressed: _busy || !_driveLoaded ? null : _disconnectGoogleDrive,
                             icon: const Icon(Icons.link_off_rounded),
                             label: const Text('Disconnect Google Drive'),
                           ),
                         ] else
                           FilledButton.icon(
-                            onPressed: _busy ? null : _connectGoogleDrive,
+                            onPressed: _busy || !_driveLoaded ? null : _connectGoogleDrive,
                             icon: _busy ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cloud_upload_rounded),
                             label: const Text('Save and connect Google Drive'),
                           ),
@@ -1911,31 +1950,29 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
       return;
     }
     setState(() => _loading = true);
-    try {
-      final telegram = await state.loadSelfHostedTelegramBackupSettings();
-      final drive = await state.loadGoogleDriveAnalyticsSettings();
-      final schedules = await state.loadAnalyticsPdfSchedules();
-      if (!mounted) return;
-      setState(() {
-        _telegram = telegram;
-        _drive = drive;
+    final credentials = await loadCloudCredentials(
+      telegram: state.loadSelfHostedTelegramBackupSettings,
+      googleDrive: state.loadGoogleDriveAnalyticsSettings,
+    );
+    final scheduleResult = await loadCredential(state.loadAnalyticsPdfSchedules);
+    if (!mounted) return;
+    final telegram = credentials.telegram.value;
+    final drive = credentials.googleDrive.value;
+    final schedules = scheduleResult.value;
+    final errors = [credentials.telegram.error, credentials.googleDrive.error, scheduleResult.error]
+        .whereType<Object>().map(_analyticsUploadError).toList();
+    setState(() {
+      if (telegram != null) _telegram = telegram;
+      if (drive != null) _drive = drive;
+      if (schedules != null) {
         _telegramPdfSchedule = schedules[AnalyticsPdfScheduleDestination.telegram] ??
             const AnalyticsPdfScheduleSettings.defaults(AnalyticsPdfScheduleDestination.telegram);
         _drivePdfSchedule = schedules[AnalyticsPdfScheduleDestination.googleDrive] ??
             const AnalyticsPdfScheduleSettings.defaults(AnalyticsPdfScheduleDestination.googleDrive);
-        _loadError = null;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      final message = _analyticsUploadError(error);
-      setState(() {
-        _loadError = message == 'Not found.'
-            ? 'Redeploy the latest Self-Hosted Sync Worker to use automatic cloud report uploads.'
-            : message;
-        _loading = false;
-      });
-    }
+      }
+      _loadError = errors.isEmpty ? null : 'Cloud settings could not be fully loaded. Tap Refresh to retry. ${errors.join(' ')}';
+      _loading = false;
+    });
   }
 
   AnalyticsPdfScheduleSettings _schedule(AnalyticsPdfScheduleDestination destination) =>
@@ -1970,6 +2007,10 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
 
   Future<void> _savePdfSchedule(AnalyticsPdfScheduleDestination destination) async {
     if (_busy) return;
+    if (_loadError != null || _loading) {
+      showSnack(context, 'Refresh cloud settings before saving the schedule.');
+      return;
+    }
     final current = _schedule(destination);
     final telegramReady = _telegram.tokenConfigured && _telegram.chatId.isNotEmpty;
     if (current.enabled && destination == AnalyticsPdfScheduleDestination.telegram && !telegramReady) {

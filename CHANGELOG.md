@@ -1,3 +1,11 @@
+## [1.0.1253] - 2026-10-03
+
+- Restores saved Telegram/Google Drive credential metadata independently so a failed provider request cannot discard the other provider settings after a fresh login.
+- Distinguishes unavailable settings from genuinely unconfigured credentials, blocks unsafe saves until loaded, and shows a clear saved Telegram token placeholder.
+- Reloads Credential when the account/Worker changes and ignores stale requests.
+- Preserves successfully loaded credentials in backup/report screens and rejects incomplete Worker responses instead of silently treating them as empty settings.
+- Retained previous keyboard and logo fixes; synchronized release metadata to `1.0.1253+297`.
+
 ## [1.0.1252] - 2026-10-03
 
 - Added shared focus-aware popup positioning to keep inputs and nearby actions above the keyboard without shrinking the form or enabling page scrolling.

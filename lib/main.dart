@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'keyboard_aware_popup.dart';
+import 'cloud_credentials_loader.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -23420,6 +23421,8 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   GoogleDriveBackupSettings _drive = const GoogleDriveBackupSettings.defaults();
   GoogleDriveAnalyticsSettings _driveCredentials = const GoogleDriveAnalyticsSettings.defaults();
   bool _loading = true;
+  bool _telegramLoaded = false;
+  bool _driveLoaded = false;
   bool _busy = false;
 
   @override
@@ -23429,31 +23432,30 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   }
 
   Future<void> _load() async {
-    try {
-      final state = context.read<AppController>();
-      final values = await Future.wait([
-        state.loadSelfHostedTelegramBackupSettings(),
-        state.loadGoogleDriveBackupSettings(),
-        state.loadGoogleDriveAnalyticsSettings(),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _telegram = values[0] as TelegramBackupSettings;
-        _drive = values[1] as GoogleDriveBackupSettings;
-        _driveCredentials = values[2] as GoogleDriveAnalyticsSettings;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      final message = error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
-      final normalized = message.toLowerCase();
-      showSnack(
-        context,
-        normalized.contains('not found') || normalized.contains('404')
-            ? 'Redeploy the latest Self-Hosted Sync Worker to use cloud backup scheduling.'
-            : message,
-      );
+    if (!mounted) return;
+    final state = context.read<AppController>();
+    setState(() => _loading = true);
+    final credentials = await loadCloudCredentials(
+      telegram: state.loadSelfHostedTelegramBackupSettings,
+      googleDrive: state.loadGoogleDriveAnalyticsSettings,
+    );
+    final driveBackup = await loadCredential(state.loadGoogleDriveBackupSettings);
+    if (!mounted) return;
+    final telegram = credentials.telegram.value;
+    final driveCredentials = credentials.googleDrive.value;
+    final drive = driveBackup.value;
+    setState(() {
+      if (telegram != null) _telegram = telegram;
+      if (drive != null) _drive = drive;
+      if (driveCredentials != null) _driveCredentials = driveCredentials;
+      _telegramLoaded = credentials.telegram.loaded;
+      _driveLoaded = credentials.googleDrive.loaded && driveBackup.loaded;
+      _loading = false;
+    });
+    final errors = [credentials.telegram.error, credentials.googleDrive.error, driveBackup.error]
+        .whereType<Object>().toList();
+    if (errors.isNotEmpty) {
+      showSnack(context, 'Cloud settings could not be fully loaded. Retry before changing credentials. ${_analyticsUploadError(errors.first)}');
     }
   }
 
@@ -23525,6 +23527,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   }
 
   Future<void> _saveTelegram() async {
+    if (!_telegramLoaded || _loading) {
+      await _load();
+      if (!mounted || !_telegramLoaded) return;
+    }
     if (_telegram.enabled && !_telegramReady) {
       showSnack(context, 'Configure Telegram in Settings > Credential before enabling cloud backups.');
       return;
@@ -23559,6 +23565,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   }
 
   Future<void> _saveDrive() async {
+    if (!_driveLoaded || _loading) {
+      await _load();
+      if (!mounted || !_driveLoaded) return;
+    }
     if (_drive.enabled && !_driveReady) {
       showSnack(context, 'Connect Google Drive in Settings > Credential before enabling cloud backups.');
       return;
@@ -23591,6 +23601,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   }
 
   Future<void> _sendTelegramNow() async {
+    if (!_telegramLoaded || _loading) {
+      await _load();
+      if (!mounted || !_telegramLoaded) return;
+    }
     if (!_telegramReady) {
       showSnack(context, 'Configure Telegram in Settings > Credential first.');
       return;
@@ -23609,6 +23623,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
   }
 
   Future<void> _sendDriveNow() async {
+    if (!_driveLoaded || _loading) {
+      await _load();
+      if (!mounted || !_driveLoaded) return;
+    }
     if (!_driveReady) {
       showSnack(context, 'Connect Google Drive in Settings > Credential first.');
       return;
@@ -23756,6 +23774,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
                 onChanged: _busy
                     ? null
                     : (value) {
+                        if (!_telegramLoaded) {
+                          unawaited(_load());
+                          return;
+                        }
                         if (value && !_telegramReady) {
                           showSnack(context, 'Configure Telegram in Settings > Credential first.');
                           return;
@@ -23803,6 +23825,10 @@ class _SelfHostedTelegramBackupScreenState extends State<SelfHostedTelegramBacku
                 onChanged: _busy
                     ? null
                     : (value) {
+                        if (!_driveLoaded) {
+                          unawaited(_load());
+                          return;
+                        }
                         if (value && !_driveReady) {
                           showSnack(context, 'Connect Google Drive in Settings > Credential first.');
                           return;
