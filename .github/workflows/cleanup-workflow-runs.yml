@@ -1,0 +1,62 @@
+name: Clean Completed Workflow Runs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Publish Stable Release
+      - Deploy Yutaka Public Pages
+      - Deploy Self-Hosted Sync Worker
+    types:
+      - completed
+
+concurrency:
+  group: yutaka-workflow-cleanup
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    if: github.repository == 'Chowdhury-Siam/Yutaka'
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout: this privileged workflow executes only its own trusted code.
+      - name: Remove completed successful or skipped housekeeping runs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const currentRunId = Number(context.runId);
+            const targets = [
+              'publish-stable-release.yml',
+              'deploy-public-pages.yml',
+              'deploy-sync-worker.yml',
+              'cleanup-workflow-runs.yml',
+            ];
+            const removable = new Set(['success', 'skipped']);
+            const candidates = [];
+            // Collect every page before deleting; deletion would shift pagination.
+            for (const workflow_id of targets) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id, status: 'completed', per_page: 100,
+              });
+              for (const run of runs) {
+                if (Number(run.id) !== currentRunId && removable.has(run.conclusion)) {
+                  candidates.push(run.id);
+                }
+              }
+            }
+            let deleted = 0;
+            for (const run_id of candidates) {
+              try {
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id });
+                deleted++;
+              } catch (error) {
+                if (error.status === 404) continue;
+                throw error;
+              }
+            }
+            core.info(`Deleted ${deleted} completed runs. Active, failed and cancelled runs were kept.`);
+            core.info('This cleanup run stays visible until a later cleanup removes it.');

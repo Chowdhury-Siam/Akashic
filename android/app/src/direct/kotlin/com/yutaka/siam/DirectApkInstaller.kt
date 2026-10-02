@@ -1,6 +1,8 @@
 package com.yutaka.siam
 
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -28,9 +30,13 @@ internal object DirectApkInstaller {
         }
     }
 
+    @Synchronized
     fun installApk(activity: FlutterFragmentActivity, path: String): Boolean {
         val apkFile = File(path)
-        if (!apkFile.exists()) return false
+        if (!apkFile.isFile || apkFile.length() == 0L) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return installSession(activity, apkFile)
+        }
         val apkUri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", apkFile)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(apkUri, "application/vnd.android.package-archive")
@@ -40,5 +46,43 @@ internal object DirectApkInstaller {
         activity.grantUriPermission(activity.packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         activity.startActivity(intent)
         return true
+    }
+
+    /** Android 12+ permits eligible self-updates without confirmation. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun installSession(activity: FlutterFragmentActivity, apkFile: File): Boolean {
+        val installer = activity.packageManager.packageInstaller
+        // Avoid duplicate sessions if the app resumes or the user taps again.
+        if (installer.mySessions.any { it.appPackageName == activity.packageName }) return true
+        val archive = activity.packageManager.getPackageArchiveInfo(apkFile.path, 0)
+            ?: throw IllegalArgumentException("The download is not a valid APK.")
+        require(archive.packageName == activity.packageName) { "The APK belongs to another app." }
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(activity.packageName)
+            setSize(apkFile.length())
+            setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        }
+        val sessionId = installer.createSession(params)
+        try {
+            installer.openSession(sessionId).use { session ->
+                apkFile.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, apkFile.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
+                }
+                // Android fills the result extras; restrict this mutable callback
+                // to the explicit, non-exported receiver in the direct flavor.
+                val sender = PendingIntent.getBroadcast(
+                    activity, sessionId, Intent(activity, UpdateInstallReceiver::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                )
+                session.commit(sender.intentSender)
+            }
+            return true
+        } catch (error: Exception) {
+            installer.abandonSession(sessionId)
+            throw error
+        }
     }
 }

@@ -1,3 +1,28 @@
+## [1.0.1258] - 2026-10-03
+
+- Round the loan action menu and reduce row and divider spacing.
+- Style Delete with the theme error color and a trash icon.
+- Bump release metadata to `1.0.1258+302`.
+
+## [1.0.1257] - 2026-10-03
+
+- Remove the Default date filter card from Settings and its unused label helper.
+- Bump release metadata to `1.0.1257+301`.
+
+## [1.0.1256] - 2026-10-03
+
+- Move the transaction count, selected period and sort summary below the toolbar into the full-width list header.
+- Allow the summary to wrap naturally on narrow screens and with larger text instead of truncating beside the action buttons.
+- Retain automatic Android self-updates and bump release metadata to `1.0.1256+300`.
+
+## [1.0.1255] - 2026-10-03
+
+- Direct Android updates use PackageInstaller self-update sessions on Android 12+, requesting installation without another tap when Android permits it.
+- Automatically show Android confirmation when required; older Android versions retain the standard installer.
+- Stage APKs off the UI thread and preserve the downloaded APK for retries after cancellation or failure.
+- Resume automatically after install permission is granted without reopening cancelled installation prompts.
+- Bumped release metadata to `1.0.1255+299`.
+
 ## [1.0.1254] - 2026-10-03
 
 - Added the required block around the multiline credential-load account guard to resolve `curly_braces_in_flow_control_structures`.

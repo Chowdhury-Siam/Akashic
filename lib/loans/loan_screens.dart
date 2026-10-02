@@ -351,6 +351,10 @@ class LoanDetailScreen extends StatelessWidget {
           ),
         ),
         PopupMenuButton<String>(
+          tooltip: 'Loan actions',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           onSelected: (value) async {
             if (value == 'edit') await showLoanEditorSheet(context, loan: loan);
             if (value == 'close') {
@@ -365,13 +369,24 @@ class LoanDetailScreen extends StatelessWidget {
             if (value == 'delete' && context.mounted) await _confirmDeleteLoan(context, state, loan);
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('Edit')),
+            const PopupMenuItem(value: 'edit', height: 44, child: Text('Edit')),
             if (loan.status == LoanStatus.active)
-              PopupMenuItem(value: 'close', child: Text(remaining <= 0.005 ? 'Mark as settled' : 'Settle with final payment')),
-            if (loan.status != LoanStatus.active) const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-            if (loan.status == LoanStatus.active) const PopupMenuItem(value: 'writeoff', child: Text('Write off')),
-            const PopupMenuDivider(),
-            const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              PopupMenuItem(value: 'close', height: 44, child: Text(remaining <= 0.005 ? 'Mark as settled' : 'Settle with final payment')),
+            if (loan.status != LoanStatus.active) const PopupMenuItem(value: 'reopen', height: 44, child: Text('Reopen')),
+            if (loan.status == LoanStatus.active) const PopupMenuItem(value: 'writeoff', height: 44, child: Text('Write off')),
+            const PopupMenuDivider(height: 8),
+            PopupMenuItem(
+              value: 'delete',
+              height: 44,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.delete_outline_rounded, size: 20, color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 10),
+                  Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ],
+              ),
+            ),
           ],
         ),
       ],

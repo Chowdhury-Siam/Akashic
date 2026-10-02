@@ -2274,6 +2274,7 @@ class AppController extends ChangeNotifier {
   bool get cloudSyncOperationBusy => _syncInProgress || cloudSyncBusy || syncAuthBusy;
   int get cloudSyncCancellationSerial => _cloudSyncCancellationSerial;
   bool updateDownloadBusy = false;
+  bool _resumeAndroidInstallAfterPermission = false;
   String updateStatusMessage = 'Not checked yet.';
   DateTime? updateLastCheckedAt;
   GithubRelease? latestGithubRelease;
@@ -3706,7 +3707,7 @@ class AppController extends ChangeNotifier {
         now: DateTime.now(),
         status: 'Complete',
       );
-      updateStatusMessage = 'Download complete. Opening Android installer...';
+      updateStatusMessage = 'Download complete. Starting update...';
       updateDownloadBusy = false;
       await _savePendingAndroidUpdate(path: apkFile.path, version: release.displayVersion, kind: selectedAndroidUpdateKind);
       notifyListeners();
@@ -3757,16 +3758,18 @@ class AppController extends ChangeNotifier {
     try {
       final allowed = await AndroidUpdateInstaller.canInstallPackages();
       if (!allowed) {
+        _resumeAndroidInstallAfterPermission = true;
         updateStatusMessage = 'Allow Yutaka to install unknown apps, then return here to continue.';
         notifyListeners();
         await AndroidUpdateInstaller.openInstallPermissionSettings();
         return;
       }
+      _resumeAndroidInstallAfterPermission = false;
       final opened = await AndroidUpdateInstaller.installApk(pendingAndroidUpdatePath);
-      updateStatusMessage = opened ? 'Android installer opened. Complete installation to update Yutaka.' : 'Could not open Android installer.';
+      updateStatusMessage = opened ? 'Update submitted to Android. Confirm only if Android asks.' : 'Could not start Android update.';
       notifyListeners();
     } catch (_) {
-      updateStatusMessage = 'Could not open Android installer. Please try again.';
+      updateStatusMessage = 'Could not start Android update. Please try again.';
       notifyListeners();
     }
   }
@@ -3779,6 +3782,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (!_resumeAndroidInstallAfterPermission) return;
     try {
       if (await AndroidUpdateInstaller.canInstallPackages()) {
         await installPendingAndroidUpdate();
@@ -17117,7 +17121,6 @@ class TransactionListScreen extends StatelessWidget {
     return PageScaffold(
       title: 'Transaction',
       titleTrailing: const AmountVisibilityToggle(size: 18, padding: EdgeInsets.all(3)),
-      subtitle: subtitle,
       actions: [
         if (hasDateFilter)
           IconButton.filledTonal(
@@ -17155,7 +17158,21 @@ class TransactionListScreen extends StatelessWidget {
           ),
       ],
       child: ResponsiveListContent(
-        header: [ActiveFilterChips(state: state)],
+        header: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              subtitle,
+              key: const ValueKey('transaction-summary'),
+              softWrap: true,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          ActiveFilterChips(state: state),
+        ],
         itemCount: txs.length,
         empty: TransactionListEmptyState(
           state: state,
@@ -21075,7 +21092,6 @@ class SettingsScreen extends StatelessWidget {
             SettingsTile(icon: Icons.open_in_browser_rounded, title: 'Startup page', subtitle: startupPageLabel(state.startupPage), color: '#9AD0F5', onTap: () => showStartupPageSheet(context)),
             SettingsTile(icon: Icons.payments_rounded, title: 'Currency customization', subtitle: '${state.currencyCode} • ${state.currencyPosition == CurrencyPosition.prefix ? 'Prefix' : 'Suffix'}', color: kSleekAccentHex, onTap: () => showCurrencySheet(context)),
             SettingsTile(icon: Icons.notifications_active_rounded, title: 'Reminder notification', subtitle: state.reminderEnabled ? 'Daily at ${state.reminderTime.format(context)}' : 'Disabled', color: '#FBC879', onTap: () => showReminderSheet(context)),
-            SettingsTile(icon: Icons.filter_alt_rounded, title: 'Default date filter', subtitle: _dateRangeLabel(state.dateRangeType), color: '#B4A5FF', onTap: () => showDateRangeSheet(context)),
             const SectionHeader('Data & cloud'),
             SettingsTile(icon: Icons.cloud_sync_rounded, title: 'Account & sync', subtitle: state.cloudSyncEnabled ? '${state.cloudflareWorkerDisplayName} • ${state.syncAccountUsername}' : 'Sign in for multi-device sync', color: kSleekAccentHex, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MultiDeviceSyncScreen()))),
             if (state.selfHostedSyncEndpointValidated && state.selfHostedSyncApiBaseUrl.trim().isNotEmpty)
@@ -24967,17 +24983,6 @@ String _themeLabel(ThemePreference t) {
     case ThemePreference.light: return 'Light';
     case ThemePreference.dark: return 'Dark';
     case ThemePreference.batterySaver: return 'Battery Saver / System';
-  }
-}
-
-String _dateRangeLabel(DateRangeType type) {
-  switch (type) {
-    case DateRangeType.today: return 'Today';
-    case DateRangeType.thisWeek: return 'This Week';
-    case DateRangeType.thisMonth: return 'This Month';
-    case DateRangeType.thisYear: return 'This Year';
-    case DateRangeType.allTime: return 'All Time';
-    case DateRangeType.custom: return 'Custom range';
   }
 }
 

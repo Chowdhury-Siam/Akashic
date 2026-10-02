@@ -67,7 +67,15 @@ class MainActivity: FlutterFragmentActivity() {
                         if (path.isNullOrBlank()) {
                             result.error("missing_path", "APK path is missing.", null)
                         } else {
-                            result.success(DirectApkInstaller.installApk(this, path))
+                            // Stage the APK off Flutter's UI thread.
+                            Thread {
+                                try {
+                                    val started = DirectApkInstaller.installApk(this, path)
+                                    runOnUiThread { result.success(started) }
+                                } catch (error: Exception) {
+                                    runOnUiThread { result.error("install_failed", error.message, null) }
+                                }
+                            }.start()
                         }
                     }
                 }
