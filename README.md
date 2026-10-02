@@ -685,6 +685,8 @@ Use `--flavor play --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play` only when tes
 
 ## 10.3 Android build
 
+The signed Google Play upload file, `Yutaka-v<version>-play.aab`, is attached to the GitHub Release alongside the direct APKs. It is also produced as the `yutaka-play-store-aab` build artifact before publication.
+
 Yutaka targets **Android 16 / API 36** (`compileSdk = 36`, `targetSdk = 36`) for both Android distribution flavors. The release workflow installs Android SDK Platform 36 and fails early if either target value is lowered accidentally.
 
 The Google Play build is also guarded for **16 KB memory page-size compatibility**. Android uses AGP `9.0.1`, NDK `28.2.13676358`, and non-legacy JNI packaging. After the signed Play AAB is built, CI runs Google's `bundletool` to require `PAGE_ALIGNMENT_16K`, then inspects every bundled `arm64-v8a` and `x86_64` `.so` with the NDK `llvm-readelf`. A LOAD alignment below 16 KB fails the release. A misaligned GNU_RELRO end also fails unless RELRO exactly covers an entire LOAD segment, matching [Android's linker exemption](https://android.googlesource.com/platform/bionic/+/android16-qpr2-release/linker/linker_phdr_16kib_compat.cpp). Flutter's prebuilt engine uses this valid whole-segment layout; writable tails remain rejected. CI runs the validator regression checks with `python3 -m unittest discover -s tools/android -p 'test_*.py'` before building release artifacts.

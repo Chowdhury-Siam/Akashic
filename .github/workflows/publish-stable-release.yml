@@ -113,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          for artifact in yutaka-android-universal yutaka-android-arm32 yutaka-android-arm64; do
+          for artifact in yutaka-android-universal yutaka-android-arm32 yutaka-android-arm64 yutaka-play-store-aab; do
             gh run download "${{ steps.runs.outputs.android_run }}" --name "$artifact" --dir release-assets
           done
 
