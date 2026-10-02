@@ -1,3 +1,16 @@
+## [1.0.1249] - 2026-10-03
+
+- Fixed the Android launcher logo by removing the clipped square badge from the adaptive foreground and centering the Y mark.
+- Regenerated all launcher densities and legacy square/round icons from the existing vector artwork.
+- Retained the fixed Add/Edit transaction popup from 1.0.1248.
+- Bumped synchronized release metadata to `1.0.1249+293`.
+
+## [1.0.1248] - 2026-10-03
+
+- Removed page scrolling and automatic notes scrolling from the Add/Edit transaction popup.
+- Kept the existing fixed adaptive popup layout and keyboard dismissal behavior.
+- Bumped synchronized release metadata to `1.0.1248+292`.
+
 ## [1.0.1247] - 2026-10-03
 
 - Fixed three `flutter analyze --no-pub` warnings in the filtered-empty Transaction state by making the secondary action and label non-null after exhaustive branch assignment.

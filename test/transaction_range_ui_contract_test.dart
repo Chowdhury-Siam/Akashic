@@ -52,15 +52,16 @@ void main() {
     expect(source, contains('_dismissAmountFocus();'));
   });
 
-  test('transaction notes field scrolls above the keyboard on focus', () {
+  test('transaction editor uses fixed popup content without page scrolling', () {
     final source = File('lib/main.dart').readAsStringSync();
+    final start = source.indexOf('class _TransactionEditorState');
+    final end = source.indexOf('Future<void> showDateRangeSheet', start);
+    final editor = source.substring(start, end);
 
-    expect(source, contains('final notesFocus = FocusNode();'));
-    expect(source, contains('final notesKey = GlobalKey();'));
-    expect(source, contains('notesFocus.addListener(_handleNotesFocusChanged);'));
-    expect(source, matches(RegExp(r'Scrollable\.ensureVisible\(\s*target\b')));
-    expect(source, contains('padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom)'));
-    expect(source, contains('key: notesKey'));
-    expect(source, contains('focusNode: notesFocus'));
+    expect(editor, contains('child: YutakaPopupContent('));
+    expect(editor, isNot(contains('SingleChildScrollView(')));
+    expect(editor, isNot(contains('Scrollable.ensureVisible(')));
+    expect(editor, isNot(contains('MediaQuery.viewInsetsOf(context).bottom')));
+    expect(editor, contains('controller: notes'));
   });
 }

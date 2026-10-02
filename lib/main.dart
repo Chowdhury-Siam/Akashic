@@ -17867,8 +17867,6 @@ class _TransactionEditorState extends State<TransactionEditor> {
   final notes = TextEditingController();
   final amount = TextEditingController();
   final amountFocus = FocusNode();
-  final notesFocus = FocusNode();
-  final notesKey = GlobalKey();
   MoneyTransactionType type = MoneyTransactionType.expense;
   String? categoryId;
   String? fromAccountId;
@@ -17887,7 +17885,6 @@ class _TransactionEditorState extends State<TransactionEditor> {
   void initState() {
     super.initState();
     amountFocus.addListener(_handleAmountFocusChanged);
-    notesFocus.addListener(_handleNotesFocusChanged);
     final state = context.read<AppController>();
     final tx = widget.transaction;
     if (tx != null) {
@@ -17924,34 +17921,10 @@ class _TransactionEditorState extends State<TransactionEditor> {
     FocusScope.of(context).unfocus();
   }
 
-  void _handleNotesFocusChanged() {
-    if (!notesFocus.hasFocus) return;
-    _scrollNotesIntoView();
-    Future<void>.delayed(AppMotion.fast, _scrollNotesIntoView);
-    Future<void>.delayed(AppMotion.medium, _scrollNotesIntoView);
-    Future<void>.delayed(AppMotion.slow, _scrollNotesIntoView);
-  }
-
-  void _scrollNotesIntoView() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = notesKey.currentContext;
-      if (!mounted || target == null || !notesFocus.hasFocus) return;
-      Scrollable.ensureVisible(
-        target,
-        duration: AppMotion.medium,
-        curve: AppMotion.emphasized,
-        alignment: .08,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-      );
-    });
-  }
-
   @override
   void dispose() {
     amountFocus.removeListener(_handleAmountFocusChanged);
-    notesFocus.removeListener(_handleNotesFocusChanged);
     amountFocus.dispose();
-    notesFocus.dispose();
     title.dispose();
     notes.dispose();
     amount.dispose();
@@ -17973,382 +17946,376 @@ class _TransactionEditorState extends State<TransactionEditor> {
     if (!isLoanTransaction && type == MoneyTransactionType.transfer) categoryId = '';
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-      child: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-        child: YutakaPopupContent(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-            Text(widget.transaction == null ? 'Add transaction' : 'Edit transaction', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            if (isLoanTransaction)
-              SleekPillSelector<MoneyTransactionType>(
-                options: [
-                  SleekPillOption(value: type, label: 'Loan', icon: Icons.account_balance_rounded),
-                ],
-                selected: type,
-                onChanged: (_) => _dismissAmountFocus(),
-              )
-            else
-              SleekPillSelector<MoneyTransactionType>(
-                options: const [
-                  SleekPillOption(value: MoneyTransactionType.expense, label: 'Expense', icon: Icons.north_east_rounded),
-                  SleekPillOption(value: MoneyTransactionType.income, label: 'Income', icon: Icons.south_west_rounded),
-                  SleekPillOption(value: MoneyTransactionType.transfer, label: 'Transfer', icon: Icons.swap_horiz_rounded),
-                ],
-                selected: type,
-                onChanged: (v) {
-                  _dismissAmountFocus();
-                  setState(() {
-                    type = v;
-                    if (type == MoneyTransactionType.income || type == MoneyTransactionType.expense) {
-                      final targetType = type == MoneyTransactionType.income ? CategoryType.income : CategoryType.expense;
-                      final newCategories = state.categories.where((c) => c.type == targetType).toList();
-                      categoryId = type == MoneyTransactionType.income
-                          ? state.defaultIncomeCategoryId ?? newCategories.firstOrNull?.id
-                          : state.defaultExpenseCategoryId ?? newCategories.firstOrNull?.id;
-                      final regularOptions = state.operatingAccounts.isEmpty ? state.accounts : state.operatingAccounts;
-                      if (fromAccountId == null || regularOptions.where((a) => a.id == fromAccountId).firstOrNull == null) {
-                        fromAccountId = state.defaultAccountId ?? regularOptions.firstOrNull?.id;
-                      }
-                      toAccountId = null;
-                    } else {
-                      categoryId = '';
-                      fromAccountId = fromAccountId ?? state.accounts.firstOrNull?.id;
-                      if (toAccountId == fromAccountId) toAccountId = null;
+      child: YutakaPopupContent(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+          Text(widget.transaction == null ? 'Add transaction' : 'Edit transaction', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 12),
+          if (isLoanTransaction)
+            SleekPillSelector<MoneyTransactionType>(
+              options: [
+                SleekPillOption(value: type, label: 'Loan', icon: Icons.account_balance_rounded),
+              ],
+              selected: type,
+              onChanged: (_) => _dismissAmountFocus(),
+            )
+          else
+            SleekPillSelector<MoneyTransactionType>(
+              options: const [
+                SleekPillOption(value: MoneyTransactionType.expense, label: 'Expense', icon: Icons.north_east_rounded),
+                SleekPillOption(value: MoneyTransactionType.income, label: 'Income', icon: Icons.south_west_rounded),
+                SleekPillOption(value: MoneyTransactionType.transfer, label: 'Transfer', icon: Icons.swap_horiz_rounded),
+              ],
+              selected: type,
+              onChanged: (v) {
+                _dismissAmountFocus();
+                setState(() {
+                  type = v;
+                  if (type == MoneyTransactionType.income || type == MoneyTransactionType.expense) {
+                    final targetType = type == MoneyTransactionType.income ? CategoryType.income : CategoryType.expense;
+                    final newCategories = state.categories.where((c) => c.type == targetType).toList();
+                    categoryId = type == MoneyTransactionType.income
+                        ? state.defaultIncomeCategoryId ?? newCategories.firstOrNull?.id
+                        : state.defaultExpenseCategoryId ?? newCategories.firstOrNull?.id;
+                    final regularOptions = state.operatingAccounts.isEmpty ? state.accounts : state.operatingAccounts;
+                    if (fromAccountId == null || regularOptions.where((a) => a.id == fromAccountId).firstOrNull == null) {
+                      fromAccountId = state.defaultAccountId ?? regularOptions.firstOrNull?.id;
                     }
-                  });
-                },
-              ),
-            const SizedBox(height: 12),
-            if (type != MoneyTransactionType.transfer) ...[
-              TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
-                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-                controller: title,
-                readOnly: isLoanTransaction,
-                textInputAction: TextInputAction.next,
-                textCapitalization: TextCapitalization.sentences,
-                maxLength: 100,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.title_rounded),
-                  labelText: 'Title',
-                  hintText: 'Example: Lunch, Salary, Groceries',
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
+                    toAccountId = null;
+                  } else {
+                    categoryId = '';
+                    fromAccountId = fromAccountId ?? state.accounts.firstOrNull?.id;
+                    if (toAccountId == fromAccountId) toAccountId = null;
+                  }
+                });
+              },
+            ),
+          const SizedBox(height: 12),
+          if (type != MoneyTransactionType.transfer) ...[
             TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
               onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-              controller: amount,
-              focusNode: amountFocus,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              controller: title,
+              readOnly: isLoanTransaction,
               textInputAction: TextInputAction.next,
-              textAlign: TextAlign.end,
-              inputFormatters: [
-                TextInputFormatter.withFunction((oldValue, newValue) {
-                  final text = newValue.text;
-                  if (text.isEmpty || RegExp(r'^\d*\.?\d*$').hasMatch(text)) return newValue;
-                  return oldValue;
-                }),
-              ],
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.calculate_rounded),
-                labelText: 'Amount',
-                hintText: _amountHasFocus ? null : '0',
-                hintStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: scheme.onSurfaceVariant.withOpacity(.72),
-                      fontWeight: FontWeight.w900,
-                    ),
+              textCapitalization: TextCapitalization.sentences,
+              maxLength: 100,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.title_rounded),
+                labelText: 'Title',
+                hintText: 'Example: Lunch, Salary, Groceries',
+                counterText: '',
               ),
             ),
             const SizedBox(height: 12),
-            if (isLoanTransaction)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, bottom: 6),
-                    child: Text(
-                      'Category',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
+          ],
+          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            controller: amount,
+            focusNode: amountFocus,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.next,
+            textAlign: TextAlign.end,
+            inputFormatters: [
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                final text = newValue.text;
+                if (text.isEmpty || RegExp(r'^\d*\.?\d*$').hasMatch(text)) return newValue;
+                return oldValue;
+              }),
+            ],
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.calculate_rounded),
+              labelText: 'Amount',
+              hintText: _amountHasFocus ? null : '0',
+              hintStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: scheme.onSurfaceVariant.withOpacity(.72),
+                    fontWeight: FontWeight.w900,
                   ),
-                  ExpressiveCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: kSleekAccent.withOpacity(.13),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: kSleekAccent.withOpacity(.20)),
-                          ),
-                          child: const Icon(Icons.account_balance_rounded, color: kSleekAccent),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (isLoanTransaction)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 6),
+                  child: Text(
+                    'Category',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Loan', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-                              const SizedBox(height: 2),
-                              Text(
-                                widget.transaction?.linkedEntityType == 'loan_payments' ? 'Loan repayment' : 'Loan disbursal',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.lock_outline_rounded, color: scheme.onSurfaceVariant),
-                      ],
-                    ),
                   ),
-                ],
-              )
-            else if (type != MoneyTransactionType.transfer && widget.lockedCategory == null)
-              AppleSelectionField(
-                label: 'Category',
-                option: relevantCategories.where((c) => c.id == categoryId).firstOrNull == null ? null : optionFromCategory(relevantCategories.where((c) => c.id == categoryId).first),
-                emptyText: 'Choose category',
-                onTap: () async {
-                  _dismissAmountFocus();
-                  final categoryType = type == MoneyTransactionType.income ? CategoryType.income : CategoryType.expense;
-                  final selected = await showAppleWheelSelectionSheet(
+                ),
+                ExpressiveCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: kSleekAccent.withOpacity(.13),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: kSleekAccent.withOpacity(.20)),
+                        ),
+                        child: const Icon(Icons.account_balance_rounded, color: kSleekAccent),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Loan', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.transaction?.linkedEntityType == 'loan_payments' ? 'Loan repayment' : 'Loan disbursal',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.lock_outline_rounded, color: scheme.onSurfaceVariant),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          else if (type != MoneyTransactionType.transfer && widget.lockedCategory == null)
+            AppleSelectionField(
+              label: 'Category',
+              option: relevantCategories.where((c) => c.id == categoryId).firstOrNull == null ? null : optionFromCategory(relevantCategories.where((c) => c.id == categoryId).first),
+              emptyText: 'Choose category',
+              onTap: () async {
+                _dismissAmountFocus();
+                final categoryType = type == MoneyTransactionType.income ? CategoryType.income : CategoryType.expense;
+                final selected = await showAppleWheelSelectionSheet(
+                  context,
+                  title: 'Choose Category',
+                  selectedId: categoryId,
+                  options: relevantCategories.map(optionFromCategory).toList(),
+                  addActionLabel: 'Add category',
+                  onAdd: () => showCategoryEditor(
                     context,
-                    title: 'Choose Category',
-                    selectedId: categoryId,
-                    options: relevantCategories.map(optionFromCategory).toList(),
-                    addActionLabel: 'Add category',
-                    onAdd: () => showCategoryEditor(
-                      context,
-                      initialType: categoryType,
-                      fixedType: categoryType,
-                    ),
-                  );
-                  if (selected != null) setState(() => categoryId = selected);
-                },
-              ),
-            if (widget.lockedCategory != null)
-              ExpressiveCard(padding: const EdgeInsets.all(12), child: Row(children: [iconBubble(context, widget.lockedCategory!.iconName, widget.lockedCategory!.iconColor), const SizedBox(width: 12), Expanded(child: Text(widget.lockedCategory!.name, style: const TextStyle(fontWeight: FontWeight.w800)))])),
+                    initialType: categoryType,
+                    fixedType: categoryType,
+                  ),
+                );
+                if (selected != null) setState(() => categoryId = selected);
+              },
+            ),
+          if (widget.lockedCategory != null)
+            ExpressiveCard(padding: const EdgeInsets.all(12), child: Row(children: [iconBubble(context, widget.lockedCategory!.iconName, widget.lockedCategory!.iconColor), const SizedBox(width: 12), Expanded(child: Text(widget.lockedCategory!.name, style: const TextStyle(fontWeight: FontWeight.w800)))])),
+          const SizedBox(height: 12),
+          AppleSelectionField(
+            label: type == MoneyTransactionType.transfer ? 'From account' : 'Account',
+            option: fromAccount == null ? null : optionFromAccount(fromAccount, state),
+            emptyText: 'Choose account',
+            onTap: () async {
+              _dismissAmountFocus();
+              final selected = await showAppleWheelSelectionSheet(
+                context,
+                title: type == MoneyTransactionType.transfer ? 'Choose From Account' : 'Choose Account',
+                selectedId: fromAccountId,
+                options: (type == MoneyTransactionType.transfer ? transferFromOptions : accountOptions).map((a) => optionFromAccount(a, state)).toList(),
+                addActionLabel: 'Add account',
+                onAdd: () => showAccountEditor(
+                  context,
+                  allowedTypes: type == MoneyTransactionType.transfer
+                      ? AccountType.values
+                      : const [AccountType.regular, AccountType.credit],
+                ),
+              );
+              if (selected != null) {
+                setState(() {
+                  fromAccountId = selected;
+                  if (toAccountId == selected) toAccountId = null;
+                });
+              }
+            },
+          ),
+          if (type == MoneyTransactionType.transfer) ...[
             const SizedBox(height: 12),
             AppleSelectionField(
-              label: type == MoneyTransactionType.transfer ? 'From account' : 'Account',
-              option: fromAccount == null ? null : optionFromAccount(fromAccount, state),
-              emptyText: 'Choose account',
+              label: 'To account',
+              option: toAccount == null ? null : optionFromAccount(toAccount, state),
+              emptyText: 'Choose destination account',
               onTap: () async {
                 _dismissAmountFocus();
                 final selected = await showAppleWheelSelectionSheet(
                   context,
-                  title: type == MoneyTransactionType.transfer ? 'Choose From Account' : 'Choose Account',
-                  selectedId: fromAccountId,
-                  options: (type == MoneyTransactionType.transfer ? transferFromOptions : accountOptions).map((a) => optionFromAccount(a, state)).toList(),
+                  title: 'Choose To Account',
+                  selectedId: toAccountId,
+                  options: transferToOptions.map((a) => optionFromAccount(a, state)).toList(),
                   addActionLabel: 'Add account',
-                  onAdd: () => showAccountEditor(
-                    context,
-                    allowedTypes: type == MoneyTransactionType.transfer
-                        ? AccountType.values
-                        : const [AccountType.regular, AccountType.credit],
-                  ),
+                  onAdd: () => showAccountEditor(context, allowedTypes: AccountType.values),
                 );
                 if (selected != null) {
                   setState(() {
-                    fromAccountId = selected;
-                    if (toAccountId == selected) toAccountId = null;
+                    toAccountId = selected;
+                    if (fromAccountId == selected) fromAccountId = null;
                   });
                 }
               },
             ),
-            if (type == MoneyTransactionType.transfer) ...[
-              const SizedBox(height: 12),
-              AppleSelectionField(
-                label: 'To account',
-                option: toAccount == null ? null : optionFromAccount(toAccount, state),
-                emptyText: 'Choose destination account',
-                onTap: () async {
-                  _dismissAmountFocus();
-                  final selected = await showAppleWheelSelectionSheet(
-                    context,
-                    title: 'Choose To Account',
-                    selectedId: toAccountId,
-                    options: transferToOptions.map((a) => optionFromAccount(a, state)).toList(),
-                    addActionLabel: 'Add account',
-                    onAdd: () => showAccountEditor(context, allowedTypes: AccountType.values),
-                  );
-                  if (selected != null) {
-                    setState(() {
-                      toAccountId = selected;
-                      if (fromAccountId == selected) fromAccountId = null;
-                    });
-                  }
-                },
-              ),
-            ],
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () async {
-                _dismissAmountFocus();
-                final selection = await showTransactionDateTimeConfiguration(
-                  context,
-                  start: selectedDate,
-                  end: selectedEndDate,
-                  dateRangeEnabled: dateRangeEnabled,
-                  timeRangeEnabled: timeRangeEnabled,
-                );
-                if (!mounted || selection == null) return;
-                setState(() {
-                  selectedDate = selection.start;
-                  selectedEndDate = selection.end;
-                  dateRangeEnabled = selection.dateRangeEnabled;
-                  timeRangeEnabled = selection.timeRangeEnabled;
-                });
-              },
-              icon: const Icon(Icons.event_rounded),
-              label: const Text('Time • Date'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: isLoanTransaction
-                  ? null
-                  : () async {
-                      _dismissAmountFocus();
-                      final baseValue = double.tryParse(amount.text.trim()) ?? 0;
-                      final selection = await showServiceChargeConfiguration(
-                        context,
-                        baseAmount: baseValue,
-                        transactionType: type,
-                        enabled: serviceChargeEnabled,
-                        mode: serviceChargeMode,
-                        value: serviceChargeValue,
-                      );
-                      if (!mounted || selection == null) return;
-                      setState(() {
-                        serviceChargeEnabled = selection.enabled;
-                        serviceChargeMode = selection.mode;
-                        serviceChargeValue = selection.value;
-                      });
-                    },
-              icon: const Icon(Icons.receipt_long_rounded),
-              label: const Text('Service charge'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: notesKey,
-              focusNode: notesFocus,
-              contextMenuBuilder: yutakaTextFieldContextMenu,
-              enableInteractiveSelection: true,
-              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-              controller: notes,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Notes'),
-            ),
-            const SizedBox(height: 18),
-            Row(children: [
-              if (widget.transaction != null) Expanded(child: OutlinedButton(onPressed: () async {
-                if (isLoanTransaction) {
-                  await state.deleteLinkedLoanTransaction(widget.transaction!);
-                } else {
-                  await state.deleteTransaction(widget.transaction!.id);
-                }
-                if (context.mounted) Navigator.pop(context);
-              }, child: const Text('Delete'))),
-              if (widget.transaction != null) const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: FilledButton(
-                  onPressed: busy
-                      ? null
-                      : () async {
-                          _dismissAmountFocus();
-                          final baseValue = double.tryParse(amount.text) ?? 0;
-                          if (baseValue <= 0) return showSnack(context, 'Enter a valid amount');
-                          final chargeEnabled = !isLoanTransaction && serviceChargeEnabled;
-                          if (chargeEnabled && serviceChargeValue <= 0) {
-                            return showSnack(context, 'Enter a valid service charge');
-                          }
-                          if (chargeEnabled && serviceChargeMode == ServiceChargeMode.percentage && serviceChargeValue > 100) {
-                            return showSnack(context, 'Service charge percentage must be between 0 and 100');
-                          }
-                          final chargeAmount = _serviceChargeAmount(
-                            baseAmount: baseValue,
-                            enabled: chargeEnabled,
-                            mode: serviceChargeMode,
-                            value: serviceChargeValue,
-                          );
-                          final postedAmount = _postedTransactionAmount(
-                            type: type,
-                            baseAmount: baseValue,
-                            serviceChargeAmount: chargeAmount,
-                          );
-                          if (type == MoneyTransactionType.income && postedAmount <= 0) {
-                            return showSnack(context, 'Service charge must be less than the income amount');
-                          }
-                          final transactionTitle = title.text.trim();
-                          if (type != MoneyTransactionType.transfer && transactionTitle.isEmpty) return showSnack(context, 'Enter a transaction title');
-                          if (fromAccountId == null) return showSnack(context, 'Select an account');
-                          if (type == MoneyTransactionType.transfer && (toAccountId == null || toAccountId == fromAccountId)) return showSnack(context, 'Select a different destination account');
-                          if (!isLoanTransaction && type != MoneyTransactionType.transfer && categoryId == null) return showSnack(context, 'Select a category');
-                          final rangeRequested = dateRangeEnabled || timeRangeEnabled;
-                          if (rangeRequested && selectedEndDate.isBefore(selectedDate)) return showSnack(context, 'The end of the range must be after the start');
-                          final hasEffectiveRange = rangeRequested && selectedEndDate.isAfter(selectedDate);
-                          setState(() => busy = true);
-                          try {
-                            final tx = MoneyTransaction(
-                              id: widget.transaction?.id ?? _uuid.v4(),
-                              type: type,
-                              amount: postedAmount,
-                              baseAmount: baseValue,
-                              serviceChargeEnabled: chargeEnabled,
-                              serviceChargeMode: serviceChargeMode,
-                              serviceChargeValue: chargeEnabled ? serviceChargeValue : 0,
-                              serviceChargeAmount: chargeEnabled ? chargeAmount : 0,
-                              title: type == MoneyTransactionType.transfer ? '' : transactionTitle,
-                              notes: notes.text.trim(),
-                              categoryId: type == MoneyTransactionType.transfer ? '' : (categoryId ?? ''),
-                              fromAccountId: fromAccountId!,
-                              toAccountId: type == MoneyTransactionType.transfer ? toAccountId : null,
-                              imagePath: widget.transaction?.imagePath ?? '',
-                              excludeFromReports: widget.transaction?.excludeFromReports ?? false,
-                              linkedEntityType: widget.transaction?.linkedEntityType,
-                              linkedEntityId: widget.transaction?.linkedEntityId,
-                              createdOn: selectedDate,
-                              endOn: hasEffectiveRange ? selectedEndDate : null,
-                              updatedOn: DateTime.now(),
-                            );
-                            if (widget.transaction == null) {
-                              await state.addTransaction(tx);
-                            } else if (isLoanTransaction) {
-                              await state.updateLinkedLoanTransaction(tx);
-                            } else {
-                              await state.updateTransaction(tx);
-                            }
-                            if (context.mounted) {
-                              showSnack(context, widget.transaction == null ? 'Transaction added.' : 'Transaction updated.');
-                              Navigator.pop(context);
-                            }
-                          } catch (error) {
-                            if (context.mounted) {
-                              showSnack(context, 'Could not save transaction. ${error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '')}');
-                            }
-                          } finally {
-                            if (mounted) setState(() => busy = false);
-                          }
-                        },
-                  child: busy ? const YutakaInlineLoader(size: 18, color: Colors.white) : const Text('Save'),
-                ),
-              ),
-            ]),
-            ],
+          ],
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              _dismissAmountFocus();
+              final selection = await showTransactionDateTimeConfiguration(
+                context,
+                start: selectedDate,
+                end: selectedEndDate,
+                dateRangeEnabled: dateRangeEnabled,
+                timeRangeEnabled: timeRangeEnabled,
+              );
+              if (!mounted || selection == null) return;
+              setState(() {
+                selectedDate = selection.start;
+                selectedEndDate = selection.end;
+                dateRangeEnabled = selection.dateRangeEnabled;
+                timeRangeEnabled = selection.timeRangeEnabled;
+              });
+            },
+            icon: const Icon(Icons.event_rounded),
+            label: const Text('Time • Date'),
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: isLoanTransaction
+                ? null
+                : () async {
+                    _dismissAmountFocus();
+                    final baseValue = double.tryParse(amount.text.trim()) ?? 0;
+                    final selection = await showServiceChargeConfiguration(
+                      context,
+                      baseAmount: baseValue,
+                      transactionType: type,
+                      enabled: serviceChargeEnabled,
+                      mode: serviceChargeMode,
+                      value: serviceChargeValue,
+                    );
+                    if (!mounted || selection == null) return;
+                    setState(() {
+                      serviceChargeEnabled = selection.enabled;
+                      serviceChargeMode = selection.mode;
+                      serviceChargeValue = selection.value;
+                    });
+                  },
+            icon: const Icon(Icons.receipt_long_rounded),
+            label: const Text('Service charge'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            contextMenuBuilder: yutakaTextFieldContextMenu,
+            enableInteractiveSelection: true,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            controller: notes,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Notes'),
+          ),
+          const SizedBox(height: 18),
+          Row(children: [
+            if (widget.transaction != null) Expanded(child: OutlinedButton(onPressed: () async {
+              if (isLoanTransaction) {
+                await state.deleteLinkedLoanTransaction(widget.transaction!);
+              } else {
+                await state.deleteTransaction(widget.transaction!.id);
+              }
+              if (context.mounted) Navigator.pop(context);
+            }, child: const Text('Delete'))),
+            if (widget.transaction != null) const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: FilledButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        _dismissAmountFocus();
+                        final baseValue = double.tryParse(amount.text) ?? 0;
+                        if (baseValue <= 0) return showSnack(context, 'Enter a valid amount');
+                        final chargeEnabled = !isLoanTransaction && serviceChargeEnabled;
+                        if (chargeEnabled && serviceChargeValue <= 0) {
+                          return showSnack(context, 'Enter a valid service charge');
+                        }
+                        if (chargeEnabled && serviceChargeMode == ServiceChargeMode.percentage && serviceChargeValue > 100) {
+                          return showSnack(context, 'Service charge percentage must be between 0 and 100');
+                        }
+                        final chargeAmount = _serviceChargeAmount(
+                          baseAmount: baseValue,
+                          enabled: chargeEnabled,
+                          mode: serviceChargeMode,
+                          value: serviceChargeValue,
+                        );
+                        final postedAmount = _postedTransactionAmount(
+                          type: type,
+                          baseAmount: baseValue,
+                          serviceChargeAmount: chargeAmount,
+                        );
+                        if (type == MoneyTransactionType.income && postedAmount <= 0) {
+                          return showSnack(context, 'Service charge must be less than the income amount');
+                        }
+                        final transactionTitle = title.text.trim();
+                        if (type != MoneyTransactionType.transfer && transactionTitle.isEmpty) return showSnack(context, 'Enter a transaction title');
+                        if (fromAccountId == null) return showSnack(context, 'Select an account');
+                        if (type == MoneyTransactionType.transfer && (toAccountId == null || toAccountId == fromAccountId)) return showSnack(context, 'Select a different destination account');
+                        if (!isLoanTransaction && type != MoneyTransactionType.transfer && categoryId == null) return showSnack(context, 'Select a category');
+                        final rangeRequested = dateRangeEnabled || timeRangeEnabled;
+                        if (rangeRequested && selectedEndDate.isBefore(selectedDate)) return showSnack(context, 'The end of the range must be after the start');
+                        final hasEffectiveRange = rangeRequested && selectedEndDate.isAfter(selectedDate);
+                        setState(() => busy = true);
+                        try {
+                          final tx = MoneyTransaction(
+                            id: widget.transaction?.id ?? _uuid.v4(),
+                            type: type,
+                            amount: postedAmount,
+                            baseAmount: baseValue,
+                            serviceChargeEnabled: chargeEnabled,
+                            serviceChargeMode: serviceChargeMode,
+                            serviceChargeValue: chargeEnabled ? serviceChargeValue : 0,
+                            serviceChargeAmount: chargeEnabled ? chargeAmount : 0,
+                            title: type == MoneyTransactionType.transfer ? '' : transactionTitle,
+                            notes: notes.text.trim(),
+                            categoryId: type == MoneyTransactionType.transfer ? '' : (categoryId ?? ''),
+                            fromAccountId: fromAccountId!,
+                            toAccountId: type == MoneyTransactionType.transfer ? toAccountId : null,
+                            imagePath: widget.transaction?.imagePath ?? '',
+                            excludeFromReports: widget.transaction?.excludeFromReports ?? false,
+                            linkedEntityType: widget.transaction?.linkedEntityType,
+                            linkedEntityId: widget.transaction?.linkedEntityId,
+                            createdOn: selectedDate,
+                            endOn: hasEffectiveRange ? selectedEndDate : null,
+                            updatedOn: DateTime.now(),
+                          );
+                          if (widget.transaction == null) {
+                            await state.addTransaction(tx);
+                          } else if (isLoanTransaction) {
+                            await state.updateLinkedLoanTransaction(tx);
+                          } else {
+                            await state.updateTransaction(tx);
+                          }
+                          if (context.mounted) {
+                            showSnack(context, widget.transaction == null ? 'Transaction added.' : 'Transaction updated.');
+                            Navigator.pop(context);
+                          }
+                        } catch (error) {
+                          if (context.mounted) {
+                            showSnack(context, 'Could not save transaction. ${error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '')}');
+                          }
+                        } finally {
+                          if (mounted) setState(() => busy = false);
+                        }
+                      },
+                child: busy ? const YutakaInlineLoader(size: 18, color: Colors.white) : const Text('Save'),
+              ),
+            ),
+          ]),
+          ],
         ),
       ),
     );
