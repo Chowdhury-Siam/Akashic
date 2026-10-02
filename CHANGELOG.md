@@ -1,3 +1,9 @@
+## [1.0.1250] - 2026-10-03
+
+- Updated the obsolete transaction-note keyboard contract to verify the requested fixed, non-scrollable popup and keyboard sizing behavior.
+- Kept loan-note keyboard contracts and the launcher-logo fix unchanged.
+- Bumped synchronized release metadata to `1.0.1250+294`.
+
 ## [1.0.1249] - 2026-10-03
 
 - Fixed the Android launcher logo by removing the clipped square badge from the adaptive foreground and centering the Y mark.
