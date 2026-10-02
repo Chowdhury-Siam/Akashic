@@ -122,6 +122,9 @@ jobs:
       - name: Analyze release source
         run: flutter analyze --no-pub
 
+      - name: Test 16 KB ELF validator
+        run: python3 -m unittest discover -s tools/android -p 'test_*.py'
+
       - name: Run release test suite
         run: flutter test --no-pub
 
@@ -666,4 +669,3 @@ jobs:
           path: artifacts/Yutaka-v*-play.aab
           if-no-files-found: error
           compression-level: 0
-

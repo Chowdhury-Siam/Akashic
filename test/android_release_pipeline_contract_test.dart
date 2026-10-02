@@ -30,7 +30,7 @@ void main() {
     expect(workflow, contains('Available Flutter APK outputs:'));
   });
 
-  test('Android release uses the newer Flutter engine line required by the 16 KB gate', () {
+  test('Android release quality and build jobs use the pinned Flutter SDK', () {
     final workflow = File(
       '.github/workflows/build-android-apks.yml',
     ).readAsStringSync();

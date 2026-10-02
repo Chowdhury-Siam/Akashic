@@ -4,7 +4,7 @@
 Checks the two independent requirements documented by Android:
   1. BundleConfig requests PAGE_ALIGNMENT_16K for generated APK packaging.
   2. Every bundled 64-bit ELF shared library has >=16 KB LOAD alignment and
-     a 16 KB-aligned GNU_RELRO end when RELRO is present.
+     a 16 KB-aligned GNU_RELRO end, unless RELRO covers a whole LOAD segment.
 
 The script intentionally validates the final AAB rather than trusting only
 Gradle/NDK version declarations, so incompatible prebuilt plugin libraries are
@@ -69,6 +69,7 @@ def abi_for_entry(name: str) -> str | None:
 
 def parse_program_headers(output: str, library: str) -> None:
     load_alignments: list[int] = []
+    load_ranges: list[tuple[int, int]] = []
     relro_ends: list[tuple[int, int]] = []
 
     for raw_line in output.splitlines():
@@ -82,11 +83,14 @@ def parse_program_headers(output: str, library: str) -> None:
         if fields[0] == "LOAD":
             try:
                 alignment = int(fields[-1], 0)
+                virt_addr = int(fields[2], 0)
+                mem_size = int(fields[5], 0)
             except (ValueError, IndexError) as exc:
                 raise ValidationError(
-                    f"Could not parse LOAD alignment for {library}: {line}"
+                    f"Could not parse LOAD program header for {library}: {line}"
                 ) from exc
             load_alignments.append(alignment)
+            load_ranges.append((virt_addr, virt_addr + mem_size))
 
         elif fields[0] == "GNU_RELRO":
             # llvm-readelf -lW columns:
@@ -115,7 +119,15 @@ def parse_program_headers(output: str, library: str) -> None:
         )
 
     for virt_addr, mem_size in relro_ends:
-        if (virt_addr + mem_size) % PAGE_SIZE != 0:
+        relro_end = virt_addr + mem_size
+        # Android's phdr_table_get_relro_min_align exempts a LOAD that is
+        # entirely RELRO: rounding its end cannot protect writable tail data.
+        # https://android.googlesource.com/platform/bionic/+/android16-qpr2-release/linker/linker_phdr_16kib_compat.cpp
+        whole_load = any(
+            start == virt_addr and end == relro_end
+            for start, end in load_ranges
+        )
+        if relro_end % PAGE_SIZE != 0 and not whole_load:
             raise ValidationError(
                 f"{library} has a GNU_RELRO end that is not 16 KB aligned: "
                 f"(VirtAddr {hex(virt_addr)} + MemSiz {hex(mem_size)}) % 0x4000 "

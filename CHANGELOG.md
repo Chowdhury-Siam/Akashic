@@ -1,5 +1,6 @@
 ## [1.0.1240] - 2026-10-02
 
+- Fixed the `libflutter.so` 16 KB validator false positive: RELRO that exactly covers an entire LOAD segment is accepted, matching Android's linker. Misaligned RELRO with a writable tail and LOAD alignment below 16 KB still fail. Added runnable Python regressions to the Android quality gate.
 - Fixed the remaining Google Play 16 KB RELRO failure from `libdatastore_shared_counter.so` by moving the complete AndroidX DataStore runtime family to `1.3.0-alpha11`, whose native shared-counter build uses the corrected linker path.
 - Added strict app-module DataStore constraints so transitive Flutter plugins cannot select the incompatible 1.1.x/1.2.x native artifact.
 - Added an Android release dependency-resolution gate that proves `playReleaseRuntimeClasspath` resolves `datastore-core-android:1.3.0-alpha11` before the Play AAB is built. The final ELF/RELRO validator remains mandatory.
