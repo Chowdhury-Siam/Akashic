@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the existing Yutaka vector mark as mask-safe Android launcher icons.
+"""Render the existing Yutaka vector mark as mask-safe Android launcher and splash icons.
 
 Requires Inkscape and Pillow. Keeps the square badge out of the adaptive
 foreground: Android owns the icon shape and supplies the dark background.
@@ -37,6 +37,10 @@ with tempfile.TemporaryDirectory() as directory:
         '--export-filename=' + str(rendered),
     ], check=True, capture_output=True)
     art = Image.open(rendered).convert('RGBA')
+    # Android 12 masks splash icons to a circle two-thirds of the canvas.
+    # Use the padded mark only; a badge/background here gets clipped by that mask.
+    # 864px is the 288dp no-background splash canvas at 3x density.
+    art.save(ROOT / 'android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png')
     # The launcher masks the central 72dp of the adaptive icon's 108dp canvas.
     legacy = art.crop((144, 144, 720, 720))
     background = Image.new('RGBA', legacy.size, '#001713')

@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'keyboard_aware_popup.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11132,20 +11134,22 @@ class _YutakaPopupFrame extends StatelessWidget {
               duration: AppMotion.fast,
               curve: AppMotion.emphasized,
               alignment: keyboardVisible ? Alignment.topCenter : Alignment.center,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: resolvedWidth, maxHeight: resolvedHeight),
-                child: Material(
-                  color: dark ? kSleekSurface : scheme.surface,
-                  elevation: 18,
-                  shadowColor: Colors.black.withOpacity(.45),
-                  borderRadius: BorderRadius.circular(media.size.width < 420 ? 30 : 34),
-                  clipBehavior: Clip.antiAlias,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(media.size.width < 420 ? 30 : 34),
-                      border: Border.all(color: dark ? Colors.white.withOpacity(.08) : scheme.outline.withOpacity(.16)),
+              child: KeyboardAwarePopup(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: resolvedWidth, maxHeight: resolvedHeight),
+                  child: Material(
+                    color: dark ? kSleekSurface : scheme.surface,
+                    elevation: 18,
+                    shadowColor: Colors.black.withOpacity(.45),
+                    borderRadius: BorderRadius.circular(media.size.width < 420 ? 30 : 34),
+                    clipBehavior: Clip.antiAlias,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(media.size.width < 420 ? 30 : 34),
+                        border: Border.all(color: dark ? Colors.white.withOpacity(.08) : scheme.outline.withOpacity(.16)),
+                      ),
+                      child: child,
                     ),
-                    child: child,
                   ),
                 ),
               ),

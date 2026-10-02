@@ -33,13 +33,7 @@ void main() {
     final popupEnd = app.indexOf('// -----------------------------------------------------------------------------\n// Onboarding', popupStart);
     final popupBody = app.substring(popupStart, popupEnd);
     expect(popupBody, isNot(contains('SingleChildScrollView(')));
-    // Note editors scroll only while focused above an open keyboard.
-    // All other loan popup bodies must retain fixed adaptive content.
-    final keyboardNoteScroll = RegExp(
-      r'if \(keyboardAwareNoteEditing\) \{[^}]*\}',
-    );
-    expect(keyboardNoteScroll.allMatches(loans), hasLength(2));
-    expect(loans.replaceAll(keyboardNoteScroll, ''), isNot(contains('SingleChildScrollView(')));
+    expect(loans, isNot(contains('SingleChildScrollView(')));
     expect(profile, isNot(contains('SingleChildScrollView(')));
   });
 }

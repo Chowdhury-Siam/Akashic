@@ -1,3 +1,18 @@
+## [1.0.1252] - 2026-10-03
+
+- Added shared focus-aware popup positioning to keep inputs and nearby actions above the keyboard without shrinking the form or enabling page scrolling.
+- Covers Add/Edit transaction, Add/Edit subscription, loan creation/editing, and loan payments.
+- Removed the competing loan-note scroll wrappers and added keyboard visibility, focus-switching, and keyboard-dismissal widget regression checks.
+- Retained the previous launcher and splash-logo fixes.
+- Bumped synchronized release metadata to `1.0.1252+296`.
+
+## [1.0.1251] - 2026-10-03
+
+- Replaced the old Android splash badge with the centered Y mark and transparent padding so the Android 12+ circular mask cannot clip the logo.
+- Added a pixel-level splash safe-circle regression test and included splash rendering in the existing icon generator.
+- Retained previous launcher-logo, transaction-layout, and test-contract fixes.
+- Bumped synchronized release metadata to `1.0.1251+295`.
+
 ## [1.0.1250] - 2026-10-03
 
 - Updated the obsolete transaction-note keyboard contract to verify the requested fixed, non-scrollable popup and keyboard sizing behavior.

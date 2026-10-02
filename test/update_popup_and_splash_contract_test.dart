@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('automatic update pop-up can be disabled without disabling manual checks', () {
     final app = File('lib/main.dart').readAsStringSync();
 
@@ -36,6 +38,37 @@ void main() {
     expect(workflow, contains('rm -rf android'));
     expect(workflow, contains(r'cp -a "$ANDROID_SOURCE" android'));
     expect(workflow, contains("grep -q '@drawable/yutaka_splash_icon'"));
+  });
+
+  test('splash artwork fits Android circular masking without clipped pixels', () async {
+    final bytes = File('android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png').readAsBytesSync();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      expect(image.width, image.height);
+      final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      final pixels = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final center = image.width / 2;
+      final safeRadius = image.width / 3;
+      var visiblePixels = 0;
+      var outsideSafeCircle = 0;
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          if (pixels[(y * image.width + x) * 4 + 3] == 0) continue;
+          visiblePixels++;
+          final dx = x + .5 - center;
+          final dy = y + .5 - center;
+          if (dx * dx + dy * dy > safeRadius * safeRadius) outsideSafeCircle++;
+        }
+      }
+      expect(visiblePixels, greaterThan(image.width * image.height ~/ 20));
+      expect(outsideSafeCircle, 0, reason: 'Android clips artwork outside the central two-thirds circle');
+      expect(pixels[3], 0, reason: 'Splash corners must remain transparent');
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
   });
 
   test('Account and sync keeps restore and upload actions side by side', () {
