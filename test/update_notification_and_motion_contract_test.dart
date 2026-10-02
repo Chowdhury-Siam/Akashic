@@ -43,11 +43,26 @@ void main() {
     expect(lottie, isNot(contains('Wallet')));
   });
 
-  test('semantic feedback is a compact safe-area top overlay', () {
+  test('semantic feedback wraps full messages in a safe-area top overlay', () {
     final app = File('lib/main.dart').readAsStringSync();
     expect(app, contains('class _YutakaTopFeedbackBanner extends StatefulWidget'));
-    expect(app, contains('media.padding.top +'));
-    expect(app, contains('constraints: const BoxConstraints(minHeight: 68, maxHeight: 94)'));
+
+    // Scope layout checks to this banner rather than unrelated app widgets.
+    final start = app.indexOf('class _YutakaTopFeedbackBannerState');
+    final end = app.indexOf('\nvoid showSnack(', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final banner = app.substring(start, end);
+
+    expect(banner, contains('media.padding.top +'));
+    expect(banner, contains('media.size.width - 24'));
+    expect(banner, contains('constraints: const BoxConstraints(minHeight: 68)'));
+    expect(banner, isNot(contains('maxHeight:')));
+    expect(banner, isNot(contains('maxLines:')));
+    expect(banner, isNot(contains('TextOverflow.ellipsis')));
+    expect(RegExp(r'softWrap: true').allMatches(banner), hasLength(2));
+    expect(banner, contains('liveRegion: true'));
+    expect(banner, contains("tooltip: 'Dismiss'"));
     expect(app, contains('ContentType.success'));
     expect(app, isNot(contains('final materialBanner = MaterialBanner(')));
     expect(app, isNot(contains('inMaterialBanner: true')));
