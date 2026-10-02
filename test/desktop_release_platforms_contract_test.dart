@@ -105,7 +105,7 @@ void main() {
     expect(publisher, contains('delete_platform_runs build-macos.yml "macOS"'));
     expect(publisher, contains('publish-stable-release.yml/runs?status=completed'));
     expect(publisher, contains('select(.conclusion == "success")'));
-    expect(publisher, contains('[ "$run_id" = "$CURRENT_PUBLISH_RUN_ID" ] && return 0'));
+    expect(publisher, contains(r'[ "$run_id" = "$CURRENT_PUBLISH_RUN_ID" ] && return 0'));
     expect(File('.github/workflows/cleanup-completed-release-runs.yml').existsSync(), isFalse);
   });
 
