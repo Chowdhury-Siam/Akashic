@@ -58,7 +58,7 @@ void main() {
     expect(source, contains('final notesFocus = FocusNode();'));
     expect(source, contains('final notesKey = GlobalKey();'));
     expect(source, contains('notesFocus.addListener(_handleNotesFocusChanged);'));
-    expect(source, contains('Scrollable.ensureVisible(target'));
+    expect(source, matches(RegExp(r'Scrollable\.ensureVisible\(\s*target\b')));
     expect(source, contains('padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom)'));
     expect(source, contains('key: notesKey'));
     expect(source, contains('focusNode: notesFocus'));

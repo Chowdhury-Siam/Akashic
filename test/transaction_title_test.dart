@@ -45,8 +45,8 @@ void main() {
   });
 
   test('same-day time ranges survive map round trips without becoming multi-day records', () {
-    final end = DateTime.utc(2026, 8, 28, 14, 45);
-    final original = titledTransaction(endOn: end);
+    final end = DateTime(2026, 8, 28, 14, 45);
+    final original = titledTransaction(endOn: end).copyWith(createdOn: DateTime(2026, 8, 28, 12, 30));
     final restored = MoneyTransaction.fromMap(original.toMap());
 
     expect(restored.endOn?.isAtSameMomentAs(end), isTrue);

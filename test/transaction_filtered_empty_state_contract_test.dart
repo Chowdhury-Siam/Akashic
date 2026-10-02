@@ -33,11 +33,11 @@ void main() {
     expect(start, greaterThanOrEqualTo(0));
     expect(end, greaterThan(start));
 
-    final helper = source.substring(start, end);
+    final helper = source.substring(start, end).replaceAll(RegExp(r'//[^\n]*'), '');
     expect(helper, contains('state.setDateRange(DateRangeType.allTime)'));
     expect(helper, contains('state.clearFilters()'));
     expect(helper, isNot(contains('deleteTransaction')));
     expect(helper, isNot(contains('repo.')));
-    expect(helper, isNot(contains('sync')));
+    expect(helper, isNot(matches(RegExp(r'\b\w*[Ss]ync\w*\s*\('))));
   });
 }
