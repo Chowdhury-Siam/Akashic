@@ -14,7 +14,7 @@ void main() {
     final backup = File('lib/main.dart').readAsStringSync();
 
     expect(pubspec, contains('name: yutaka'));
-    expect(pubspec, contains('version: 1.0.1242+286'));
+    expect(pubspec, contains('version: 1.0.1246+290'));
     expect(config, contains("const appTitle = 'Yutaka';"));
     expect(updates, contains("const updateGithubOwner = 'Chowdhury-Siam';"));
     expect(updates, contains("const updateGithubRepo = 'Yutaka';"));
@@ -29,6 +29,8 @@ void main() {
     expect(backup, contains("legacyBackupExtension = 'koinlybackup'"));
     expect(backup, contains('allowedExtensions: const [BackupService.backupExtension]'));
 
+    expect(File('assets/icons/yutaka_logo.svg').existsSync(), isTrue);
+    expect(File('assets/icons/app_icon.png').existsSync(), isTrue);
     expect(File('assets/icons/yutaka_mark.png').existsSync(), isTrue);
     expect(File('android/app/src/main/res/drawable-nodpi/yutaka_splash_icon.png').existsSync(), isTrue);
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);

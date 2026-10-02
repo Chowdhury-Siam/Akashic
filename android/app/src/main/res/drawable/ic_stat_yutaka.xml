@@ -2,13 +2,11 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <!--
-      Android status-bar notification icons must be a single-color silhouette.
-      Keep this resource separate from the full-color launcher/adaptive icon.
-    -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M3,3H8.2L12,9.2L15.8,3H21L14.5,13V21H9.5V13Z" />
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- Android notification icons are monochrome; this silhouette follows the official Yutaka mark. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M452,503 C493,507 536,535 575,579 C611,620 628,670 628,722 L628,793 L552,776 C503,765 470,731 470,681 L470,525 C470,515 463,508 452,503 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M504,489 L690,303 C725,268 760,251 808,251 L826,251 L826,332 C826,378 809,417 776,450 L626,600 C611,552 590,514 555,478 L535,458 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M198,251 L305,251 C349,251 385,267 416,298 L515,397 C480,438 441,473 397,486 C346,501 294,486 256,448 L232,424 C207,399 198,367 198,324 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M198,251 L302,251 C347,251 381,265 416,300 L563,447 C608,492 628,532 628,590 L628,792 C610,724 578,660 530,612 L248,330 C215,297 198,274 198,251 Z" />
 </vector>

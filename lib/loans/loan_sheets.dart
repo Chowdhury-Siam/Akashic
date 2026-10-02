@@ -243,6 +243,9 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
   late final TextEditingController rate;
   late final TextEditingController note;
   late final TextEditingController newPerson;
+  final noteFocus = FocusNode();
+  final noteKey = GlobalKey();
+  bool _noteHasFocus = false;
 
   bool get editing => widget.loan != null;
 
@@ -260,6 +263,7 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
     rate = TextEditingController(text: loan == null || loan.interestRate == 0 ? '' : loan.interestRate.toStringAsFixed(2));
     note = TextEditingController(text: loan?.note ?? '');
     newPerson = TextEditingController();
+    noteFocus.addListener(_handleNoteFocusChanged);
   }
 
   @override
@@ -278,8 +282,34 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
     defaultsLoaded = true;
   }
 
+  void _handleNoteFocusChanged() {
+    if (!mounted || _noteHasFocus == noteFocus.hasFocus) return;
+    setState(() => _noteHasFocus = noteFocus.hasFocus);
+    if (!_noteHasFocus) return;
+    _scrollNoteIntoView();
+    Future<void>.delayed(AppMotion.fast, _scrollNoteIntoView);
+    Future<void>.delayed(AppMotion.medium, _scrollNoteIntoView);
+    Future<void>.delayed(AppMotion.slow, _scrollNoteIntoView);
+  }
+
+  void _scrollNoteIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = noteKey.currentContext;
+      if (!mounted || target == null || !noteFocus.hasFocus) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: AppMotion.medium,
+        curve: AppMotion.emphasized,
+        alignment: .08,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
+  }
+
   @override
   void dispose() {
+    noteFocus.removeListener(_handleNoteFocusChanged);
+    noteFocus.dispose();
     amount.dispose();
     rate.dispose();
     note.dispose();
@@ -377,9 +407,9 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
     final contactOption = _contactOption(state);
-    return YutakaPopupContent(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
-      child: Column(
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardAwareNoteEditing = _noteHasFocus && keyboardInset > 0;
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -519,7 +549,11 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
             ),
           ],
           const SizedBox(height: 12),
-          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(
+            key: noteKey,
+            focusNode: noteFocus,
+            contextMenuBuilder: yutakaTextFieldContextMenu,
+            enableInteractiveSelection: true,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: note, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)')),
           const SizedBox(height: 20),
@@ -531,7 +565,22 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
             ],
           ),
         ],
-      ),
+      );
+
+    if (keyboardAwareNoteEditing) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: content,
+        ),
+      );
+    }
+
+    return YutakaPopupContent(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+      child: content,
     );
   }
 }
@@ -558,11 +607,14 @@ class _LoanPaymentSheet extends StatefulWidget {
 class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
   final amount = TextEditingController();
   final note = TextEditingController();
+  final noteFocus = FocusNode();
+  final noteKey = GlobalKey();
   DateTime paidOn = DateTime.now();
   String? accountId;
   bool recordInAccount = false;
   bool defaultsLoaded = false;
   bool busy = false;
+  bool _noteHasFocus = false;
 
   @override
   void initState() {
@@ -571,6 +623,7 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
     if (initialAmount != null && initialAmount > 0) {
       amount.text = roundLoanMoney(initialAmount).toStringAsFixed(2);
     }
+    noteFocus.addListener(_handleNoteFocusChanged);
   }
 
   @override
@@ -583,8 +636,34 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
     defaultsLoaded = true;
   }
 
+  void _handleNoteFocusChanged() {
+    if (!mounted || _noteHasFocus == noteFocus.hasFocus) return;
+    setState(() => _noteHasFocus = noteFocus.hasFocus);
+    if (!_noteHasFocus) return;
+    _scrollNoteIntoView();
+    Future<void>.delayed(AppMotion.fast, _scrollNoteIntoView);
+    Future<void>.delayed(AppMotion.medium, _scrollNoteIntoView);
+    Future<void>.delayed(AppMotion.slow, _scrollNoteIntoView);
+  }
+
+  void _scrollNoteIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = noteKey.currentContext;
+      if (!mounted || target == null || !noteFocus.hasFocus) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: AppMotion.medium,
+        curve: AppMotion.emphasized,
+        alignment: .08,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
+  }
+
   @override
   void dispose() {
+    noteFocus.removeListener(_handleNoteFocusChanged);
+    noteFocus.dispose();
     amount.dispose();
     note.dispose();
     super.dispose();
@@ -636,9 +715,9 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
     final value = double.tryParse(amount.text) ?? 0;
     final split = allocateLoanPayment(widget.loan, state.paymentsForLoan(widget.loan.id), value, paidOn);
     final account = state.accountOf(accountId ?? '');
-    return YutakaPopupContent(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
-      child: Column(
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardAwareNoteEditing = _noteHasFocus && keyboardInset > 0;
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -743,7 +822,11 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
               },
             ),
           const SizedBox(height: 12),
-          TextField(contextMenuBuilder: yutakaTextFieldContextMenu, enableInteractiveSelection: true, 
+          TextField(
+            key: noteKey,
+            focusNode: noteFocus,
+            contextMenuBuilder: yutakaTextFieldContextMenu,
+            enableInteractiveSelection: true,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: note, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)')),
           const SizedBox(height: 20),
@@ -755,7 +838,22 @@ class _LoanPaymentSheetState extends State<_LoanPaymentSheet> {
             ],
           ),
         ],
-      ),
+      );
+
+    if (keyboardAwareNoteEditing) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: content,
+        ),
+      );
+    }
+
+    return YutakaPopupContent(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+      child: content,
     );
   }
 }

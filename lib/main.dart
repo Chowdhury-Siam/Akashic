@@ -17098,28 +17098,162 @@ class TransactionListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppController>();
     final txs = state.transactionListTransactions();
+    final range = state.activeRange();
+    final hasDateFilter = state.dateRangeType != DateRangeType.allTime;
+    final hasTransactionFilters = state.filterAccountIds.isNotEmpty ||
+        state.filterCategoryIds.isNotEmpty ||
+        state.filterTypes.isNotEmpty;
+    final totalTransactionCount = state.transactions.length;
+    final matchingWithoutDateCount = state.transactionListTransactions(ignoreDate: true).length;
+    final subtitle = hasDateFilter || hasTransactionFilters
+        ? '${txs.length} shown • $totalTransactionCount total • ${range.label} • ${transactionSortModeLabel(state.transactionSortMode)}'
+        : '$totalTransactionCount records • ${range.label} • ${transactionSortModeLabel(state.transactionSortMode)}';
+
     return PageScaffold(
       title: 'Transaction',
       titleTrailing: const AmountVisibilityToggle(size: 18, padding: EdgeInsets.all(3)),
-      subtitle: '${txs.length} records • ${state.activeRange().label} • ${transactionSortModeLabel(state.transactionSortMode)}',
+      subtitle: subtitle,
       actions: [
+        if (hasDateFilter)
+          IconButton.filledTonal(
+            key: const ValueKey('transaction-date-range-button'),
+            tooltip: 'Change date range: ${range.label}',
+            onPressed: () => showDateRangeSheet(context),
+            icon: const Icon(Icons.date_range_rounded),
+          )
+        else
+          IconButton(
+            key: const ValueKey('transaction-date-range-button'),
+            tooltip: 'Change date range',
+            onPressed: () => showDateRangeSheet(context),
+            icon: const Icon(Icons.date_range_rounded),
+          ),
         IconButton(
           key: const ValueKey('transaction-sort-button'),
           tooltip: 'Sort: ${transactionSortModeLabel(state.transactionSortMode)}',
           onPressed: () => showTransactionSortSheet(context),
           icon: const Icon(Icons.sort_rounded),
         ),
-        IconButton(
-          tooltip: 'Filters',
-          onPressed: () => showFilterSheet(context),
-          icon: const Icon(Icons.filter_alt_rounded),
-        ),
+        if (hasTransactionFilters)
+          IconButton.filledTonal(
+            key: const ValueKey('transaction-filter-button'),
+            tooltip: 'Filters active',
+            onPressed: () => showFilterSheet(context),
+            icon: const Icon(Icons.filter_alt_rounded),
+          )
+        else
+          IconButton(
+            key: const ValueKey('transaction-filter-button'),
+            tooltip: 'Filters',
+            onPressed: () => showFilterSheet(context),
+            icon: const Icon(Icons.filter_alt_rounded),
+          ),
       ],
       child: ResponsiveListContent(
         header: [ActiveFilterChips(state: state)],
         itemCount: txs.length,
-        empty: EmptyCard(icon: Icons.receipt_long_rounded, title: 'No transactions', body: 'Create a transaction or change filters.', action: () => showTransactionEditor(context), actionLabel: 'Add transaction', animated: true),
+        empty: TransactionListEmptyState(
+          state: state,
+          totalTransactionCount: totalTransactionCount,
+          matchingWithoutDateCount: matchingWithoutDateCount,
+        ),
         itemBuilder: (context, index) => TransactionTile(tx: txs[index]),
+      ),
+    );
+  }
+}
+
+Future<void> _showAllTransactions(AppController state) async {
+  // This only resets view preferences. It deliberately never touches the
+  // transaction repository, sync state, or any persisted transaction row.
+  await state.setDateRange(DateRangeType.allTime);
+  await state.clearFilters();
+}
+
+class TransactionListEmptyState extends StatelessWidget {
+  const TransactionListEmptyState({
+    super.key,
+    required this.state,
+    required this.totalTransactionCount,
+    required this.matchingWithoutDateCount,
+  });
+
+  final AppController state;
+  final int totalTransactionCount;
+  final int matchingWithoutDateCount;
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalTransactionCount == 0) {
+      return EmptyCard(
+        icon: Icons.receipt_long_rounded,
+        title: 'No transactions yet',
+        body: 'Create your first transaction to get started.',
+        action: () => showTransactionEditor(context),
+        actionLabel: 'Add transaction',
+        animated: true,
+      );
+    }
+
+    final range = state.activeRange();
+    final hasDateFilter = state.dateRangeType != DateRangeType.allTime;
+    final hasTransactionFilters = state.filterAccountIds.isNotEmpty ||
+        state.filterCategoryIds.isNotEmpty ||
+        state.filterTypes.isNotEmpty;
+    final savedLabel = '$totalTransactionCount ${totalTransactionCount == 1 ? 'transaction' : 'transactions'}';
+
+    late final String title;
+    late final String body;
+    VoidCallback? secondaryAction;
+    String? secondaryActionLabel;
+
+    if (hasTransactionFilters && matchingWithoutDateCount == 0) {
+      title = 'No transactions match these filters';
+      body = 'You have $savedLabel saved. Try changing or clearing the active filters.';
+      secondaryAction = () => state.clearFilters();
+      secondaryActionLabel = 'Clear filters';
+    } else if (hasDateFilter) {
+      title = 'No transactions for ${range.label}';
+      body = 'You have $savedLabel saved, but none fall within the selected date range.';
+      secondaryAction = () => showDateRangeSheet(context);
+      secondaryActionLabel = 'Change date range';
+    } else {
+      title = 'No transactions are visible';
+      body = 'You have $savedLabel saved, but the current Transaction view is hiding them.';
+      secondaryAction = () => showFilterSheet(context);
+      secondaryActionLabel = 'Review filters';
+    }
+
+    return ExpressiveCard(
+      child: Column(
+        children: [
+          const _AnimatedEmptyStateIcon(icon: Icons.receipt_long_rounded, color: kSleekAccent),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(body, textAlign: TextAlign.center),
+          const SizedBox(height: 14),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              FilledButton(
+                onPressed: () => _showAllTransactions(state),
+                child: const Text('Show all transactions'),
+              ),
+              if (secondaryAction != null)
+                OutlinedButton(
+                  onPressed: secondaryAction,
+                  child: Text(secondaryActionLabel ?? 'Change filters'),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -17132,6 +17266,17 @@ class ActiveFilterChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chips = <Widget>[];
+    if (state.dateRangeType != DateRangeType.allTime) {
+      chips.add(
+        InputChip(
+          key: const ValueKey('transaction-active-date-chip'),
+          avatar: const Icon(Icons.date_range_rounded, size: 18, color: kSleekAccent),
+          label: Text(state.activeRange().label),
+          onPressed: () => showDateRangeSheet(context),
+          onDeleted: () => state.setDateRange(DateRangeType.allTime),
+        ),
+      );
+    }
     for (final id in state.filterAccountIds) {
       chips.add(InputChip(label: Text(state.accountOf(id)?.name ?? 'Account'), onDeleted: () => state.saveFilters(accounts: state.filterAccountIds.where((e) => e != id).toList())));
     }
@@ -17142,7 +17287,7 @@ class ActiveFilterChips extends StatelessWidget {
       chips.add(InputChip(label: Text(enumName(type)), onDeleted: () => state.saveFilters(types: state.filterTypes.where((e) => e != type).toList())));
     }
     if (chips.isEmpty) return const SizedBox.shrink();
-    chips.add(TextButton(onPressed: state.clearFilters, child: const Text('Clear all')));
+    chips.add(TextButton(onPressed: () => _showAllTransactions(state), child: const Text('Clear all')));
     return Padding(padding: const EdgeInsets.only(bottom: 12), child: Wrap(spacing: 8, runSpacing: 8, children: chips));
   }
 }
@@ -17783,14 +17928,22 @@ class _TransactionEditorState extends State<TransactionEditor> {
   void _handleNotesFocusChanged() {
     if (!notesFocus.hasFocus) return;
     _scrollNotesIntoView();
+    Future<void>.delayed(AppMotion.fast, _scrollNotesIntoView);
     Future<void>.delayed(AppMotion.medium, _scrollNotesIntoView);
+    Future<void>.delayed(AppMotion.slow, _scrollNotesIntoView);
   }
 
   void _scrollNotesIntoView() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = notesKey.currentContext;
-      if (!mounted || target == null) return;
-      Scrollable.ensureVisible(target, duration: AppMotion.medium, curve: AppMotion.emphasized, alignment: .72);
+      if (!mounted || target == null || !notesFocus.hasFocus) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: AppMotion.medium,
+        curve: AppMotion.emphasized,
+        alignment: .08,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
     });
   }
 
@@ -18411,11 +18564,6 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       title: 'Analysis',
       subtitle: range.label,
       actions: [
-        IconButton(
-          onPressed: () => showDateRangeSheet(context),
-          tooltip: 'Change date range',
-          icon: const Icon(Icons.date_range_rounded),
-        ),
         IconButton(
           onPressed: () => showFilterSheet(context),
           tooltip: 'Filter analysis',

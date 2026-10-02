@@ -1,3 +1,31 @@
+## [1.0.1246] - 2026-10-02
+
+- Fixed the Transaction Notes field so focusing it reliably scrolls the field and save controls above the on-screen keyboard after the IME animation settles.
+- Made Loan note fields keyboard-aware in both the loan editor and payment editor: normal popup sizing is preserved until the note is focused, then the content becomes temporarily scrollable so the note stays visible above the keyboard.
+- Added regression coverage for transaction and loan note keyboard visibility behavior.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1246+290`.
+
+## [1.0.1245] - 2026-10-02
+
+- Replaced the Yutaka visual identity with the new green folded-ribbon logo supplied as the canonical SVG source.
+- Updated in-app branding, Android launcher/adaptive/round icons, Android splash and notification mark, Windows ICO, Linux/macOS icon source, and README branding artwork.
+- Added `assets/icons/yutaka_logo.svg` as the canonical logo source and regenerated raster assets from it.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1245+289`.
+
+## [1.0.1244] - 2026-10-02
+
+- Removed the redundant **Change date range** calendar action from the Analysis page header.
+- Kept the Analysis filter action and existing range-dependent analysis behavior unchanged.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1244+288`.
+
+## [1.0.1243] - 2026-10-02
+
+- Fixed the Transaction page empty state so an empty date/filter result is no longer presented like deleted or missing transaction data.
+- Added visible `shown / total` transaction counts while filters are active, a removable active date-range chip, and active styling for date/filter controls.
+- Added one-click `Show all transactions`, `Change date range`, and `Clear filters` recovery actions that only reset view preferences and never modify transaction rows.
+- Added a direct Transaction date-range action and regression coverage for filtered-empty transaction states and data-safe filter resets.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1243+287`.
+
 ## [1.0.1242] - 2026-10-02
 
 - Moved the Analysis date-range control from the Cash flow trend card into the top app-bar actions, immediately before the Analysis filter.
