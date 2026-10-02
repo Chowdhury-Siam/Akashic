@@ -63,7 +63,14 @@ void main() {
 
   test('loan detail only offers write off for active records', () {
     final file = File('lib/loans/loan_screens.dart').readAsStringSync();
-    expect(file, contains("if (loan.status == LoanStatus.active) const PopupMenuItem(value: 'writeoff', child: Text('Write off'))"));
-    expect(file, isNot(contains("if (loan.status != LoanStatus.writtenOff) const PopupMenuItem(value: 'writeoff', child: Text('Write off'))")));
+    // Presentation properties such as height must not change this contract.
+    final activeWriteOff = RegExp(
+      r"if\s*\(loan\.status\s*==\s*LoanStatus\.active\)\s*const\s+PopupMenuItem\(\s*value:\s*'writeoff'",
+    );
+    final nonWrittenOffWriteOff = RegExp(
+      r"if\s*\(loan\.status\s*!=\s*LoanStatus\.writtenOff\)\s*const\s+PopupMenuItem\(\s*value:\s*'writeoff'",
+    );
+    expect(activeWriteOff.hasMatch(file), isTrue);
+    expect(nonWrittenOffWriteOff.hasMatch(file), isFalse);
   });
 }

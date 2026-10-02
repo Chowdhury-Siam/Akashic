@@ -1,3 +1,9 @@
+## [1.0.1259] - 2026-10-03
+
+- Fix the loan write-off contract test to accept menu presentation properties while still requiring the active-loan guard.
+- Retain the loan popup and failed-run cleanup improvements.
+- Bump release metadata to `1.0.1259+303`.
+
 ## [1.0.1258] - 2026-10-03
 
 - Round the loan action menu and reduce row and divider spacing.

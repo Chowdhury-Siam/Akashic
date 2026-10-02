@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
+      - Build Android Releases
+      - Build Windows Release
+      - Build Linux Releases
+      - Build macOS Release
       - Publish Stable Release
       - Deploy Yutaka Public Pages
       - Deploy Self-Hosted Sync Worker
@@ -23,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # No checkout: this privileged workflow executes only its own trusted code.
-      - name: Remove completed successful or skipped housekeeping runs
+      - name: Remove completed successful runs and failed-commit build artifacts
         uses: actions/github-script@v8
         with:
           script: |
@@ -36,7 +40,31 @@ jobs:
               'cleanup-workflow-runs.yml',
             ];
             const removable = new Set(['success', 'skipped']);
-            const candidates = [];
+            const candidates = new Set();
+            const buildWorkflows = [
+              'build-android-apks.yml',
+              'build-windows.yml',
+              'build-linux.yml',
+              'build-macos.yml',
+            ];
+            const completedBuilds = [];
+            for (const workflow_id of buildWorkflows) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id, status: 'completed', per_page: 100,
+              });
+              completedBuilds.push(...runs);
+            }
+            const failures = new Set(['failure', 'timed_out', 'startup_failure']);
+            const failedCommits = new Set(
+              completedBuilds.filter(run => failures.has(run.conclusion)).map(run => run.head_sha)
+            );
+            // Never delete a healthy commit's build artifacts before publishing.
+            // Recheck on every platform completion so late successes are removed too.
+            for (const run of completedBuilds) {
+              if (failedCommits.has(run.head_sha) && removable.has(run.conclusion)) {
+                candidates.add(run.id);
+              }
+            }
             // Collect every page before deleting; deletion would shift pagination.
             for (const workflow_id of targets) {
               const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
@@ -44,7 +72,7 @@ jobs:
               });
               for (const run of runs) {
                 if (Number(run.id) !== currentRunId && removable.has(run.conclusion)) {
-                  candidates.push(run.id);
+                  candidates.add(run.id);
                 }
               }
             }
