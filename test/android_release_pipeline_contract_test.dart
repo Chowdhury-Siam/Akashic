@@ -30,6 +30,16 @@ void main() {
     expect(workflow, contains('Available Flutter APK outputs:'));
   });
 
+  test('Android release uses the newer Flutter engine line required by the 16 KB gate', () {
+    final workflow = File(
+      '.github/workflows/build-android-apks.yml',
+    ).readAsStringSync();
+
+    expect(workflow, contains('channel: beta'));
+    expect(workflow, contains('flutter-version: 3.49.0-0.2.pre'));
+    expect(workflow, isNot(contains('flutter-version: 3.47.4')));
+  });
+
   test('Google Play AAB enforces 16 KB page-size compatibility', () {
     final appGradle = File('android/app/build.gradle').readAsStringSync();
     final rootGradle = File('android/build.gradle').readAsStringSync();

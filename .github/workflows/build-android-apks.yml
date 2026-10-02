@@ -100,8 +100,8 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
-          flutter-version: 3.47.4
+          channel: beta
+          flutter-version: 3.49.0-0.2.pre
           cache: true
 
       - name: Restore Dart package cache
@@ -261,8 +261,8 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
-          flutter-version: 3.47.4
+          channel: beta
+          flutter-version: 3.49.0-0.2.pre
           cache: true
 
       - name: Restore Dart package cache
