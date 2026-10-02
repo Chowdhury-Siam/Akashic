@@ -2,6 +2,8 @@ name: Clean Completed Workflow Runs
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "2-57/5 * * * *"
   workflow_run:
     workflows:
       - Build Android Releases
@@ -55,13 +57,22 @@ jobs:
               completedBuilds.push(...runs);
             }
             const failures = new Set(['failure', 'timed_out', 'startup_failure']);
+            const failureRetentionMs = 20 * 60 * 1000;
+            const now = Date.now();
+            const expiredFailure = run => {
+              const finished = Date.parse(run.updated_at);
+              // Only completed runs are queried. updated_at is conservative if
+              // GitHub updates a run again after it finishes; never use start time.
+              return failures.has(run.conclusion) && Number.isFinite(finished)
+                && now - finished >= failureRetentionMs;
+            };
             const failedCommits = new Set(
               completedBuilds.filter(run => failures.has(run.conclusion)).map(run => run.head_sha)
             );
             // Never delete a healthy commit's build artifacts before publishing.
             // Recheck on every platform completion so late successes are removed too.
             for (const run of completedBuilds) {
-              if (failedCommits.has(run.head_sha) && removable.has(run.conclusion)) {
+              if (expiredFailure(run) || (failedCommits.has(run.head_sha) && removable.has(run.conclusion))) {
                 candidates.add(run.id);
               }
             }
@@ -71,7 +82,7 @@ jobs:
                 owner, repo, workflow_id, status: 'completed', per_page: 100,
               });
               for (const run of runs) {
-                if (Number(run.id) !== currentRunId && removable.has(run.conclusion)) {
+                if (Number(run.id) !== currentRunId && (removable.has(run.conclusion) || expiredFailure(run))) {
                   candidates.add(run.id);
                 }
               }
@@ -86,5 +97,5 @@ jobs:
                 throw error;
               }
             }
-            core.info(`Deleted ${deleted} completed runs. Active, failed and cancelled runs were kept.`);
+            core.info(`Deleted ${deleted} completed runs. Active, recent failed and cancelled runs were kept; failures expire after 20 minutes.`);
             core.info('This cleanup run stays visible until a later cleanup removes it.');

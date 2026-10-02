@@ -10488,7 +10488,7 @@ enum _YutakaSnackKind { success, failure, warning, info }
 
 _YutakaSnackKind _snackKindFor(String message) {
   final lower = message.toLowerCase();
-  const failures = ['failed', 'failure', 'error', 'could not', "couldn't", 'malformed', 'unavailable'];
+  const failures = ['failed', 'failure', 'error', 'could not', "couldn't", 'cannot', "can't", 'unable to', 'malformed', 'unavailable'];
   const successes = ['saved', 'added', 'created', 'updated', 'deleted', 'removed', 'recorded', 'copied', 'recovered', 'connected', 'uploaded', 'complete', 'completed', 'restored', 'merged', 'purchased'];
   const warnings = ['cancelled', 'canceled', 'reset', 'already running', 'overdue'];
   if (failures.any(lower.contains)) return _YutakaSnackKind.failure;
@@ -10523,9 +10523,11 @@ void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind)
     _YutakaSnackKind.warning => ('Please note', ContentType.warning, kSleekWarning),
     _YutakaSnackKind.info => ('Yutaka', ContentType.help, kSleekAccent),
   };
-  final duration = kind == _YutakaSnackKind.failure
-      ? const Duration(seconds: 5)
-      : const Duration(milliseconds: 3600);
+  // Longer messages need time to read after the entrance animation.
+  final minimumMilliseconds = kind == _YutakaSnackKind.failure ? 5000 : 3600;
+  final duration = Duration(
+    milliseconds: (message.runes.length * 55).clamp(minimumMilliseconds, 15000).toInt(),
+  );
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
@@ -10623,7 +10625,7 @@ class _YutakaTopFeedbackBannerState extends State<_YutakaTopFeedbackBanner>
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     final reduceMotion = media.disableAnimations;
-    final maxWidth = math.min(kIsDesktopApp ? 500.0 : 520.0, math.max(280.0, media.size.width - 24));
+    final maxWidth = math.min(kIsDesktopApp ? 500.0 : 520.0, math.max(0.0, media.size.width - 24));
     final topInset = media.padding.top + (kIsDesktopApp ? 14.0 : 10.0);
     final surface = Color.alphaBlend(
       widget.color.withOpacity(dark ? .08 : .055),
@@ -10637,7 +10639,7 @@ class _YutakaTopFeedbackBannerState extends State<_YutakaTopFeedbackBanner>
         color: Colors.transparent,
         child: Container(
           width: maxWidth,
-          constraints: const BoxConstraints(minHeight: 68, maxHeight: 94),
+          constraints: const BoxConstraints(minHeight: 68),
           padding: const EdgeInsets.fromLTRB(12, 10, 7, 10),
           decoration: BoxDecoration(
             color: surface.withOpacity(.985),
@@ -10672,8 +10674,7 @@ class _YutakaTopFeedbackBannerState extends State<_YutakaTopFeedbackBanner>
                   children: [
                     Text(
                       widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: scheme.onSurface,
                         fontWeight: FontWeight.w900,
@@ -10683,8 +10684,7 @@ class _YutakaTopFeedbackBannerState extends State<_YutakaTopFeedbackBanner>
                     const SizedBox(height: 3),
                     Text(
                       widget.message,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                         fontWeight: FontWeight.w700,

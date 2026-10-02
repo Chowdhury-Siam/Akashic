@@ -701,7 +701,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1259
+  --dart-define=YUTAKA_APP_VERSION=1.0.1260
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -710,7 +710,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1259
+  --dart-define=YUTAKA_APP_VERSION=1.0.1260
 ```
 
 ## 10.4 Windows build
@@ -720,7 +720,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1259
+  --dart-define=YUTAKA_APP_VERSION=1.0.1260
 ```
 
 ## 10.5 Linux build
@@ -737,7 +737,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1259
+  --dart-define=YUTAKA_APP_VERSION=1.0.1260
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -756,7 +756,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1259
+  --dart-define=YUTAKA_APP_VERSION=1.0.1260
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
@@ -779,6 +779,14 @@ When a signed-in user chooses a profile photo, animated GIF, or profile video, Y
 | `deploy-sync-worker.yml` | Deploys a fork owner's self-hosted Cloudflare Worker |
 
 Workflow-only CI maintenance does **not** change Yutaka's app/build/Worker version. Version numbers are bumped only when the shipped app or Worker changes.
+
+### Build cache behavior
+
+Android restores Gradle's reusable compilation state and caches pinned SDK/NDK packages only when they are missing from the runner. The Play job performs the AndroidX DataStore resolution check once; the four Android package jobs and all quality gates remain enabled.
+
+Windows and macOS keep a rolling cache of native compiler outputs, separated by toolchain, architecture and dependency lockfile. CI restores native source timestamps only when a SHA-256 comparison confirms the content is unchanged. Edited and new files rebuild normally. Caches are saved after native output verification and before executable signing. Windows also uses offline package resolution with online fallback, parallel CMake compilation, and fast LZMA2 installer compression (which can produce a larger installer).
+
+The first run builds the caches. Subsequent app-only updates should benefit most; Flutter/dependency/toolchain updates or cache eviction still require recompilation. Compare the compile steps in consecutive GitHub Actions runs to measure the gain. CI-only maintenance keeps the app and Worker version unchanged.
 
 ### 10.7.1 Android signing
 

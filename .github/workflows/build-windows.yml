@@ -20,6 +20,7 @@ on:
       - "pubspec.yaml"
       - "pubspec.lock"
       - "CHANGELOG.md"
+      - "tools/ci/**"
       - ".github/workflows/build-windows.yml"
 
 concurrency:
@@ -117,10 +118,32 @@ jobs:
         with:
           path: |
             .pub-cache
-            build/windows/x64/extracted
-          key: yutaka-${{ runner.os }}-deps-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-windows-pub-v2-${{ runner.arch }}-3.47.4-${{ hashFiles('pubspec.lock') }}
           restore-keys: |
-            yutaka-${{ runner.os }}-deps-
+            yutaka-windows-pub-v2-${{ runner.arch }}-3.47.4-
+
+      - name: Identify Windows native toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$install) { throw "Visual C++ toolchain was not found." }
+          $toolset = Get-ChildItem "$install\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (!$toolset) { throw "MSVC toolset was not found." }
+          "NATIVE_TOOLCHAIN=$($toolset.Name)-$(cmake --version | Select-Object -First 1)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Dependency caches are immutable. A separate rolling cache keeps MSVC object
+      # files and the extracted Firebase SDK from the latest successful compile.
+      - name: Restore Windows incremental build cache
+        id: windows-build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/windows
+            .ci-cache/native-inputs-windows.json
+          key: yutaka-windows-native-v1-${{ runner.arch }}-3.47.4-${{ env.NATIVE_TOOLCHAIN }}-${{ hashFiles('pubspec.lock', 'tools/ci/native_input_timestamps.py') }}-${{ github.sha }}
+          restore-keys: |
+            yutaka-windows-native-v1-${{ runner.arch }}-3.47.4-${{ env.NATIVE_TOOLCHAIN }}-${{ hashFiles('pubspec.lock', 'tools/ci/native_input_timestamps.py') }}-
 
       - name: Show Flutter version
         run: flutter --version
@@ -220,7 +243,11 @@ jobs:
           Get-Content $cmakeFile -TotalCount 24
 
       - name: Install dependencies
-        run: flutter pub get
+        shell: pwsh
+        run: |
+          flutter pub get --offline
+          if ($LASTEXITCODE -ne 0) { flutter pub get }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare optional Windows code signing
         shell: pwsh
@@ -263,8 +290,12 @@ jobs:
           "WINDOWS_CODESIGN_TIMESTAMP_URL=$timestampUrl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Windows code signing is enabled. SignTool: $($signtool.FullName)"
 
+      - name: Restore unchanged Windows native input timestamps
+        run: python tools/ci/native_input_timestamps.py restore --platform windows --manifest .ci-cache/native-inputs-windows.json
+
       - name: Build Windows release
         run: |
+          $env:CMAKE_BUILD_PARALLEL_LEVEL = "$env:NUMBER_OF_PROCESSORS"
           $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
           $env:CL = "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
           flutter build windows --release --no-pub --dart-define=YUTAKA_APP_VERSION="$env:YUTAKA_APP_VERSION_NAME"
@@ -282,6 +313,19 @@ jobs:
             throw "Expected Windows executable was not found: $namedExe"
           }
           Get-ChildItem $releaseDir | Format-Table Name,Length
+
+      - name: Record Windows native input timestamps
+        run: python tools/ci/native_input_timestamps.py capture --platform windows --manifest .ci-cache/native-inputs-windows.json
+
+      # Save unsigned compiler state before executable signing and packaging.
+      - name: Save Windows incremental build cache
+        if: steps.windows-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/windows
+            .ci-cache/native-inputs-windows.json
+          key: ${{ steps.windows-build-cache.outputs.cache-primary-key }}
 
       - name: Sign Windows app executable if certificate is configured
         shell: pwsh
@@ -368,7 +412,7 @@ jobs:
           VersionInfoDescription=Yutaka Installer
           VersionInfoProductName=Yutaka
           VersionInfoCompany=Yutaka
-          Compression=lzma2
+          Compression=lzma2/fast
           SolidCompression=yes
           WizardStyle=modern
           PrivilegesRequired=lowest

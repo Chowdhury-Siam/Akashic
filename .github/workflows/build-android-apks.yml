@@ -20,6 +20,7 @@ on:
       - "pubspec.yaml"
       - "pubspec.lock"
       - "CHANGELOG.md"
+      - "tools/ci/**"
       - ".github/workflows/build-android-apks.yml"
 
 concurrency:
@@ -108,10 +109,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .pub-cache
-          key: yutaka-${{ runner.os }}-quality-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-${{ runner.os }}-pub-v2-3.49.0-0.2.pre-${{ hashFiles('pubspec.lock') }}
           restore-keys: |
-            yutaka-${{ runner.os }}-quality-pub-
-            yutaka-${{ runner.os }}-pub-
+            yutaka-${{ runner.os }}-pub-v2-3.49.0-0.2.pre-
 
       - name: Install dependencies
         shell: bash
@@ -127,6 +127,9 @@ jobs:
 
       - name: Test release version readers
         run: bash tools/test_release_version.sh
+
+      - name: Test CI incremental cache safety
+        run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
       - name: Run release test suite
         run: flutter test --no-pub
@@ -213,7 +216,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+
+      # setup-gradle restores compiled Gradle scripts, transformed dependencies and
+      # local task outputs; setup-java's immutable dependency cache cannot roll forward.
+      - name: Restore Gradle compilation and dependency cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Verify Android 16 / API 36 app target
         shell: bash
@@ -249,6 +258,30 @@ jobs:
           grep -q '^android.newDsl=false$' android/gradle.properties
           grep -q '^android.builtInKotlin=false$' android/gradle.properties
 
+      - name: Locate missing Android toolchain packages
+        id: android-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "home=$ANDROID_HOME" >> "$GITHUB_OUTPUT"
+          if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ] && \
+             [ -d "$ANDROID_HOME/platforms/android-36" ] && \
+             [ -d "$ANDROID_HOME/build-tools/36.0.0" ]; then
+            echo "needs-cache=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs-cache=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache pinned Android native toolchain
+        if: steps.android-sdk.outputs.needs-cache == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.android-sdk.outputs.home }}/ndk/28.2.13676358
+            ${{ steps.android-sdk.outputs.home }}/platforms/android-36
+            ${{ steps.android-sdk.outputs.home }}/build-tools/36.0.0
+          key: yutaka-android-sdk-${{ runner.os }}-${{ runner.arch }}-api36-build36.0.0-ndk28.2.13676358-v1
+
       - name: Verify preinstalled Android SDK 36 and NDK 28
         shell: bash
         run: |
@@ -275,9 +308,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .pub-cache
-          key: yutaka-${{ runner.os }}-pub-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-${{ runner.os }}-pub-v2-3.49.0-0.2.pre-${{ hashFiles('pubspec.lock') }}
           restore-keys: |
-            yutaka-${{ runner.os }}-pub-
+            yutaka-${{ runner.os }}-pub-v2-3.49.0-0.2.pre-
 
       - name: Restore Android Gradle wrapper without replacing app resources
         shell: bash
@@ -343,6 +376,7 @@ jobs:
           flutter pub get --offline || flutter pub get
 
       - name: Verify 16 KB-safe AndroidX DataStore resolution
+        if: matrix.package == 'aab'
         shell: bash
         run: |
           set -euo pipefail
@@ -352,7 +386,7 @@ jobs:
             ./gradlew :app:dependencyInsight \
               --configuration playReleaseRuntimeClasspath \
               --dependency androidx.datastore:datastore-core-android \
-              --no-daemon
+              --daemon
           ) | tee "$report"
           if ! grep -q 'androidx.datastore:datastore-core-android:1.3.0-alpha11' "$report"; then
             echo "::error::Play runtime did not resolve the 16 KB-safe DataStore core Android artifact 1.3.0-alpha11."

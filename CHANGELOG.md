@@ -1,3 +1,11 @@
+## [1.0.1260] - 2026-10-03
+
+- CI maintenance: improve Android Gradle/SDK caches and Windows/macOS native compilation reuse; use faster Windows installer compression. Keep release version `1.0.1260+304` unchanged for this workflow-only update.
+- Let top feedback popups grow to show the complete message and title, including with larger text.
+- Recognize negative messages such as “cannot be decrypted” before success words such as “saved.”
+- Allow longer reading time for longer popup messages while retaining the dismiss button.
+- Bump release metadata to `1.0.1260+304`.
+
 ## [1.0.1259] - 2026-10-03
 
 - Fix the loan write-off contract test to accept menu presentation properties while still requiring the active-loan guard.

@@ -20,6 +20,7 @@ on:
       - "pubspec.yaml"
       - "pubspec.lock"
       - "CHANGELOG.md"
+      - "tools/ci/**"
       - ".github/workflows/build-macos.yml"
 
 concurrency:
@@ -157,17 +158,26 @@ jobs:
             .pub-cache
             ~/Library/Caches/CocoaPods
             macos/Pods
-          key: yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          key: yutaka-macos-deps-v2-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
           restore-keys: |
-            yutaka-macos-deps-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+            yutaka-macos-deps-v2-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Identify Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "NATIVE_TOOLCHAIN=$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Restore macOS incremental build cache
-        uses: actions/cache@v4
+        id: macos-build-cache
+        uses: actions/cache/restore@v4
         with:
-          path: build/macos
-          key: yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
+          path: |
+            build/macos
+            .ci-cache/native-inputs-macos.json
+          key: yutaka-macos-native-v2-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ env.NATIVE_TOOLCHAIN }}-${{ hashFiles('pubspec.lock', 'tools/ci/native_input_timestamps.py') }}-${{ github.sha }}
           restore-keys: |
-            yutaka-macos-build-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-
+            yutaka-macos-native-v2-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ env.NATIVE_TOOLCHAIN }}-${{ hashFiles('pubspec.lock', 'tools/ci/native_input_timestamps.py') }}-
 
       - name: Apply Yutaka macOS identity, permissions, and icon
         shell: bash
@@ -270,6 +280,9 @@ jobs:
         run: |
           flutter pub get --offline || flutter pub get
 
+      - name: Restore unchanged macOS native input timestamps
+        run: python3 tools/ci/native_input_timestamps.py restore --platform macos --manifest .ci-cache/native-inputs-macos.json
+
       - name: Build universal macOS release
         env:
           COMPILER_INDEX_STORE_ENABLE: "NO"
@@ -293,6 +306,20 @@ jobs:
           case " $ARCHES " in *" arm64 "*) ;; *) echo "::error::macOS build is missing arm64."; exit 1;; esac
           case " $ARCHES " in *" x86_64 "*) ;; *) echo "::error::macOS build is missing x86_64."; exit 1;; esac
           echo "YUTAKA_MACOS_APP=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Record macOS native input timestamps
+        run: python3 tools/ci/native_input_timestamps.py capture --platform macos --manifest .ci-cache/native-inputs-macos.json
+
+      # Cache unsigned build state. Signing credentials and notarized packages are
+      # never included in this cache.
+      - name: Save macOS incremental build cache
+        if: steps.macos-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/macos
+            .ci-cache/native-inputs-macos.json
+          key: ${{ steps.macos-build-cache.outputs.cache-primary-key }}
 
       - name: Prepare optional Developer ID signing
         shell: bash
