@@ -23,7 +23,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions:
-      actions: read
+      actions: write
       contents: write
 
     steps:
@@ -75,8 +75,38 @@ jobs:
           ref: ${{ steps.runs.outputs.head_sha }}
           fetch-depth: 0
 
-      - name: Download Android release artifacts
+      - name: Check whether this commit is already the stable release
+        id: existing
         if: steps.runs.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FULL_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          VERSION_NAME="${FULL_VERSION%%+*}"
+          RELEASE_TAG="v${VERSION_NAME}"
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha // empty' 2>/dev/null || true)"
+          if [ "$tag_sha" = "${{ steps.runs.outputs.head_sha }}" ]; then
+            echo "Stable release ${RELEASE_TAG} already points to this commit; skipping duplicate publication."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download Android release artifacts
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,7 +118,7 @@ jobs:
           done
 
       - name: Download Windows release artifact
-        if: steps.runs.outputs.ready == 'true'
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -97,7 +127,7 @@ jobs:
           gh run download "${{ steps.runs.outputs.windows_run }}" --name yutaka-windows-installer --dir release-assets
 
       - name: Download Linux release artifacts
-        if: steps.runs.outputs.ready == 'true'
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,7 +138,7 @@ jobs:
           done
 
       - name: Download macOS release artifacts
-        if: steps.runs.outputs.ready == 'true'
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,11 +147,11 @@ jobs:
           gh run download "${{ steps.runs.outputs.macos_run }}" --name yutaka-macos-universal --dir release-assets
 
       - name: List release assets
-        if: steps.runs.outputs.ready == 'true'
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         run: ls -lh release-assets
 
       - name: Publish versioned stable release
-        if: steps.runs.outputs.ready == 'true'
+        if: steps.runs.outputs.ready == 'true' && steps.existing.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -252,3 +282,58 @@ jobs:
           fi
           RELEASE_ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')
           gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -f draft=false -f prerelease=false -f make_latest=true
+
+      - name: Delete completed successful release workflow runs
+        if: steps.runs.outputs.ready == 'true' && success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.runs.outputs.head_sha }}
+          CURRENT_PUBLISH_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          delete_run() {
+            local run_id="$1"
+            local label="$2"
+            [ -n "$run_id" ] || return 0
+            [ "$run_id" = "$CURRENT_PUBLISH_RUN_ID" ] && return 0
+            echo "Deleting completed successful ${label} run ${run_id}."
+            if ! gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" >/dev/null; then
+              echo "::warning::Could not delete ${label} run ${run_id}; it may already have been removed."
+            fi
+          }
+
+          delete_platform_runs() {
+            local workflow_file="$1"
+            local label="$2"
+            local ids_file
+            ids_file="$(mktemp)"
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs?head_sha=${SOURCE_SHA}&status=completed&per_page=100" \
+              --jq '.workflow_runs[] | select(.conclusion == "success") | .id' > "$ids_file"
+            while IFS= read -r run_id; do
+              delete_run "$run_id" "$label"
+            done < "$ids_file"
+            rm -f "$ids_file"
+          }
+
+          # Their artifacts are already part of the GitHub Release, so these successful
+          # platform runs for this exact source commit no longer need to remain in Actions.
+          delete_platform_runs build-android-apks.yml "Android"
+          delete_platform_runs build-windows.yml "Windows"
+          delete_platform_runs build-linux.yml "Linux"
+          delete_platform_runs build-macos.yml "macOS"
+
+          # Keep this newest publisher run for release history/debugging, while removing
+          # older successful publisher runs. Failed/cancelled runs are intentionally kept.
+          ids_file="$(mktemp)"
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/publish-stable-release.yml/runs?status=completed&per_page=100" \
+            --jq '.workflow_runs[] | select(.conclusion == "success") | .id' > "$ids_file"
+          while IFS= read -r run_id; do
+            delete_run "$run_id" "Publish Stable Release"
+          done < "$ids_file"
+          rm -f "$ids_file"
+
+          echo "Release-run cleanup complete. Current publisher run and failed/cancelled runs were kept."

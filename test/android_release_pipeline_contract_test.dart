@@ -31,7 +31,8 @@ void main() {
   });
 
   test('Google Play AAB enforces 16 KB page-size compatibility', () {
-    final gradle = File('android/app/build.gradle').readAsStringSync();
+    final appGradle = File('android/app/build.gradle').readAsStringSync();
+    final rootGradle = File('android/build.gradle').readAsStringSync();
     final workflow = File(
       '.github/workflows/build-android-apks.yml',
     ).readAsStringSync();
@@ -39,9 +40,13 @@ void main() {
       'tools/android/verify_16kb_page_size.py',
     ).readAsStringSync();
 
-    expect(gradle, contains('ndkVersion = "28.2.13676358"'));
-    expect(gradle, contains('packagingOptions {'));
-    expect(gradle, contains('useLegacyPackaging false'));
+    expect(appGradle, contains('ndkVersion = "28.2.13676358"'));
+    expect(appGradle, contains('packagingOptions {'));
+    expect(appGradle, contains('useLegacyPackaging false'));
+    expect(rootGradle, contains('androidx.datastore:datastore:1.1.7'));
+    expect(rootGradle, contains('androidx.datastore:datastore-core-android:1.1.7'));
+    expect(rootGradle, contains('androidx.datastore:datastore-preferences:1.1.7'));
+    expect(rootGradle, isNot(contains('androidx.datastore:datastore:1.2.0')));
     expect(workflow, contains('Verify Google Play 16 KB page-size compatibility'));
     expect(workflow, contains(r'bundletool-all-${BUNDLETOOL_VERSION}.jar'));
     expect(workflow, contains('verify_16kb_page_size.py'));
@@ -63,87 +68,22 @@ void main() {
     expect(workflow, contains('flutter test --no-pub'));
     expect(
       workflow,
-      contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),
+      contains('needs: [prepare-worker-bundle, android-release-quality-gate, worker-data-integrity-gate]'),
     );
   });
-  test('Android releases require a real in-place data-preservation upgrade', () {
+  test('Android release no longer runs the slow emulator upgrade gate', () {
     final workflow = File(
       '.github/workflows/build-android-apks.yml',
-    ).readAsStringSync();
-    final runner = File(
-      'tools/android/run_upgrade_data_loss_test.sh',
-    ).readAsStringSync();
-    final fixture = File(
-      'tools/android/upgrade_data_fixture.py',
-    ).readAsStringSync();
-    final productionGradle = File('android/app/build.gradle').readAsStringSync();
-    final workerRegression = File(
-      'cloud/worker/test/data-loss-regression.test.ts',
-    ).readAsStringSync();
-    final upgradeProbeBuilder = File(
-      'tools/android/build_upgrade_probe_apk.sh',
     ).readAsStringSync();
 
     expect(workflow, contains('worker-data-integrity-gate:'));
     expect(workflow, contains('npm run typecheck'));
     expect(workflow, contains('npm test'));
-    expect(workflow, contains('android-upgrade-data-loss-gate:'));
-    expect(workflow, contains('Resolve previous compatible published stable release'));
-    expect(workflow, contains('CURRENT_APP_ID='));
-    expect(workflow, contains('Skipping incompatible release'));
-    expect(workflow, contains('candidate_app_id'));
-    expect(workflow, contains('reactivecircus/android-emulator-runner@v2'));
-    expect(workflow, contains('api-level: 36'));
-    expect(workflow, contains('build_upgrade_probe_apk.sh previous'));
-    expect(workflow, contains('build_upgrade_probe_apk.sh current'));
-    expect(workflow, contains('run_upgrade_data_loss_test.sh'));
-    expect(upgradeProbeBuilder, contains('flutter pub get'));
-    expect(upgradeProbeBuilder, isNot(contains('flutter pub get --offline')));
-    expect(upgradeProbeBuilder, contains('--target-platform android-x64'));
-    expect(upgradeProbeBuilder, contains('--split-per-abi'));
-    expect(upgradeProbeBuilder, contains('android/app/build/outputs'));
-    expect(upgradeProbeBuilder, contains('lib/x86_64/(libflutter|libapp)'));
-    expect(upgradeProbeBuilder, contains('unzip -tq'));
-    expect(
-      workflow,
-      contains('needs: [prepare-worker-bundle, android-release-quality-gate, android-upgrade-data-loss-gate]'),
-    );
-    expect(runner, contains(r'adb install -r "$CURRENT_APK"'));
-    expect(runner, contains('detect_apk_package'));
-    expect(runner, contains(r'PREVIOUS_PACKAGE="$(detect_apk_package "$PREVIOUS_APK")"'));
-    expect(runner, contains(r'CURRENT_PACKAGE="$(detect_apk_package "$CURRENT_APK")"'));
-    expect(runner, contains('Android cannot perform an in-place update across package IDs'));
-    expect(workflow, contains('YUTAKA_PREVIOUS_SOURCE_ROOT: \${{ github.workspace }}/previous'));
-    expect(runner, contains('previous-baseline.db'));
-    expect(runner, contains(r'--source-root "$PREVIOUS_SOURCE_ROOT"'));
-    expect(runner, contains('mkdir -p databases'));
-    expect(runner, isNot(contains('Yutaka did not create')));
-    expect(fixture, contains('def bootstrap('));
-    expect(fixture, contains('_extract_triple_quoted_execute_sql'));
-    expect(fixture, contains('_extract_add_column_sql'));
-    expect(fixture, contains('PRAGMA user_version'));
-    expect(runner, contains(r'adb shell pm path "$PACKAGE"'));
-    expect(runner, contains('cmd package resolve-activity --brief --user 0'));
-    expect(runner, contains(r'-p "$PACKAGE"'));
-    expect(runner, contains('cmd package query-activities --brief --user 0'));
-    expect(runner, isNot(contains(r'component="$PACKAGE/.MainActivity"')));
-    expect(runner, contains(r'adb shell am start -W -S -n "$component"'));
-    expect(runner, isNot(contains('adb shell monkey')));
-    expect(RegExp(r'adb uninstall').allMatches(runner).length, 1);
-    expect(runner, contains('current-offline'));
-    expect(runner, contains('current-reconnected'));
-    expect(fixture, contains('upgrade-tx-expense'));
-    expect(fixture, contains('upgrade-budget'));
-    expect(fixture, contains('upgrade-loan-payment'));
-    expect(fixture, contains('upgrade-sync-operation'));
-    expect(fixture, contains('PRAGMA integrity_check'));
-    expect(productionGradle, isNot(contains('debuggable true')));
-    expect(
-      workerRegression,
-      contains('all recovered finance entities must remain in cloud state'),
-    );
-    expect(workerRegression, contains("['transactions', 'tx-preserve'"));
-    expect(workerRegression, contains("['loans', 'loan-preserve'"));
+    expect(workflow, isNot(contains('android-upgrade-data-loss-gate:')));
+    expect(workflow, isNot(contains('reactivecircus/android-emulator-runner@v2')));
+    expect(File('tools/android/run_upgrade_data_loss_test.sh').existsSync(), isFalse);
+    expect(File('tools/android/build_upgrade_probe_apk.sh').existsSync(), isFalse);
+    expect(File('tools/android/upgrade_data_fixture.py').existsSync(), isFalse);
   });
 
 }

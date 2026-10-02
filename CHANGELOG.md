@@ -1,3 +1,9 @@
+## [1.0.1239] - 2026-10-02
+
+- Removed the slow Android emulator-based real upgrade/data-loss GitHub Actions gate. The normal analyzer/test gate and Worker data-integrity gate remain release blockers.
+- Fixed Google Play 16 KB native page-size validation by forcing the AndroidX DataStore dependency family to `1.1.7`, avoiding the `1.2.0` `libdatastore_shared_counter.so` GNU_RELRO alignment regression while keeping the final AAB validator enabled.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1239+283`.
+
 ## [1.0.1238] - 2026-10-02
 
 ### Fixed

@@ -699,7 +699,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1238
+  --dart-define=YUTAKA_APP_VERSION=1.0.1239
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -708,7 +708,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1238
+  --dart-define=YUTAKA_APP_VERSION=1.0.1239
 ```
 
 ## 10.4 Windows build
@@ -718,7 +718,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1238
+  --dart-define=YUTAKA_APP_VERSION=1.0.1239
 ```
 
 ## 10.5 Linux build
@@ -735,7 +735,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1238
+  --dart-define=YUTAKA_APP_VERSION=1.0.1239
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -754,7 +754,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1238
+  --dart-define=YUTAKA_APP_VERSION=1.0.1239
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
@@ -769,11 +769,11 @@ When a signed-in user chooses a profile photo, animated GIF, or profile video, Y
 
 | Workflow | Purpose |
 | --- | --- |
-| `build-android-apks.yml` | Builds direct Android APKs plus the Google Play AAB and runs the Android quality, Worker-integrity, real upgrade/data-loss, and 16 KB page-size gates |
+| `build-android-apks.yml` | Builds direct Android APKs plus the Google Play AAB and runs the Android quality, Worker-integrity, and 16 KB page-size gates |
 | `build-windows.yml` | Builds the Windows x64 app and installer EXE independently from the other platforms |
 | `build-linux.yml` | Builds Linux x64/ARM64 AppImage and portable archives independently from the other platforms |
 | `build-macos.yml` | Builds the universal macOS DMG and app ZIP independently from the other platforms |
-| `publish-stable-release.yml` | Waits for successful Android, Windows, Linux, and macOS runs for the same commit, then publishes their artifacts together as the stable GitHub Release |
+| `publish-stable-release.yml` | Waits for successful Android, Windows, Linux, and macOS runs for the same commit, publishes their artifacts together as the stable GitHub Release, then deletes those successful platform runs and older successful publisher runs; failed/cancelled runs and the newest successful publisher run are kept |
 | `deploy-sync-worker.yml` | Deploys a fork owner's self-hosted Cloudflare Worker |
 
 Workflow-only CI maintenance does **not** change Yutaka's app/build/Worker version. Version numbers are bumped only when the shipped app or Worker changes.

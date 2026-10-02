@@ -91,6 +91,22 @@ void main() {
     expect(publisher, contains('yutaka-linux-x64'));
     expect(publisher, contains('yutaka-linux-arm64'));
     expect(publisher, contains('yutaka-macos-universal'));
+
+    expect(publisher, contains('id: existing'));
+    expect(publisher, contains('already_published=true'));
+    expect(publisher, contains('skipping duplicate publication'));
+    expect(publisher, contains('actions: write'));
+    expect(publisher, contains('Delete completed successful release workflow runs'));
+    expect(publisher, contains(r'SOURCE_SHA: ${{ steps.runs.outputs.head_sha }}'));
+    expect(publisher, contains(r'CURRENT_PUBLISH_RUN_ID: ${{ github.run_id }}'));
+    expect(publisher, contains('delete_platform_runs build-android-apks.yml "Android"'));
+    expect(publisher, contains('delete_platform_runs build-windows.yml "Windows"'));
+    expect(publisher, contains('delete_platform_runs build-linux.yml "Linux"'));
+    expect(publisher, contains('delete_platform_runs build-macos.yml "macOS"'));
+    expect(publisher, contains('publish-stable-release.yml/runs?status=completed'));
+    expect(publisher, contains('select(.conclusion == "success")'));
+    expect(publisher, contains('[ "$run_id" = "$CURRENT_PUBLISH_RUN_ID" ] && return 0'));
+    expect(File('.github/workflows/cleanup-completed-release-runs.yml').existsSync(), isFalse);
   });
 
   test('release package jobs never build in fork repositories', () {
@@ -119,7 +135,6 @@ void main() {
         'prepare-worker-bundle',
         'android-release-quality-gate',
         'worker-data-integrity-gate',
-        'android-upgrade-data-loss-gate',
         'build-apks',
       ],
       'build-windows.yml': <String>['prepare-worker-bundle', 'build-windows'],
@@ -147,10 +162,10 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1238+282'));
-    expect(config, contains("defaultValue: '1.0.1238'"));
-    expect(androidGradle, contains('versionCode = 282'));
-    expect(androidGradle, contains('versionName = "1.0.1238"'));
+    expect(pubspec, contains('version: 1.0.1239+283'));
+    expect(config, contains("defaultValue: '1.0.1239'"));
+    expect(androidGradle, contains('versionCode = 283'));
+    expect(androidGradle, contains('versionName = "1.0.1239"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);
