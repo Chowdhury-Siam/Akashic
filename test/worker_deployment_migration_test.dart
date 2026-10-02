@@ -211,9 +211,26 @@ void main() {
     final credentials = _MemoryCredentials();
     final updater = WorkerAutoUpdateService(client: server.client, credentialStore: credentials);
     addTearDown(updater.close);
-    final result = await updater.checkAndUpdate(activeWorkerUrl: credentials.profile.workerUrl);
+    var updateStarts = 0;
+    void onUpdateStarted() {
+      expect(server.uploads, isEmpty);
+      updateStarts += 1;
+    }
+
+    final result = await updater.checkAndUpdate(
+      activeWorkerUrl: credentials.profile.workerUrl,
+      onUpdateStarted: onUpdateStarted,
+    );
     expect(result.outcome, WorkerAutoUpdateOutcome.updated);
+    expect(updateStarts, 1);
     expect(credentials.profile.workerVersion, appVersion);
     expect(server.uploads.single['migrations'], {'old_tag': 'existing-v7', 'new_tag': 'existing-v7'});
+
+    final checkedAgain = await updater.checkAndUpdate(
+      activeWorkerUrl: credentials.profile.workerUrl,
+      onUpdateStarted: onUpdateStarted,
+    );
+    expect(checkedAgain.outcome, WorkerAutoUpdateOutcome.alreadyCurrent);
+    expect(updateStarts, 1, reason: 'Checking a current Worker must not show an updating animation.');
   });
 }

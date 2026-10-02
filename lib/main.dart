@@ -59,6 +59,7 @@ import 'subscription_background_service.dart';
 import 'ui_foundation.dart';
 import 'update_service.dart';
 import 'update_background_service.dart';
+import 'update_activity_indicator.dart';
 import 'worker_deployment.dart';
 
 part 'loans/loan_controller_part.dart';
@@ -2264,6 +2265,7 @@ class AppController extends ChangeNotifier {
   bool syncAuthBusy = false;
   bool _syncAccountTransitionInProgress = false;
   bool workerAutoUpdateBusy = false;
+  bool workerAutoUpdateInstalling = false;
   String workerAutoUpdateStatus = '';
   String? workerAutoUpdateError;
   final GithubUpdateService updateService = GithubUpdateService();
@@ -2478,6 +2480,7 @@ class AppController extends ChangeNotifier {
   Future<void> checkForAutomaticWorkerUpdate() async {
     if (workerAutoUpdateBusy || selfHostedSyncApiBaseUrl.trim().isEmpty) return;
     workerAutoUpdateBusy = true;
+    workerAutoUpdateInstalling = false;
     workerAutoUpdateError = null;
     workerAutoUpdateStatus = 'Checking Worker version…';
     notifyListeners();
@@ -2486,6 +2489,10 @@ class AppController extends ChangeNotifier {
     try {
       final result = await updater.checkAndUpdate(
         activeWorkerUrl: selfHostedSyncApiBaseUrl,
+        onUpdateStarted: () {
+          workerAutoUpdateInstalling = true;
+          notifyListeners();
+        },
         onProgress: (message) {
           workerAutoUpdateStatus = message;
           notifyListeners();
@@ -2511,6 +2518,7 @@ class AppController extends ChangeNotifier {
     } finally {
       updater.close();
       workerAutoUpdateBusy = false;
+      workerAutoUpdateInstalling = false;
       notifyListeners();
     }
   }
@@ -7363,6 +7371,36 @@ class AppController extends ChangeNotifier {
 // -----------------------------------------------------------------------------
 
 
+class _UpdateActivityOverlay extends StatelessWidget {
+  const _UpdateActivityOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppController, (bool, bool, int?)>(
+      selector: (_, state) => (
+        state.workerAutoUpdateInstalling,
+        state.updateDownloadBusy,
+        state.updateDownloadBusy && (state.updateDownloadProgress?.totalBytes ?? 0) > 0
+            ? state.updateDownloadProgress?.percent
+            : null,
+      ),
+      builder: (context, activity, _) => SafeArea(
+        child: Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: UpdateActivityIndicator(
+              active: activity.$1 || activity.$2,
+              label: activity.$1 ? 'Updating Worker…' : 'Updating Yutaka…',
+              percent: activity.$1 ? null : activity.$3,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class YutakaApp extends StatelessWidget {
   const YutakaApp({super.key});
 
@@ -7386,7 +7424,13 @@ class YutakaApp extends StatelessWidget {
             textScaler: media.textScaler.clamp(minScaleFactor: .90, maxScaleFactor: maxScale),
             disableAnimations: media.disableAnimations,
           ),
-          child: child ?? const SizedBox.shrink(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              child ?? const SizedBox.shrink(),
+              const _UpdateActivityOverlay(),
+            ],
+          ),
         );
       },
     );

@@ -1,3 +1,10 @@
+## [1.0.1261] - 2026-10-03
+
+- Add a small animated update indicator across app screens during automatic Worker deployment and app update downloads.
+- Show real download percentage when the package size is known; hide the indicator on completion, cancellation or failure.
+- Keep routine Worker version checks quiet and respect reduced-motion settings.
+- Retain popup fixes and build optimizations; bump release metadata to `1.0.1261+305`.
+
 ## [1.0.1260] - 2026-10-03
 
 - Fix the feedback overlay contract test to require full title/message wrapping instead of the obsolete 94-pixel height cap. Test-only maintenance keeps the existing release version unchanged.

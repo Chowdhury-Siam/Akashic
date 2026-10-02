@@ -206,6 +206,7 @@ class WorkerAutoUpdateService {
   Future<WorkerAutoUpdateResult> checkAndUpdate({
     required String activeWorkerUrl,
     WorkerDeploymentProgress? onProgress,
+    void Function()? onUpdateStarted,
   }) async {
     final profile = await _credentialStore.read(workerUrl: activeWorkerUrl);
     if (profile == null) {
@@ -248,6 +249,7 @@ class WorkerAutoUpdateService {
       );
     }
 
+    onUpdateStarted?.call();
     onProgress?.call('A newer Yutaka Worker is available. Updating automatically…');
     final deployment = WorkerDeploymentService(client: _client);
     final result = await deployment.deploy(
