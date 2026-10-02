@@ -336,6 +336,23 @@ jobs:
         run: |
           flutter pub get --offline || flutter pub get
 
+      - name: Verify 16 KB-safe AndroidX DataStore resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/yutaka-datastore-dependency.txt"
+          (
+            cd android
+            ./gradlew :app:dependencyInsight \
+              --configuration playReleaseRuntimeClasspath \
+              --dependency androidx.datastore:datastore-core-android \
+              --no-daemon
+          ) | tee "$report"
+          if ! grep -q 'androidx.datastore:datastore-core-android:1.3.0-alpha11' "$report"; then
+            echo "::error::Play runtime did not resolve the 16 KB-safe DataStore core Android artifact 1.3.0-alpha11."
+            exit 1
+          fi
+
       - name: Verify file picker Android 16 build compatibility
         shell: bash
         run: |

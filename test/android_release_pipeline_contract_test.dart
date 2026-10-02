@@ -43,10 +43,12 @@ void main() {
     expect(appGradle, contains('ndkVersion = "28.2.13676358"'));
     expect(appGradle, contains('packagingOptions {'));
     expect(appGradle, contains('useLegacyPackaging false'));
-    expect(rootGradle, contains('androidx.datastore:datastore:1.1.7'));
-    expect(rootGradle, contains('androidx.datastore:datastore-core-android:1.1.7'));
-    expect(rootGradle, contains('androidx.datastore:datastore-preferences:1.1.7'));
-    expect(rootGradle, isNot(contains('androidx.datastore:datastore:1.2.0')));
+    expect(rootGradle, contains('yutakaDataStoreVersion = "1.3.0-alpha11"'));
+    expect(rootGradle, contains(r'androidx.datastore:datastore-core-android:${yutakaDataStoreVersion}'));
+    expect(appGradle, contains('androidx.datastore:datastore-preferences:1.3.0-alpha11'));
+    expect(appGradle, contains('strictly "1.3.0-alpha11"'));
+    expect(workflow, contains('Verify 16 KB-safe AndroidX DataStore resolution'));
+    expect(workflow, contains('datastore-core-android:1.3.0-alpha11'));
     expect(workflow, contains('Verify Google Play 16 KB page-size compatibility'));
     expect(workflow, contains(r'bundletool-all-${BUNDLETOOL_VERSION}.jar'));
     expect(workflow, contains('verify_16kb_page_size.py'));

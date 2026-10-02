@@ -16,19 +16,20 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-// AndroidX DataStore 1.2.0 ships libdatastore_shared_counter.so with a
-// GNU_RELRO layout that fails Google Play's 16 KB page-size validation.
-// Keep the full DataStore family on 1.1.7 until AndroidX publishes a fixed
-// release; shared_preferences_android itself reverted to 1.1.7 for this reason.
+// AndroidX DataStore 1.1.x/1.2.x can ship libdatastore_shared_counter.so
+// with a GNU_RELRO end that is not 16 KB aligned under Android's current
+// compatibility check. AndroidX rebuilt the native counter in the 1.3 line
+// with the newer linker; keep the whole family on the same fixed release.
+def yutakaDataStoreVersion = "1.3.0-alpha11"
 subprojects { project ->
     project.configurations.configureEach { configuration ->
         configuration.resolutionStrategy {
-            force "androidx.datastore:datastore:1.1.7"
-            force "androidx.datastore:datastore-android:1.1.7"
-            force "androidx.datastore:datastore-core:1.1.7"
-            force "androidx.datastore:datastore-core-android:1.1.7"
-            force "androidx.datastore:datastore-preferences:1.1.7"
-            force "androidx.datastore:datastore-preferences-android:1.1.7"
+            force "androidx.datastore:datastore:${yutakaDataStoreVersion}"
+            force "androidx.datastore:datastore-android:${yutakaDataStoreVersion}"
+            force "androidx.datastore:datastore-core:${yutakaDataStoreVersion}"
+            force "androidx.datastore:datastore-core-android:${yutakaDataStoreVersion}"
+            force "androidx.datastore:datastore-preferences:${yutakaDataStoreVersion}"
+            force "androidx.datastore:datastore-preferences-android:${yutakaDataStoreVersion}"
         }
     }
 }
