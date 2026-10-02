@@ -1,3 +1,9 @@
+## [1.0.1247] - 2026-10-03
+
+- Fixed three `flutter analyze --no-pub` warnings in the filtered-empty Transaction state by making the secondary action and label non-null after exhaustive branch assignment.
+- Removed the redundant null check, dead null-aware fallback, and resulting dead code without changing the empty-state behavior.
+- Bumped synchronized app/Android/Worker metadata to `1.0.1247+291`.
+
 ## [1.0.1246] - 2026-10-02
 
 - Fixed the Transaction Notes field so focusing it reliably scrolls the field and save controls above the on-screen keyboard after the IME animation settles.

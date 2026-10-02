@@ -8,13 +8,13 @@ readers=0
 for workflow in "$repo"/.github/workflows/*.yml; do
   while IFS= read -r command; do
     for ending in '\n' '\r\n'; do
-      printf "name: yutaka${ending}version: 1.0.1246+290${ending}" > "$scratch/pubspec.yaml"
+      printf "name: yutaka${ending}version: 1.0.1247+291${ending}" > "$scratch/pubspec.yaml"
       (
         cd "$scratch"
         eval "$command"
-        test "$FULL_VERSION" = '1.0.1246+290'
-        test "${FULL_VERSION%%+*}" = '1.0.1246'
-        test "${FULL_VERSION##*+}" = '290'
+        test "$FULL_VERSION" = '1.0.1247+291'
+        test "${FULL_VERSION%%+*}" = '1.0.1247'
+        test "${FULL_VERSION##*+}" = '291'
       )
     done
     readers=$((readers + 1))

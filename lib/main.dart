@@ -17204,8 +17204,8 @@ class TransactionListEmptyState extends StatelessWidget {
 
     late final String title;
     late final String body;
-    VoidCallback? secondaryAction;
-    String? secondaryActionLabel;
+    late final VoidCallback secondaryAction;
+    late final String secondaryActionLabel;
 
     if (hasTransactionFilters && matchingWithoutDateCount == 0) {
       title = 'No transactions match these filters';
@@ -17246,11 +17246,10 @@ class TransactionListEmptyState extends StatelessWidget {
                 onPressed: () => _showAllTransactions(state),
                 child: const Text('Show all transactions'),
               ),
-              if (secondaryAction != null)
-                OutlinedButton(
-                  onPressed: secondaryAction,
-                  child: Text(secondaryActionLabel ?? 'Change filters'),
-                ),
+              OutlinedButton(
+                onPressed: secondaryAction,
+                child: Text(secondaryActionLabel),
+              ),
             ],
           ),
         ],
