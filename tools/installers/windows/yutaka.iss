@@ -86,6 +86,9 @@ var
   ShortcutCheck: TNewCheckBox;
   BrowseButton, ActionButton, DismissButton, TitleClose: TNewButton;
   InstallationFinished: Boolean;
+#ifdef InstallerTestAppId
+  ShortcutStateLabel: TNewStaticText;
+#endif
 
 function ReleaseCapture: Boolean;
   external 'ReleaseCapture@user32.dll stdcall';
@@ -183,6 +186,19 @@ begin
   end;
   ApplyDesktopTaskArgument(ExpandConstant('{param:mergetasks|}'), Result);
 end;
+
+#ifdef InstallerTestAppId
+procedure ShortcutStateChanged(Sender: TObject);
+begin
+  // Observe the VCL property in the isolated fixture, not BM_GETCHECK's
+  // native button state beneath the dark style hook.
+  if ShortcutCheck.Checked then
+    ShortcutStateLabel.Caption := 'TEST DESKTOP SHORTCUT: 1'
+  else
+    ShortcutStateLabel.Caption := 'TEST DESKTOP SHORTCUT: 0';
+  Log('Yutaka GUI check: ' + ShortcutStateLabel.Caption);
+end;
+#endif
 
 procedure ActionClicked(Sender: TObject);
 var
@@ -284,6 +300,13 @@ begin
   ShortcutCheck.SetBounds(ScaleX(292), ScaleY(384), ScaleX(610), ScaleY(24));
   ShortcutCheck.Caption := 'Create a desktop shortcut';
   ShortcutCheck.Checked := InitialDesktopShortcut;
+#ifdef InstallerTestAppId
+  // Keep fixture telemetry outside the visible layout. Production builds
+  // contain neither this control nor its event handler.
+  ShortcutStateLabel := LabelAt(WizardForm, '', 980, 200, 240, 24, 10, TextColor, False);
+  ShortcutCheck.OnClick := @ShortcutStateChanged;
+  ShortcutStateChanged(ShortcutCheck);
+#endif
   PhaseLabel := LabelAt(Shell, 'READY TO INSTALL', 292, 446, 620, 24, 10, AccentColor, True);
   ProgressTrack := PanelAt(Shell, 292, 478, 621, 6, OutlineColor);
   ProgressFill := PanelAt(ProgressTrack, 0, 0, 0, 6, AccentColor);
@@ -304,6 +327,14 @@ begin
   if Result and not WizardSilent then begin
     if ShortcutCheck.Checked then WizardSelectTasks('desktopicon')
     else WizardSelectTasks('!desktopicon');
+#ifdef InstallerTestAppId
+    if ShortcutCheck.Checked <> WizardIsTaskSelected('desktopicon') then
+      RaiseException('Native desktop task does not match the custom checkbox');
+    if WizardIsTaskSelected('desktopicon') then
+      Log('Yutaka GUI check: native desktop task = selected')
+    else
+      Log('Yutaka GUI check: native desktop task = deselected');
+#endif
   end;
 end;
 

@@ -107,7 +107,8 @@ class StyledControlsFixture(User32Fixture):
     def __init__(self):
         super().__init__(phase="INSTALLATION NOT STARTED")
         self.controls.update({30: ("TNewButton", "Install Yutaka"),
-                              40: ("TNewCheckBox", "Create a desktop shortcut")})
+                              40: ("TNewCheckBox", "Create a desktop shortcut"),
+                              50: ("TNewStaticText", "TEST DESKTOP SHORTCUT: 1")})
         self.bounds = {30: (767, 560, 146, 48), 40: (292, 384, 610, 24)}
         self.foreground = None
         self.activate = True
@@ -116,6 +117,8 @@ class StyledControlsFixture(User32Fixture):
         self.desktop_selected = True
         self.shortcut_created = None
         self.queued = []
+        self.input_events = []
+        self.native_pending = False
 
     def GetAncestor(self, handle, flag):
         return 1
@@ -153,9 +156,7 @@ class StyledControlsFixture(User32Fixture):
             self.pressed = handle
         if message == 0x0202:
             if self.pressed == handle and inside:
-                if handle == 40:
-                    self.desktop_selected = not self.desktop_selected
-                elif handle == 30:
+                if handle == 30:
                     self.shortcut_created = self.desktop_selected
                     self.controls[20] = ("TNewStaticText", "INSTALLATION COMPLETE")
             self.pressed = None
@@ -168,6 +169,18 @@ class StyledControlsFixture(User32Fixture):
     def PostMessageW(self, handle, message, wparam, lparam):
         self.queued.append((handle, message, lparam))
         return 1
+
+    def SendInput(self, count, events, size):
+        self.input_events.extend((events[i].type, events[i].payload.mouse.dwFlags)
+                                 for i in range(count))
+        self.native_pending = True
+        return count
+
+    def dispatch_native(self, _=None):
+        if self.native_pending:
+            self.native_pending = False
+            self.desktop_selected = not self.desktop_selected
+            self.controls[50] = ("TNewStaticText", "TEST DESKTOP SHORTCUT: " + str(int(self.desktop_selected)))
 
     def dispatch_queued(self):
         for handle, message, position in self.queued:
@@ -182,6 +195,7 @@ class WindowsGuiClickTest(unittest.TestCase):
         self.fixture = StyledControlsFixture()
         self.api = gui.Windows.__new__(gui.Windows)
         self.api.api = self.fixture
+        self.api.windows = lambda parent=None: list(self.fixture.controls)
 
     def test_install_button_receives_click_after_modal_focus_loss(self):
         self.api.click(30)
@@ -193,13 +207,42 @@ class WindowsGuiClickTest(unittest.TestCase):
         self.assertEqual(self.fixture.controls[20][1], "INSTALLATION COMPLETE")
 
     def test_checkbox_finishes_before_install_moves_cursor(self):
-        self.api.click_checkbox(40)
+        with patch.object(gui.time, "sleep", side_effect=self.fixture.dispatch_native):
+            self.api.click_checkbox(40, selected=False)
         self.assertFalse(self.fixture.desktop_selected)
+        self.assertEqual(self.fixture.input_events, [(0, 0x0002), (0, 0x0004)])
         self.assertEqual(self.fixture.cursor, (304, 396))
         self.api.click(30)
         self.fixture.dispatch_queued()
         self.assertEqual(self.fixture.controls[20][1], "INSTALLATION COMPLETE")
         self.assertFalse(self.fixture.shortcut_created)
+
+    def test_checkbox_selection_creates_shortcut(self):
+        self.fixture.desktop_selected = False
+        self.fixture.controls[50] = ("TNewStaticText", "TEST DESKTOP SHORTCUT: 0")
+        with patch.object(gui.time, "sleep", side_effect=self.fixture.dispatch_native):
+            self.api.click_checkbox(40, selected=True)
+        self.api.click(30)
+        self.fixture.dispatch_queued()
+        self.assertTrue(self.fixture.shortcut_created)
+
+    def test_injected_click_without_state_change_fails_before_install(self):
+        with patch.object(gui.time, "monotonic", side_effect=[0, 0, 0, 0, 6]), \
+                patch.object(gui.time, "sleep"):
+            with self.assertRaisesRegex(AssertionError, "checkbox did not change"):
+                self.api.click_checkbox(40, selected=False)
+        self.assertIsNone(self.fixture.shortcut_created)
+
+    def test_partial_input_injection_fails_before_install(self):
+        with patch.object(self.fixture, "SendInput", return_value=1):
+            with self.assertRaisesRegex(AssertionError, "was not injected"):
+                self.api.click_checkbox(40, selected=False)
+        self.assertIsNone(self.fixture.shortcut_created)
+
+    def test_input_structure_has_win32_size_and_alignment(self):
+        is_64_bit = C.sizeof(C.c_void_p) == 8
+        self.assertEqual(C.sizeof(gui.Input), 40 if is_64_bit else 28)
+        self.assertEqual(gui.Input.payload.offset, 8 if is_64_bit else 4)
 
     def test_unavailable_foreground_fails_before_mouse_input(self):
         self.fixture.activate = False

@@ -2,7 +2,8 @@
 
 - Keep status/button lookup and failure diagnostics independent of synchronous install-path reads, preventing `Install location did not respond` from aborting the installation completion wait.
 - Retain bounded explicit path validation and the overall installation timeout; add regression tests that reproduce a busy path control and run them in Windows CI before the real fixture installation.
-- Replace bare button messages with an activated window and cursor-aligned mouse move/press/release; finish the checkbox toggle before moving the cursor to Install, and post button release so modal/synchronous handlers remain asynchronous.
+- Replace bare button messages with an activated window and cursor-aligned mouse move/press/release; post button release so modal/synchronous handlers remain asynchronous.
+- Toggle the checkbox through Windows system input and verify its actual VCL checked value before installing. In the isolated fixture, also verify native task agreement and the saved upgrade choice; guard all test controls and handlers behind `InstallerTestAppId`.
 - Wait for the actual foreground Browse picker to disappear before continuing, and retain wizard and process-dialog diagnostics in `ui-failure.log` on a failed check.
 - Keep app and Worker release versions unchanged for this test-only fix.
 

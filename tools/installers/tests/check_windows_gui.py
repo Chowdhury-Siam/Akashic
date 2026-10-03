@@ -16,6 +16,29 @@ import time
 import uuid
 
 
+class MouseInput(C.Structure):
+    # Fixed-width Win32 fields also keep the layout testable on LP64 hosts.
+    _fields_ = [("dx", C.c_int32), ("dy", C.c_int32), ("mouseData", C.c_uint32),
+                ("dwFlags", C.c_uint32), ("time", C.c_uint32), ("dwExtraInfo", C.c_size_t)]
+
+
+class KeyboardInput(C.Structure):
+    _fields_ = [("wVk", C.c_uint16), ("wScan", C.c_uint16), ("dwFlags", C.c_uint32),
+                ("time", C.c_uint32), ("dwExtraInfo", C.c_size_t)]
+
+
+class HardwareInput(C.Structure):
+    _fields_ = [("uMsg", C.c_uint32), ("wParamL", C.c_uint16), ("wParamH", C.c_uint16)]
+
+
+class InputPayload(C.Union):
+    _fields_ = [("mouse", MouseInput), ("keyboard", KeyboardInput), ("hardware", HardwareInput)]
+
+
+class Input(C.Structure):
+    _fields_ = [("type", C.c_uint32), ("payload", InputPayload)]
+
+
 def wait_for(check, message, timeout=25):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -46,6 +69,8 @@ class Windows:
         self.api.GetClientRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
         self.api.ClientToScreen.argtypes = [W.HWND, C.POINTER(W.POINT)]
         self.api.SetCursorPos.argtypes = [C.c_int, C.c_int]
+        self.api.SendInput.argtypes = [W.UINT, C.POINTER(Input), C.c_int]
+        self.api.SendInput.restype = W.UINT
         self.api.GetAncestor.argtypes = [W.HWND, W.UINT]
         self.api.GetAncestor.restype = W.HWND
         self.api.SetForegroundWindow.argtypes = [W.HWND]
@@ -107,8 +132,14 @@ class Windows:
     def click(self, handle):
         self._click_mouse(handle, checkbox=False)
 
-    def click_checkbox(self, handle):
+    def click_checkbox(self, handle, selected):
+        root = self.api.GetAncestor(handle, 2)
+        before = "TEST DESKTOP SHORTCUT: " + str(int(not selected))
+        after = "TEST DESKTOP SHORTCUT: " + str(int(selected))
+        assert self.control(root, before), "Unexpected initial desktop shortcut checkbox state"
         self._click_mouse(handle, checkbox=True)
+        wait_for(lambda: self.control(root, after),
+                 "Desktop shortcut checkbox did not change to " + str(selected), 5)
 
     def _click_mouse(self, handle, checkbox):
         assert handle and self.api.IsWindowEnabled(handle), "Control is missing or disabled"
@@ -129,6 +160,16 @@ class Windows:
         assert self.api.SetCursorPos(screen.x, screen.y), C.get_last_error()
         position = (y << 16) | x
 
+        if checkbox:
+            # Send actual system input so the native control/style hook sees
+            # mouse button state, capture and normal notifications. Successful
+            # delivery of hand-made WM_LBUTTON messages is not proof of a toggle.
+            events = (Input * 2)()
+            events[0].payload.mouse.dwFlags = 0x0002  # MOUSEEVENTF_LEFTDOWN
+            events[1].payload.mouse.dwFlags = 0x0004  # MOUSEEVENTF_LEFTUP
+            assert self.api.SendInput(2, events, C.sizeof(Input)) == 2, "Checkbox mouse input was not injected"
+            return
+
         def send_mouse(message, buttons):
             result = C.c_size_t()
             sent = self.api.SendMessageTimeoutW(handle, message, buttons, position,
@@ -137,13 +178,9 @@ class Windows:
 
         send_mouse(0x0200, 0)  # WM_MOUSEMOVE
         send_mouse(0x0201, 1)  # WM_LBUTTONDOWN, MK_LBUTTON
-        if checkbox:
-            # Complete the toggle before another click moves the real cursor.
-            send_mouse(0x0202, 0)  # WM_LBUTTONUP
-        else:
-            # Release invokes OnClick. Browse and Install can run modal or
-            # synchronous work, so do not wait for their handler to return.
-            assert self.api.PostMessageW(handle, 0x0202, 0, position), C.get_last_error()
+        # Release invokes OnClick. Browse and Install can run modal or
+        # synchronous work, so do not wait for their handler to return.
+        assert self.api.PostMessageW(handle, 0x0202, 0, position), C.get_last_error()
 
     def set_text(self, handle, text):
         value = C.create_unicode_buffer(text)
@@ -230,6 +267,9 @@ def run(compiler, fixture, logs):
                 handle = api.control(window, caption)
                 assert handle and api.api.IsWindowEnabled(handle), f"{caption} is missing or disabled"
             assert api.control(window, "READY TO INSTALL"), api.dump(window)
+            if desktop_selected is not None:
+                assert api.control(window, "TEST DESKTOP SHORTCUT: " + str(int(desktop_selected))), \
+                    "Command-line desktop shortcut choice did not initialize the custom checkbox"
             return install
 
         def finish_process():
@@ -282,7 +322,7 @@ def run(compiler, fixture, logs):
                      "Folder picker did not close")
             assert api.text(edit) == str(destination), "Cancelling Browse changed the location"
             checkbox = api.control(window, "Create a desktop shortcut")
-            api.click_checkbox(checkbox)
+            api.click_checkbox(checkbox, selected=False)
             api.click(install)
             wait_for(lambda: api.control(window, "INSTALLATION COMPLETE"), "Install did not complete", 60)
             assert (destination / "Yutaka.exe").is_file(), "Custom install location was not used"
@@ -298,7 +338,7 @@ def run(compiler, fixture, logs):
             database.write_bytes(b"preserve-financial-data")
             install = open_setup("upgrade.log")
             # Start deselected and turn it on; this must create the real .lnk.
-            api.click_checkbox(api.control(window, "Create a desktop shortcut"))
+            api.click_checkbox(api.control(window, "Create a desktop shortcut"), selected=True)
             api.click(install)
             wait_for(lambda: api.control(window, "Launch Yutaka"), "Upgrade did not complete", 60)
             assert backup.read_bytes() == b"preserve-financial-backup"
@@ -312,6 +352,7 @@ def run(compiler, fixture, logs):
             # removed the shortcut between installs. Do not pass /TASKS here.
             shortcut.unlink()
             install = open_setup("remembered-shortcut.log")
+            assert api.control(window, "TEST DESKTOP SHORTCUT: 1"), "Upgrade forgot the visible checkbox selection"
             api.click(install)
             wait_for(lambda: api.control(window, "INSTALLATION COMPLETE"), "Remembered-choice upgrade did not complete", 60)
             assert shortcut.is_file(), "Upgrade did not restore the saved shortcut selection"
