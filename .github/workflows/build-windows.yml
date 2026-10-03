@@ -397,6 +397,12 @@ jobs:
           Write-Host "Using verified Inno Setup compiler: $iscc"
           "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Check Windows GUI polling regression
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools/installers/tests -p 'test_windows_gui.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "Windows GUI polling regression tests failed." }
+
       - name: Check custom Windows installer controls
         shell: pwsh
         run: |

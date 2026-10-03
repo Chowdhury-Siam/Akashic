@@ -90,6 +90,13 @@ after installation, rather than relying on `BM_CLICK` and `BM_GETCHECK` for a
 styled checkbox. It uninstalls only that fixture and never opens the real app or reads
 its data. Windows release CI runs this check before packaging the full app.
 
+Status polling and failure diagnostics read stored window captions without
+sending messages to the installer's UI thread. The install-path edit uses a
+bounded `WM_GETTEXT` call only for the explicit path check while setup is idle.
+This prevents a busy edit from aborting the 60-second installation wait or
+masking the original failure when controls are dumped. Portable regression
+tests cover both a busy installation that finishes and one that times out.
+
 Inno's internal Next and Cancel controls remain visible to the engine, outside
 the custom window layout. Inno checks their `CanFocus` state when advancing and
 cancelling; hiding them prevents the custom buttons from reaching those paths.

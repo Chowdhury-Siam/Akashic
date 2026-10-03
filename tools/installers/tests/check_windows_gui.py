@@ -52,18 +52,26 @@ class Windows:
         self.api.GetWindowLongW.argtypes = [W.HWND, C.c_int]
         self.api.GetWindowLongW.restype = C.c_long
 
+    def caption(self, handle):
+        # Cross-process GetWindowText reads the stored window caption without
+        # sending to the UI thread. Use it for labels/buttons and diagnostics,
+        # including while a synchronous Install handler is still working.
+        value = C.create_unicode_buffer(2048)
+        self.api.GetWindowTextW(handle, value, len(value))
+        return value.value
+
     def text(self, handle):
         value = C.create_unicode_buffer(2048)
         if self.kind(handle) == "TNewPathEdit":
             # GetWindowText cannot read an edit's contents in another process.
+            # Only explicit path checks need this message, while setup is idle.
             result = C.c_size_t()
             sent = self.api.SendMessageTimeoutW(handle, 0x000D, len(value),
                                                C.cast(value, C.c_void_p).value,
                                                0x0002, 1000, C.byref(result))  # WM_GETTEXT
             assert sent, "Install location did not respond"
             return value.value
-        self.api.GetWindowTextW(handle, value, len(value))
-        return value.value
+        return self.caption(handle)
 
     def kind(self, handle):
         value = C.create_unicode_buffer(256)
@@ -91,7 +99,9 @@ class Windows:
         return found
 
     def control(self, parent, caption):
-        return next((h for h in self.windows(parent) if self.text(h) == caption), None)
+        # Do not query edit contents just to find a button or status label: a
+        # one-second WM_GETTEXT timeout would abort the overall completion wait.
+        return next((h for h in self.windows(parent) if self.caption(h) == caption), None)
 
     def click(self, handle):
         assert handle and self.api.IsWindowEnabled(handle), "Control is missing or disabled"
@@ -122,7 +132,7 @@ class Windows:
 
     def dump(self, parent):
         return "\n".join(f"{self.kind(h)} enabled={bool(self.api.IsWindowEnabled(h))} "
-                         f"style=0x{self.api.GetWindowLongW(h, -16) & 0xffffffff:08x} {self.text(h)!r}"
+                         f"style=0x{self.api.GetWindowLongW(h, -16) & 0xffffffff:08x} {self.caption(h)!r}"
                          for h in self.windows(parent))
 
 
@@ -185,7 +195,7 @@ def run(compiler, fixture, logs):
                 arguments.append("/TASKS=" + ("desktopicon" if desktop_selected else "!desktopicon"))
             process = subprocess.Popen(arguments)
             window = wait_for(lambda: next((h for h in api.windows()
-                                           if api.kind(h) == "TWizardForm" and name in api.text(h)), None),
+                                           if api.kind(h) == "TWizardForm" and name in api.caption(h)), None),
                               "Setup window did not appear")
             install = wait_for(lambda: api.control(window, "Install Yutaka"), "Install control missing")
             wait_for(lambda: api.api.IsWindowEnabled(install),
@@ -205,7 +215,7 @@ def run(compiler, fixture, logs):
                 for dialog in api.windows():
                     if api.pid(dialog) == api.pid(window) and dialog != window:
                         yes = next((h for h in api.windows(dialog)
-                                    if api.text(h).replace("&", "") == "Yes"), None)
+                                    if api.caption(h).replace("&", "") == "Yes"), None)
                         if yes:
                             api.click(yes)
                             return True

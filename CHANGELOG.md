@@ -1,3 +1,9 @@
+## Windows installer CI maintenance (1.0.1272+316)
+
+- Keep status/button lookup and failure diagnostics independent of synchronous install-path reads, preventing `Install location did not respond` from aborting the installation completion wait.
+- Retain bounded explicit path validation and the overall installation timeout; add regression tests that reproduce a busy path control and run them in Windows CI before the real fixture installation.
+- Keep app and Worker release versions unchanged for this test-only fix.
+
 ## 1.0.1272+316
 
 - Apply the Windows installer's shortcut choice after Inno creates its task list so the visible checkbox controls actual shortcut creation.
