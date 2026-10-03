@@ -376,7 +376,9 @@ class ReleaseAssetMatcher {
   static ReleaseAsset? preferredLinuxInstaller(GithubRelease release) {
     final candidates = release.assets.where((asset) {
       final name = asset.name.toLowerCase();
-      return name.contains('linux') && (name.endsWith('.appimage') || name.endsWith('.tar.gz'));
+      return name.contains('linux') &&
+          _desktopArchPenalty(name) < 40 &&
+          (name.endsWith('-setup.run') || name.endsWith('.appimage') || name.endsWith('.tar.gz'));
     }).toList();
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) => _linuxInstallerRank(a.name).compareTo(_linuxInstallerRank(b.name)));
@@ -446,10 +448,12 @@ class ReleaseAssetMatcher {
   static int _linuxInstallerRank(String name) {
     final lower = name.toLowerCase();
     var score = 0;
-    if (lower.endsWith('.appimage')) {
+    if (lower.endsWith('-setup.run')) {
       score += 0;
+    } else if (lower.endsWith('.appimage')) {
+      score += 8;
     } else if (lower.endsWith('.tar.gz')) {
-      score += 12;
+      score += 16;
     } else {
       score += 80;
     }
@@ -785,6 +789,20 @@ class LinuxUpdateInstaller {
     if (!await file.exists()) return false;
     final lower = file.path.toLowerCase();
 
+    if (lower.endsWith('-setup.run')) {
+      try {
+        await Process.start(
+          'bash',
+          [file.path],
+          mode: ProcessStartMode.detached,
+          runInShell: false,
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
     if (lower.endsWith('.appimage')) {
       try {
         await Process.run('chmod', ['+x', file.path]);
@@ -827,6 +845,43 @@ class MacOsUpdateInstaller {
     if (!Platform.isMacOS) return false;
     final file = File(path);
     if (!await file.exists()) return false;
+    if (file.path.toLowerCase().endsWith('.dmg')) {
+      Directory? mount;
+      var attached = false;
+      try {
+        mount = await Directory.systemTemp.createTemp('yutaka_setup_mount_');
+        final result = await Process.run('/usr/bin/hdiutil', [
+          'attach', '-readonly', '-nobrowse', '-mountpoint', mount.path, file.path,
+        ]);
+        if (result.exitCode != 0) return false;
+        attached = true;
+        final setup = Directory('${mount.path}/Yutaka Setup.app');
+        if (await setup.exists()) {
+          final opened = await Process.run('/usr/bin/open', [setup.path]);
+          if (opened.exitCode == 0) {
+            // Setup reads its payload from this volume until installation finishes.
+            // Keep it mounted, like a disk image opened through Finder.
+            mount = null;
+            return true;
+          }
+          return false;
+        }
+        // Older disk images use Finder's drag-to-Applications layout.
+      } catch (_) {
+        return false;
+      } finally {
+        if (mount != null) {
+          if (attached) {
+            try {
+              await Process.run('/usr/bin/hdiutil', ['detach', mount.path]);
+            } catch (_) {}
+          }
+          try {
+            await mount.delete();
+          } catch (_) {}
+        }
+      }
+    }
     try {
       await Process.start(
         'open',

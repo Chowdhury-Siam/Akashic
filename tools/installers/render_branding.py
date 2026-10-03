@@ -39,35 +39,33 @@ def paste_icon(image, box):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    sidebar = Image.new("RGB", (328, 628), BACKGROUND)
+    sidebar = Image.new("RGB", (244, 563), SURFACE)
     draw = ImageDraw.Draw(sidebar)
-    draw.rounded_rectangle((20, 20, 308, 608), radius=38, fill=SURFACE, outline=OUTLINE, width=2)
-    paste_icon(sidebar, (70, 104, 188, 188))
-    centered(draw, "Yutaka", 324, 328, 42, bold=True)
-    centered(draw, "Your finances.", 402, 328, 21, MUTED)
-    centered(draw, "Your control.", 434, 328, 21, MUTED)
-    draw.rounded_rectangle((100, 508, 228, 515), radius=3, fill=ACCENT)
+    paste_icon(sidebar, (32, 42, 92, 92))
+    draw.text((32, 156), "Yutaka", font=font(30, True), fill=TEXT)
+    draw.text((32, 216), "Your finances,", font=font(16), fill=MUTED)
+    draw.text((32, 241), "in your control.", font=font(16), fill=MUTED)
+    draw.line((32, 378, 212, 378), fill=OUTLINE)
+    draw.line([(32, 366), (59, 357), (84, 362), (108, 338), (135, 347), (162, 325), (185, 334), (212, 317)], fill=ACCENT, width=3)
+    draw.text((32, 475), "LOCAL FIRST · PRIVATE", font=font(11, True), fill=ACCENT)
+    draw.text((32, 508), "Windows desktop", font=font(13), fill=MUTED)
     sidebar.save(OUT / "windows-sidebar.bmp")
 
-    small = Image.new("RGB", (110, 110), BACKGROUND)
+    small = Image.new("RGB", (110, 110), SURFACE)
     paste_icon(small, (0, 0, 110, 110))
     small.save(OUT / "windows-icon.bmp")
 
-    # Finder places the actual .app and Applications icons over these empty wells.
-    # Neutral label backplates keep native Finder names readable in light/dark mode.
+    # Finder launches the native setup. All install controls live in that app.
     mac = Image.new("RGB", (720, 440), BACKGROUND)
     draw = ImageDraw.Draw(mac)
     paste_icon(mac, (34, 26, 66, 66))
     draw.text((114, 29), "Yutaka", font=font(30, True), fill=TEXT)
     draw.text((115, 70), "Your finances, in your control.", font=font(15), fill=MUTED)
     draw.line((34, 112, 686, 112), fill=OUTLINE, width=1)
-    centered(draw, "Drag Yutaka to Applications", 138, 720, 24, bold=True)
-    for x in (210, 510):
-        draw.rounded_rectangle((x - 96, 190, x + 96, 344), radius=26, fill=SURFACE, outline=OUTLINE)
-        draw.rounded_rectangle((x - 75, 311, x + 75, 340), radius=10, fill="#747474")
-    draw.line((328, 246, 388, 246), fill=ACCENT, width=5)
-    draw.line((374, 232, 388, 246, 374, 260), fill=ACCENT, width=5)
-    centered(draw, "Then open Yutaka from Applications.", 382, 720, 16, MUTED)
+    centered(draw, "Open Yutaka Setup to install", 138, 720, 24, bold=True)
+    draw.rounded_rectangle((254, 190, 466, 344), radius=26, fill=SURFACE, outline=OUTLINE)
+    draw.rounded_rectangle((270, 311, 450, 340), radius=10, fill="#747474")
+    centered(draw, "Choose a folder. Install. Make yourself at home.", 382, 720, 16, MUTED)
     mac.save(OUT / "macos-background.png", optimize=True)
     print(f"Rendered installer artwork in {OUT}")
 

@@ -713,7 +713,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1265
+  --dart-define=YUTAKA_APP_VERSION=1.0.1266
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -722,19 +722,19 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1265
+  --dart-define=YUTAKA_APP_VERSION=1.0.1266
 ```
 
 ## 10.4 Windows build
 
-The release workflow packages a branded dark wizard using `tools/installers/windows/yutaka.iss` and Inno Setup 6.7+. It retains the original installer ID and per-user install location for upgrades. Existing optional app/installer signing still applies.
+The release workflow packages a fully custom dark installer using `tools/installers/windows/yutaka.iss` and Inno Setup 6.7+. Its branded sidebar, welcome screen, install location and shortcut controls, progress and Launch Yutaka screen follow the app theme. The native Inno installation engine retains the original installer ID, upgrade behavior, uninstall support and optional executable signing.
 
 ```bash
 flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1265
+  --dart-define=YUTAKA_APP_VERSION=1.0.1266
 ```
 
 ## 10.5 Linux build
@@ -751,7 +751,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1265
+  --dart-define=YUTAKA_APP_VERSION=1.0.1266
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -760,7 +760,7 @@ The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 
 - `Yutaka-v<version>-linux-<arch>.tar.gz` — the raw Flutter portable bundle.
 - `Yutaka-v<version>-linux-<arch>-Setup.run` — the graphical per-user installer, including the AppImage and a terminal installation option.
 
-CI compiles the native GTK installer, checks its UI under Xvfb, and runs installation, upgrade/data-preservation and checksum regression tests. AppImages are already compressed, so setup packages avoid a second compression pass.
+The native GTK installer uses the same custom header, branded sidebar and welcome/progress/completion layout as the other desktop installers. In-app updates prefer the matching architecture’s Setup.run and retain AppImage/archive fallback for older releases. CI compiles the UI with warnings treated as errors and checks installation, busy-close protection, failure/retry and completion under Xvfb, alongside backend upgrade, data-preservation and corruption tests. AppImages are already compressed, so setup packages avoid a second compression pass.
 
 The AppImage is intended for broad compatibility across mainstream **glibc-based** distributions. Distros with materially different userspaces, such as musl-only systems, may need compatibility packages or a source build.
 
@@ -773,12 +773,12 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1265
+  --dart-define=YUTAKA_APP_VERSION=1.0.1266
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
 
-The DMG includes a branded Finder background, fixed icon positions and an Applications link. `dmgbuild==1.6.7` writes the Finder layout without opening Finder. The signed/stapled app is packaged intact, with fast DMG compression and parallel ZIP packaging retained.
+The DMG contains **Yutaka Setup.app**, a small universal AppKit installer with the matching dark header, branded sidebar, folder selection, real installation progress, failure/retry and Launch Yutaka screen. In-app updates mount the DMG and open setup directly. Setup verifies the embedded app checksum and code signature before replacing only `Yutaka.app`; upgrades stage the bundle and restore the previous app if the final move fails. Existing financial data stays in place. CI runs native backend tests and checks setup from the mounted DMG. `dmgbuild==1.6.7` creates the branded Finder launch window; the portable ZIP still contains the signed/stapled main app, and DMG/ZIP packaging stays concurrent.
 
 The GitHub release workflow reads the official version/build number from `pubspec.yaml`.
 
@@ -826,7 +826,7 @@ For public distribution outside the Mac App Store, configure these optional GitH
 - `APPLE_APP_SPECIFIC_PASSWORD` — app-specific password for the Apple ID.
 - `APPLE_TEAM_ID` — Apple Developer Team ID.
 
-When these are present, CI signs the app with hardened runtime, submits the signed app to Apple for notarization, staples the notarization ticket to `Yutaka.app`, and then packages the stapled app into the DMG and ZIP. If they are omitted, CI still produces DMG/ZIP artifacts, but macOS can show normal Gatekeeper warnings for an unnotarized application.
+When these are present, CI signs and notarizes the main app with hardened runtime, staples its ticket to `Yutaka.app`, then independently signs, notarizes and staples the custom setup app. The DMG contains setup with the verified main app embedded; the portable ZIP contains the main app directly. If they are omitted, CI still produces DMG/ZIP artifacts, but macOS can show normal Gatekeeper warnings for an unnotarized application.
 
 ---
 

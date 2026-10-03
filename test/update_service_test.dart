@@ -106,6 +106,38 @@ void main() {
     test('selects Windows installer before unrelated executables', () {
       expect(ReleaseAssetMatcher.preferredWindowsInstaller(release)!.name, contains('Setup'));
     });
+
+    test('Linux prefers the custom setup while retaining AppImage fallback', () {
+      final current = Platform.version.toLowerCase();
+      final arch = current.contains('arm64') || current.contains('aarch64') ? 'arm64' : 'x64';
+      final packages = GithubRelease.fromJson(_release('v1.5.0', assets: [
+        _asset('Yutaka-v1.5.0-linux-$arch.tar.gz', 1000),
+        _asset('Yutaka-v1.5.0-linux-$arch.AppImage', 1000),
+        _asset('Yutaka-v1.5.0-linux-$arch-Setup.run', 1000),
+      ]));
+      expect(ReleaseAssetMatcher.preferredLinuxInstaller(packages)!.name, endsWith('-Setup.run'));
+      final legacy = GithubRelease.fromJson(_release('v1.5.0', assets: [
+        _asset('Yutaka-v1.5.0-linux-$arch.tar.gz', 1000),
+        _asset('Yutaka-v1.5.0-linux-$arch.AppImage', 1000),
+      ]));
+      expect(ReleaseAssetMatcher.preferredLinuxInstaller(legacy)!.name, endsWith('.AppImage'));
+    });
+
+    test('Linux does not select a setup for a different known architecture', () {
+      final current = Platform.version.toLowerCase();
+      final String other;
+      if (current.contains('arm64') || current.contains('aarch64')) {
+        other = 'x64';
+      } else if (current.contains('x64') || current.contains('x86_64') || current.contains('amd64')) {
+        other = 'arm64';
+      } else {
+        return;
+      }
+      final packages = GithubRelease.fromJson(_release('v1.5.0', assets: [
+        _asset('Yutaka-v1.5.0-linux-$other-Setup.run', 1000),
+      ]));
+      expect(ReleaseAssetMatcher.preferredLinuxInstaller(packages), isNull);
+    });
   });
 
   test('changelog parser handles headings, bullets, numbered lists, paragraphs, and links', () {

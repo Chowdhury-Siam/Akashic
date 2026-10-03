@@ -1,4 +1,4 @@
-"""Finder layout for the branded, universal Yutaka disk image."""
+"""Finder launch surface for the universal native Yutaka setup app."""
 import os
 import plistlib
 from pathlib import Path
@@ -15,9 +15,12 @@ if not Path(icon).is_file():
 
 format = "UDZO"
 compression_level = 1
-files = [(str(application), "Yutaka.app")]
-symlinks = {"Applications": "/Applications"}
-hide_extension = ["Yutaka.app"]
+setup = Path(os.environ["YUTAKA_MACOS_SETUP"]).resolve()
+if not (setup / "Contents/MacOS/YutakaSetup").is_file():
+    raise FileNotFoundError(f"Native setup app is missing: {setup}")
+files = [(str(setup), "Yutaka Setup.app")]
+symlinks = {}
+hide_extension = ["Yutaka Setup.app"]
 background = str(Path(os.environ["YUTAKA_INSTALLER_ASSETS"]).resolve() / "macos-background.png")
 window_rect = ((160, 140), (720, 440))
 default_view = "icon-view"
@@ -28,7 +31,7 @@ show_pathbar = False
 show_sidebar = False
 include_icon_view_settings = True
 include_list_view_settings = False
-icon_locations = {"Yutaka.app": (210, 246), "Applications": (510, 246)}
+icon_locations = {"Yutaka Setup.app": (360, 246)}
 icon_size = 104
 text_size = 14
 label_pos = "bottom"

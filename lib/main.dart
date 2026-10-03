@@ -4180,7 +4180,7 @@ class AppController extends ChangeNotifier {
     final release = latestGithubRelease;
     final asset = linuxUpdateInstallerAsset;
     if (release == null || asset == null) {
-      updateStatusMessage = 'This release does not include a Linux AppImage or portable archive.';
+      updateStatusMessage = 'This release does not include a Linux installer, AppImage or portable archive.';
       notifyListeners();
       return;
     }
@@ -21973,7 +21973,7 @@ class _LinuxUpdateActionPanel extends StatelessWidget {
             Text('Linux update package', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             Text(
-              'This release does not include a Linux AppImage or portable archive.',
+              'This release does not include a Linux installer, AppImage or portable archive.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),

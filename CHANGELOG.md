@@ -7,6 +7,14 @@
 - Keep progress below system status bars, wrap long text, respect reduced motion, and let outcome messages temporarily take priority over ongoing updates.
 - Bump synchronized release metadata to `1.0.1265+309`.
 
+## 1.0.1266+310
+
+- Replace desktop setup screens with a complete custom Yutaka layout: dark header, real app icon, branded finance sidebar, welcome screen, install folder, progress, failure/retry and Launch Yutaka completion.
+- Keep Windows installation and uninstall behavior on the native Inno engine, including visible prerequisite and close-app decisions.
+- Add a small universal macOS AppKit setup app inside the DMG. Verify the embedded payload and app signature before staged installation, preserve financial data, and restore the previous app when the final move fails.
+- Open the custom Linux and macOS installers from in-app updates, while retaining older release package fallbacks and the shared top update popup.
+- Exercise the Linux setup buttons and failure/retry flow under Xvfb, and run signed macOS backend tests plus a mounted-DMG UI check on the macOS runner.
+
 ## [1.0.1264] - 2026-10-03
 
 - Test maintenance: dispose the Worker banner test's semantics handle in `finally` before Flutter's end-of-test verification, including when assertions fail. Keep release version unchanged.

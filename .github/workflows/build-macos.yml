@@ -373,6 +373,7 @@ jobs:
           codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           echo "MACOS_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+          echo "MACOS_SETUP_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Notarize signed macOS app when credentials are configured
         if: env.MACOS_SIGNING_ENABLED == 'true'
@@ -399,6 +400,40 @@ jobs:
           xcrun stapler staple "$YUTAKA_MACOS_APP"
           xcrun stapler validate "$YUTAKA_MACOS_APP"
           echo "MACOS_NOTARIZED=true" >> "$GITHUB_ENV"
+
+      - name: Build and verify custom universal macOS setup
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/installers/tests -p 'test_macos_installer.py' -v
+          codesign --verify --deep --strict "$YUTAKA_MACOS_APP"
+          SETUP_APP="$RUNNER_TEMP/Yutaka Setup.app"
+          python3 tools/installers/macos/build.py \
+            --app "$YUTAKA_MACOS_APP" --icon assets/icons/app_icon.png \
+            --version "$YUTAKA_APP_VERSION_NAME" --output "$SETUP_APP"
+          ARCHES="$(lipo -archs "$SETUP_APP/Contents/MacOS/YutakaSetup")"
+          case " $ARCHES " in *" arm64 "*) ;; *) echo "::error::Setup is missing arm64."; exit 1;; esac
+          case " $ARCHES " in *" x86_64 "*) ;; *) echo "::error::Setup is missing x86_64."; exit 1;; esac
+          if [ "${MACOS_SIGNING_ENABLED:-false}" = true ]; then
+            codesign --force --options runtime --timestamp --sign "$MACOS_SETUP_SIGNING_IDENTITY" "$SETUP_APP"
+          else
+            codesign --force --sign - "$SETUP_APP"
+          fi
+          codesign --verify --deep --strict --verbose=2 "$SETUP_APP"
+          if [ "${MACOS_NOTARIZED:-false}" = true ]; then
+            SETUP_ARCHIVE="$RUNNER_TEMP/Yutaka-setup-notarization.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$SETUP_APP" "$SETUP_ARCHIVE"
+            xcrun notarytool submit "$SETUP_ARCHIVE" \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "$SETUP_APP"
+            xcrun stapler validate "$SETUP_APP"
+          fi
+          echo "YUTAKA_MACOS_SETUP=$SETUP_APP" >> "$GITHUB_ENV"
 
       - name: Set up pinned DMG layout tool
         shell: bash
@@ -431,6 +466,14 @@ jobs:
 
           wait "$dmg_pid"
           wait "$zip_pid"
+          CHECK_MOUNT="$RUNNER_TEMP/yutaka-dmg-check"
+          mkdir -p "$CHECK_MOUNT"
+          hdiutil attach -readonly -nobrowse -mountpoint "$CHECK_MOUNT" "$DMG"
+          trap 'hdiutil detach "$CHECK_MOUNT" >/dev/null 2>&1 || true' EXIT
+          codesign --verify --deep --strict "$CHECK_MOUNT/Yutaka Setup.app"
+          "$CHECK_MOUNT/Yutaka Setup.app/Contents/MacOS/YutakaSetup" --check-ui
+          hdiutil detach "$CHECK_MOUNT"
+          trap - EXIT
           ls -lh artifacts
 
       - name: Upload macOS release artifacts

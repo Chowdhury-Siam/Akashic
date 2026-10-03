@@ -287,6 +287,9 @@ jobs:
             $(pkg-config --cflags --libs gtk+-3.0 gio-2.0)
           cp assets/icons/app_icon.png "$SETUP_DIR/icon.png"
           NO_AT_BRIDGE=1 G_DEBUG=fatal-warnings xvfb-run -a "$SETUP_DIR/setup" "$SETUP_DIR" --check-ui
+          NO_AT_BRIDGE=1 G_DEBUG=fatal-warnings xvfb-run -a \
+            python3 tools/installers/tests/check_linux_gui.py \
+              --setup "$SETUP_DIR/setup" --icon assets/icons/app_icon.png
           python3 tools/installers/linux/build.py \
             --appimage "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage" \
             --setup "$SETUP_DIR/setup" \
