@@ -348,11 +348,33 @@ jobs:
       - name: Ensure Inno Setup
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          $minimumVersion = [version]"6.7.0"
-          if (!(Test-Path $iscc) -or [version](Get-Item $iscc).VersionInfo.FileVersion -lt $minimumVersion) {
+          $PSNativeCommandUseErrorActionPreference = $false
+          $probe = Join-Path $env:GITHUB_WORKSPACE "tools/installers/windows/compiler-check.iss"
+          $toolDir = Join-Path $env:RUNNER_TEMP "InnoSetup-6.7.3"
+          function Test-InnoCompiler([string]$path) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+            Write-Host "Checking compiler capabilities: $path"
+            $probeOutput = & $path /O- $probe 2>&1
+            $succeeded = $LASTEXITCODE -eq 0
+            $probeOutput | ForEach-Object { Write-Host $_ }
+            return $succeeded
+          }
+          $iscc = $null
+          $candidates = @(
+            (Join-Path $toolDir "ISCC.exe"),
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-InnoCompiler $candidate) {
+              $iscc = $candidate
+              break
+            }
+          }
+          if (!$iscc) {
             # Use the official release: Chocolatey's catalog can lag behind.
             $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
+            $installLog = Join-Path $env:RUNNER_TEMP "innosetup-install.log"
             curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 `
               --output "$installer" `
               "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
@@ -360,19 +382,19 @@ jobs:
             if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') {
               throw "Inno Setup installer signature verification failed."
             }
-            $setup = Start-Process -FilePath $installer -ArgumentList `
-              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' `
-              -Wait -PassThru
-            if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed: $($setup.ExitCode)" }
-          } else {
-            Write-Host "Using preinstalled Inno Setup: $iscc"
+            # An explicit directory prevents reuse of a stale preinstalled path.
+            $setupArgs = @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS',
+              '/NOICONS', '/TASKS=""', "/DIR=`"$toolDir`"", "/LOG=`"$installLog`""
+            )
+            $setup = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+            $iscc = Join-Path $toolDir "ISCC.exe"
+            if ($setup.ExitCode -ne 0 -or !(Test-InnoCompiler $iscc)) {
+              if (Test-Path $installLog) { Get-Content $installLog | Write-Host }
+              throw "Inno Setup installation/capability check failed (exit $($setup.ExitCode)): $iscc"
+            }
           }
-          if (!(Test-Path $iscc)) {
-            throw "ISCC.exe was not found: $iscc"
-          }
-          if ([version](Get-Item $iscc).VersionInfo.FileVersion -lt $minimumVersion) {
-            throw "Inno Setup 6.7 or later is required for the Yutaka theme."
-          }
+          Write-Host "Using verified Inno Setup compiler: $iscc"
           "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build Windows installer EXE

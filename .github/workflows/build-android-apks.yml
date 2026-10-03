@@ -133,7 +133,7 @@ jobs:
         run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
       - name: Run release test suite
-        run: flutter test --no-pub
+        run: flutter test --no-pub --reporter expanded
 
   worker-data-integrity-gate:
     name: Worker data-integrity gate

@@ -113,9 +113,13 @@ void main() {
     expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
     expect(
       tester.getSemantics(find.byKey(const ValueKey('worker-update-active'))),
-      matchesSemantics(
+      // Check the banner's contract, allowing framework-owned semantics flags.
+      isSemantics(
         label: 'Updating Worker. Installing the latest update.',
         isLiveRegion: true,
+        isHidden: false,
+        hasTapAction: false,
+        hasLongPressAction: false,
       ),
     );
     final switcher = tester.widget<AnimatedSwitcher>(find.descendant(
