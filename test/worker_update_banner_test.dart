@@ -106,27 +106,31 @@ void main() {
   testWidgets('reduced motion shows a static icon with accessible update status', (tester) async {
     _setView(tester, const Size(390, 844));
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    await tester.pumpWidget(_frame(reduceMotion: true));
+    try {
+      await tester.pumpWidget(_frame(reduceMotion: true));
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
-    expect(
-      tester.getSemantics(find.byKey(const ValueKey('worker-update-active'))),
-      // Check the banner's contract, allowing framework-owned semantics flags.
-      isSemantics(
-        label: 'Updating Worker. Installing the latest update.',
-        isLiveRegion: true,
-        isHidden: false,
-        hasTapAction: false,
-        hasLongPressAction: false,
-      ),
-    );
-    final switcher = tester.widget<AnimatedSwitcher>(find.descendant(
-      of: find.byType(WorkerUpdateBanner),
-      matching: find.byType(AnimatedSwitcher),
-    ));
-    expect(switcher.duration, Duration.zero);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('worker-update-active'))),
+        // Check the banner's contract, allowing framework-owned semantics flags.
+        isSemantics(
+          label: 'Updating Worker. Installing the latest update.',
+          isLiveRegion: true,
+          isHidden: false,
+          hasTapAction: false,
+          hasLongPressAction: false,
+        ),
+      );
+      final switcher = tester.widget<AnimatedSwitcher>(find.descendant(
+        of: find.byType(WorkerUpdateBanner),
+        matching: find.byType(AnimatedSwitcher),
+      ));
+      expect(switcher.duration, Duration.zero);
+    } finally {
+      // Flutter checks handles before addTearDown callbacks run.
+      semantics.dispose();
+    }
   });
 
   testWidgets('large text wraps on phones and desktop banners stay centered', (tester) async {

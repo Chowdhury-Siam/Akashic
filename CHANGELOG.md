@@ -1,5 +1,6 @@
 ## [1.0.1264] - 2026-10-03
 
+- Test maintenance: dispose the Worker banner test's semantics handle in `finally` before Flutter's end-of-test verification, including when assertions fail. Keep release version unchanged.
 - Windows CI maintenance: validate the actual Inno Setup engine and Yutaka theme by compiling a small probe, install to an explicit directory when needed, and use that verified compiler for packaging. Retain installation logs on failure and keep release version unchanged.
 - Test/CI maintenance: assert the Worker banner's accessible label, live announcement, visibility and lack of actions without assuming unrelated framework semantics flags; print expanded Flutter failure details. Keep release version unchanged.
 - Isolate the Worker update live region so assistive technology receives its status independently of surrounding content.
