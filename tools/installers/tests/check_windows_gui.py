@@ -49,6 +49,7 @@ class Windows:
         self.api.GetAncestor.argtypes = [W.HWND, W.UINT]
         self.api.GetAncestor.restype = W.HWND
         self.api.SetForegroundWindow.argtypes = [W.HWND]
+        self.api.GetForegroundWindow.restype = W.HWND
         self.api.GetWindowLongW.argtypes = [W.HWND, C.c_int]
         self.api.GetWindowLongW.restype = C.c_long
 
@@ -104,27 +105,45 @@ class Windows:
         return next((h for h in self.windows(parent) if self.caption(h) == caption), None)
 
     def click(self, handle):
-        assert handle and self.api.IsWindowEnabled(handle), "Control is missing or disabled"
-        # Post, rather than Send: Browse and Install run modal/synchronous code.
-        assert self.api.PostMessageW(handle, 0x00F5, 0, 0), C.get_last_error()  # BM_CLICK
+        self._click_mouse(handle, checkbox=False)
 
     def click_checkbox(self, handle):
-        assert handle and self.api.IsWindowEnabled(handle), "Checkbox is missing or disabled"
+        self._click_mouse(handle, checkbox=True)
+
+    def _click_mouse(self, handle, checkbox):
+        assert handle and self.api.IsWindowEnabled(handle), "Control is missing or disabled"
+        root = self.api.GetAncestor(handle, 2)  # GA_ROOT
+        assert root and self.api.IsWindowEnabled(root), "Setup window is disabled by a modal dialog"
+        self.api.SetForegroundWindow(root)
+        wait_for(lambda: self.api.GetForegroundWindow() == root,
+                 "Could not activate the window before clicking " + self.caption(handle), 5)
         bounds = W.RECT()
         assert self.api.GetClientRect(handle, C.byref(bounds)), C.get_last_error()
         width, height = bounds.right - bounds.left, bounds.bottom - bounds.top
-        assert width > 1 and height > 1, "Checkbox has no clickable area"
-        # Exercise the styled control's mouse path at the glyph, with the real
-        # cursor inside it. BM_CLICK alone is unreliable after a modal picker.
-        x, y = min(width // 2, height // 2), height // 2
+        assert width > 1 and height > 1, "Control has no clickable area"
+        # Styled controls need their real hover/press path after modal Browse.
+        # Click the checkbox glyph or the button center with the cursor inside.
+        x, y = min(width // 2, height // 2) if checkbox else width // 2, height // 2
         screen = W.POINT(x, y)
         assert self.api.ClientToScreen(handle, C.byref(screen)), C.get_last_error()
-        self.api.SetForegroundWindow(self.api.GetAncestor(handle, 2))  # GA_ROOT
         assert self.api.SetCursorPos(screen.x, screen.y), C.get_last_error()
         position = (y << 16) | x
-        # Post in order; the subsequent Install click uses the same UI queue.
-        for message, buttons in ((0x0200, 0), (0x0201, 1), (0x0202, 0)):
-            assert self.api.PostMessageW(handle, message, buttons, position), C.get_last_error()
+
+        def send_mouse(message, buttons):
+            result = C.c_size_t()
+            sent = self.api.SendMessageTimeoutW(handle, message, buttons, position,
+                                               0x0002, 2000, C.byref(result))
+            assert sent, "Control did not process mouse message " + hex(message)
+
+        send_mouse(0x0200, 0)  # WM_MOUSEMOVE
+        send_mouse(0x0201, 1)  # WM_LBUTTONDOWN, MK_LBUTTON
+        if checkbox:
+            # Complete the toggle before another click moves the real cursor.
+            send_mouse(0x0202, 0)  # WM_LBUTTONUP
+        else:
+            # Release invokes OnClick. Browse and Install can run modal or
+            # synchronous work, so do not wait for their handler to return.
+            assert self.api.PostMessageW(handle, 0x0202, 0, position), C.get_last_error()
 
     def set_text(self, handle, text):
         value = C.create_unicode_buffer(text)
@@ -134,6 +153,13 @@ class Windows:
         return "\n".join(f"{self.kind(h)} enabled={bool(self.api.IsWindowEnabled(h))} "
                          f"style=0x{self.api.GetWindowLongW(h, -16) & 0xffffffff:08x} {self.caption(h)!r}"
                          for h in self.windows(parent))
+
+    def dump_related(self, parent):
+        process_id = self.pid(parent)
+        dialogs = [parent] + [h for h in self.windows()
+                              if h != parent and self.pid(h) == process_id]
+        return "\n\n".join(f"{self.kind(h)} {self.caption(h)!r}\n{self.dump(h)}"
+                           for h in dialogs)
 
 
 def build_fixture(root, supplied):
@@ -249,9 +275,11 @@ def run(compiler, fixture, logs):
             api.click(api.control(window, "Browse…"))
             dialog = wait_for(lambda: next((h for h in api.windows() if h != window and
                                             api.pid(h) == api.pid(window) and
-                                            api.api.IsWindowEnabled(h)), None), "Browse did not open a folder picker")
+                                            api.api.IsWindowEnabled(h) and
+                                            api.api.GetForegroundWindow() == h), None), "Browse did not open a folder picker")
             api.api.PostMessageW(dialog, 0x0010, 0, 0)  # WM_CLOSE: cancel picker
-            wait_for(lambda: api.api.IsWindowEnabled(window), "Folder picker did not close")
+            wait_for(lambda: not api.api.IsWindowVisible(dialog) and api.api.IsWindowEnabled(window),
+                     "Folder picker did not close")
             assert api.text(edit) == str(destination), "Cancelling Browse changed the location"
             checkbox = api.control(window, "Create a desktop shortcut")
             api.click_checkbox(checkbox)
@@ -294,7 +322,9 @@ def run(compiler, fixture, logs):
             print("Windows setup UI passed: enabled controls, close/cancel, path validation, Browse, shortcut selection/deselection and saved choice, install, upgrade, preservation and Launch.")
         except BaseException:
             if window:
-                print(api.dump(window), file=sys.stderr)
+                diagnostic = api.dump_related(window)
+                (root / "ui-failure.log").write_text(diagnostic, encoding="utf-8")
+                print(diagnostic, file=sys.stderr)
             raise
         finally:
             if process and process.poll() is None:

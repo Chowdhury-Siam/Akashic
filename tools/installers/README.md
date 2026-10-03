@@ -84,8 +84,11 @@ This compiles the production installer layout around a tiny fixture app and a
 unique install ID. It checks enabled controls at startup, both custom Close and
 Cancel buttons, native window closing, invalid and custom paths, Browse, desktop
 shortcut selection, deselection and saved upgrade choice, install, upgrade,
-data preservation, and Launch. The checkbox check moves the cursor into the visible control and posts
-mouse press/release events. It verifies whether the actual shortcut was created
+data preservation, and Launch. Each click activates the window and moves the
+cursor into the visible control before sending bounded mouse move/press events.
+Checkbox release finishes before the cursor moves to the Install button;
+button release is posted so modal Browse and synchronous Install handlers do
+not block the test. It verifies whether the actual shortcut was created
 after installation, rather than relying on `BM_CLICK` and `BM_GETCHECK` for a
 styled checkbox. It uninstalls only that fixture and never opens the real app or reads
 its data. Windows release CI runs this check before packaging the full app.
@@ -96,6 +99,9 @@ bounded `WM_GETTEXT` call only for the explicit path check while setup is idle.
 This prevents a busy edit from aborting the 60-second installation wait or
 masking the original failure when controls are dumped. Portable regression
 tests cover both a busy installation that finishes and one that times out.
+They also cover restored foreground focus and checkbox completion before the
+next click. Failure logs include the wizard and any other visible windows from
+its process, exposing native error dialogs alongside the custom status.
 
 Inno's internal Next and Cancel controls remain visible to the engine, outside
 the custom window layout. Inno checks their `CanFocus` state when advancing and
