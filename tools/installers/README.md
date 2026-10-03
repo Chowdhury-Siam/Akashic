@@ -81,7 +81,24 @@ python tools/installers/tests/check_windows_gui.py `
 ```
 
 This compiles the production installer layout around a tiny fixture app and a
-unique install ID. It checks enabled controls at startup, Close/cancel, invalid
+unique install ID. It checks enabled controls at startup, both custom Close and
+Cancel buttons, native window closing, invalid
 and custom paths, Browse, desktop shortcuts, install, upgrade, data preservation,
 and Launch. It uninstalls only that fixture and never opens the real app or reads
 its data. Windows release CI runs this check before packaging the full app.
+
+Inno's internal Next and Cancel controls remain visible to the engine, outside
+the custom window layout. Inno checks their `CanFocus` state when advancing and
+cancelling; hiding them prevents the custom buttons from reaching those paths.
+
+Linux release CI prepares sqlite3's bundled native asset after `flutter pub get`:
+
+```bash
+python3 tools/ci/prepare_sqlite_asset.py --arch x64  # or arm64
+```
+
+The helper reads the resolved package's own release tag and SHA-256 hashes,
+retries interrupted downloads, and atomically fills sqlite3's shared hook cache.
+The cache is kept per architecture and lockfile. The hook validates it again and
+Flutter bundles the library as usual. A failed build uploads its verbose log and
+sqlite3 hook output in the Linux build failure artifact.

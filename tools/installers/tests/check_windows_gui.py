@@ -171,10 +171,6 @@ def run(compiler, fixture, logs):
             assert process.returncode == 0, f"Setup exited with {process.returncode}"
 
         try:
-            # First reproduce the reported welcome-page deadlock, then cancel.
-            open_setup("cancel.log")
-            api.click(api.control(window, "×"))
-
             def accept_cancel():
                 for dialog in api.windows():
                     if api.pid(dialog) == api.pid(window) and dialog != window:
@@ -185,9 +181,18 @@ def run(compiler, fixture, logs):
                             return True
                 return process.poll() is not None
 
-            wait_for(accept_cancel, "Close did not offer cancellation")
-            process.wait(timeout=15)
-            assert not (destination / "Yutaka.exe").exists(), "Cancel installed the app"
+            # Both custom controls and the window close path must reach Inno's
+            # cancellation decision before any files or shortcuts are installed.
+            for index, caption in enumerate(("×", "Cancel", None)):
+                open_setup(f"cancel-{index}.log")
+                if caption is None:
+                    api.api.PostMessageW(window, 0x0010, 0, 0)  # WM_CLOSE
+                else:
+                    api.click(api.control(window, caption))
+                wait_for(accept_cancel, f"{caption or 'Window close'} did not offer cancellation")
+                process.wait(timeout=15)
+                assert not (destination / "Yutaka.exe").exists(), "Cancel installed the app"
+                assert not shortcut.exists(), "Cancel created a shortcut"
 
             install = open_setup("install.log")
             edit = next((h for h in api.windows(window) if api.kind(h) == "TNewPathEdit"), None)

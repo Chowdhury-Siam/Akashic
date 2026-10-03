@@ -15,6 +15,7 @@ on:
       - "tools/linux/**"
       - "tools/android/**"
       - "tools/installers/**"
+      - "tools/ci/**"
       - "test/**"
       - "assets/**"
       - "cloud/worker/**"
@@ -197,12 +198,39 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Restore verified SQLite native asset cache
+        uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared/sqlite3/build
+          key: yutaka-sqlite-linux-v1-${{ matrix.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Prepare bundled SQLite native asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/ci -p 'test_prepare_sqlite_asset.py'
+          python3 tools/ci/prepare_sqlite_asset.py --arch "${{ matrix.arch }}"
+
       - name: Build Linux release
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p artifacts/build-logs
           flutter build linux --release --no-pub \
-            --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME"
+            --verbose --dart-define=YUTAKA_APP_VERSION="$YUTAKA_APP_VERSION_NAME" \
+            2>&1 | tee artifacts/build-logs/flutter-linux.log
+
+      - name: Upload Linux build failure details
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-linux-${{ matrix.arch }}-build-failure
+          path: |
+            artifacts/build-logs
+            .dart_tool/hooks_runner/sqlite3/**/stderr.txt
+            .dart_tool/hooks_runner/sqlite3/**/stdout.txt
+          include-hidden-files: true
+          if-no-files-found: ignore
 
       - name: Package portable Linux archive
         shell: bash

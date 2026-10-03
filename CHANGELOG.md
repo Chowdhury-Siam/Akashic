@@ -1,3 +1,11 @@
+## 1.0.1271+315
+
+- Fix Windows installer Close and Cancel actions by keeping Inno’s internal Cancel control available to its cancellation engine outside the custom layout.
+- Extend the isolated Windows GUI gate to exercise both custom cancellation buttons and native window closing before installation.
+- Prepare bundled Linux SQLite assets with SHA-256 verification, bounded download retries and an architecture/lockfile cache; preserve normal native-asset bundling.
+- Capture verbose Linux build and SQLite hook failure logs. The previous abbreviated log did not reveal the hook’s underlying exception.
+- Bump synchronized release metadata to `1.0.1271+315`.
+
 ## 1.0.1270+314
 
 - Align the Time • Date and Service charge icons beside their titles, with the selected values centered on a separate line underneath. Keep the shared header flexible for larger text and narrow screens.

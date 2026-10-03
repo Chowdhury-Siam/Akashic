@@ -215,7 +215,10 @@ begin
   WizardForm.NextButton.Left := ScaleX(980);
   WizardForm.NextButton.TabStop := False;
   WizardForm.NextButton.Default := False;
-  WizardForm.CancelButton.Hide;
+  // MainForm.Close also checks CancelButton.CanFocus. Keep the native
+  // cancel button available to the engine without showing it in our layout.
+  WizardForm.CancelButton.Left := ScaleX(1080);
+  WizardForm.CancelButton.TabStop := False;
   WizardForm.KeyPreview := True;
   WizardForm.OnKeyDown := @ShellKeyDown;
   Shell := PanelAt(WizardForm, 0, 0, 960, 640, BackgroundColor);
@@ -275,7 +278,6 @@ var
 begin
   if WizardSilent then Exit;
   WizardForm.BackButton.Hide;
-  WizardForm.CancelButton.Hide;
   Ready := (CurPageID = wpSelectDir) or (CurPageID = wpReady);
   Preparing := CurPageID = wpPreparing;
   FolderEdit.Enabled := Ready;
