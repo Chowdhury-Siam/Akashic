@@ -397,6 +397,22 @@ jobs:
           Write-Host "Using verified Inno Setup compiler: $iscc"
           "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Check custom Windows installer controls
+        shell: pwsh
+        run: |
+          python tools/installers/tests/check_windows_gui.py `
+            --compiler "$env:ISCC_PATH" --logs "artifacts/installer-ui-check"
+          if ($LASTEXITCODE -ne 0) { throw "Windows installer UI regression check failed." }
+
+      - name: Upload Windows installer check logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: yutaka-windows-installer-check-logs
+          path: artifacts/installer-ui-check/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Build Windows installer EXE
         shell: pwsh
         run: |

@@ -1,3 +1,15 @@
+## 1.0.1270+314
+
+- Align the Time • Date and Service charge icons beside their titles, with the selected values centered on a separate line underneath. Keep the shared header flexible for larger text and narrow screens.
+- Apply the same alignment to the loan editor’s Time • Date control.
+
+## 1.0.1269+313
+
+- Fix disabled Windows installer controls: keep Inno’s native Next button available during startup page skipping while displaying only the custom Yutaka controls.
+- Put the inline install location on the native directory page, preserving Inno’s path validation and committing the selected folder before installation.
+- Keep native close-app and restart decisions available during preparation.
+- Add a Windows GUI regression gate that builds an isolated fixture with the real installer script and exercises enabled controls, Close/cancel, Browse, invalid/custom paths, shortcuts, installation, upgrade, data preservation and Launch before publishing installers.
+
 ## 1.0.1268+312
 
 - Request automatic reopening after Android confirms a successful direct/GitHub APK update. Keep the success message for the updated app’s top popup.

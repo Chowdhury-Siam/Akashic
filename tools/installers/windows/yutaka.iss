@@ -2,21 +2,29 @@
 #if Ver < EncodeVer(6, 7, 0)
   #error Yutaka's dark installer requires Inno Setup 6.7 or later.
 #endif
-#define MyAppName "Yutaka"
+#ifndef MyAppName
+  #define MyAppName "Yutaka"
+#endif
 #define MyAppExeName "Yutaka.exe"
 
 [Setup]
 ; Keep this ID stable so existing installs upgrade in place.
+#ifdef InstallerTestAppId
+AppId={#InstallerTestAppId}
+#else
 AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}
+#endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=Yutaka
 DefaultDirName={localappdata}\Programs\Yutaka
 DefaultGroupName={#MyAppName}
 DisableWelcomePage=yes
-DisableDirPage=yes
+; Use the real directory page under the custom shell so Inno validates and
+; commits the inline install location before copying files.
+DisableDirPage=no
 DisableProgramGroupPage=yes
-DisableReadyPage=no
+DisableReadyPage=yes
 DisableFinishedPage=no
 OutputDir={#OutputDir}
 OutputBaseFilename=YutakaSetup
@@ -158,6 +166,11 @@ begin
     end;
     Exit;
   end;
+  if WizardForm.CurPageID = wpPreparing then begin
+    // Preserve Inno's close-app/restart decisions without reapplying options.
+    WizardForm.NextButton.OnClick(WizardForm.NextButton);
+    Exit;
+  end;
   if (Length(FolderEdit.Text) < 3) or
      ((Copy(FolderEdit.Text, 2, 2) <> ':\') and (Copy(FolderEdit.Text, 1, 2) <> '\\')) then begin
     PhaseLabel.Caption := 'INSTALLATION NOT STARTED';
@@ -196,7 +209,11 @@ begin
   WizardForm.Bevel1.Hide;
   WizardForm.BeveledLabel.Hide;
   WizardForm.BackButton.Hide;
-  WizardForm.NextButton.Hide;
+  // ClickToStartPage checks NextButton.CanFocus before skipping the welcome
+  // page. Keep the engine's button visible and enabled, outside the custom
+  // layout. Hiding it here or in CurPageChanged strands setup on wpWelcome.
+  WizardForm.NextButton.Left := ScaleX(980);
+  WizardForm.NextButton.TabStop := False;
   WizardForm.NextButton.Default := False;
   WizardForm.CancelButton.Hide;
   WizardForm.KeyPreview := True;
@@ -245,7 +262,6 @@ begin
   TitleClose := ButtonAt('×', 890, 18, 44, 38, @DismissClicked);
   TitleClose.Hint := 'Close installer';
   TitleClose.ShowHint := True;
-  WizardForm.ActiveControl := ActionButton;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -259,9 +275,8 @@ var
 begin
   if WizardSilent then Exit;
   WizardForm.BackButton.Hide;
-  WizardForm.NextButton.Hide;
   WizardForm.CancelButton.Hide;
-  Ready := CurPageID = wpReady;
+  Ready := (CurPageID = wpSelectDir) or (CurPageID = wpReady);
   Preparing := CurPageID = wpPreparing;
   FolderEdit.Enabled := Ready;
   BrowseButton.Enabled := Ready;
@@ -269,6 +284,11 @@ begin
   ActionButton.Enabled := Ready or (CurPageID = wpFinished) or (Preparing and WizardForm.NextButton.Enabled);
   DismissButton.Enabled := CurPageID <> wpInstalling;
   TitleClose.Enabled := DismissButton.Enabled;
+  if Ready then begin
+    FolderEdit.Text := WizardForm.DirEdit.Text;
+    PhaseLabel.Caption := 'READY TO INSTALL';
+    WizardForm.ActiveControl := ActionButton;
+  end;
   if CurPageID = wpInstalling then begin
     Headline.Caption := 'Getting Yutaka' + #13#10 + 'ready for you.';
     PhaseLabel.Caption := 'INSTALLING YUTAKA';
@@ -287,6 +307,9 @@ begin
   // These OS decisions must never be hidden behind the custom shell.
   WizardForm.OuterNotebook.Visible := Preparing;
   if Preparing then begin
+    Headline.Caption := 'Preparing Yutaka' + #13#10 + 'for installation.';
+    PhaseLabel.Caption := 'CHECKING INSTALLATION';
+    DetailLabel.Caption := 'Review the installation details above to continue.';
     WizardForm.OuterNotebook.SetBounds(ScaleX(292), ScaleY(288), ScaleX(621), ScaleY(244));
     WizardForm.InnerNotebook.SetBounds(0, 0, ScaleX(621), ScaleY(244));
     WizardForm.OuterNotebook.BringToFront;

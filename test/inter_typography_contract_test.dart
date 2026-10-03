@@ -16,6 +16,6 @@ void main() {
     expect(worker, contains('font:15px/1.5 Inter,"Segoe UI",Roboto'));
     expect(worker, isNot(contains('SF Pro Display')));
     expect(pubspec, contains('google_fonts: ^8.2.1'));
-    expect(pubspec, contains('version: 1.0.1268+312'));
+    expect(pubspec, contains('version: 1.0.1270+314'));
   });
 }

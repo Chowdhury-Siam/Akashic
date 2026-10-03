@@ -71,3 +71,17 @@ and XTest keyboard events to check install, busy-close protection, failure/retry
 completion and data preservation. It requires the X11/XTest runtime libraries.
 macOS backend tests automatically skip on other operating systems. Windows and
 macOS compilation and native setup validation run on their platform CI runners.
+
+Check the real Windows installer controls with the verified Inno compiler:
+
+```powershell
+python tools/installers/tests/check_windows_gui.py `
+  --compiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+  --logs artifacts/installer-ui-check
+```
+
+This compiles the production installer layout around a tiny fixture app and a
+unique install ID. It checks enabled controls at startup, Close/cancel, invalid
+and custom paths, Browse, desktop shortcuts, install, upgrade, data preservation,
+and Launch. It uninstalls only that fixture and never opens the real app or reads
+its data. Windows release CI runs this check before packaging the full app.

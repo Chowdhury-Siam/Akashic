@@ -435,7 +435,7 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
             ),
           ],
           const SizedBox(height: 12),
-          OutlinedButton.icon(
+          OutlinedButton(
             onPressed: () async {
               FocusManager.instance.primaryFocus?.unfocus();
               final selection = await showLoanStartDateTimeConfiguration(
@@ -445,8 +445,8 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
               if (!mounted || selection == null) return;
               setState(() => startDate = selection.start);
             },
-            icon: const Icon(Icons.event_rounded),
-            label: _ConfigurationButtonLabel(
+            child: _ConfigurationButtonLabel(
+              icon: Icons.event_rounded,
               title: 'Time • Date',
               summary: '${DateFormat('MMM d, yyyy').format(startDate)} • ${DateFormat('h:mm a').format(startDate)}',
             ),

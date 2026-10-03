@@ -18158,8 +18158,9 @@ class _ServiceChargePreviewRow extends StatelessWidget {
 }
 
 class _ConfigurationButtonLabel extends StatelessWidget {
-  const _ConfigurationButtonLabel({required this.title, required this.summary});
+  const _ConfigurationButtonLabel({required this.icon, required this.title, required this.summary});
 
+  final IconData icon;
   final String title;
   final String summary;
 
@@ -18168,7 +18169,14 @@ class _ConfigurationButtonLabel extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, textAlign: TextAlign.center),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 8),
+            Flexible(child: Text(title, textAlign: TextAlign.center)),
+          ],
+        ),
         const SizedBox(height: 3),
         Text(
           summary,
@@ -18530,7 +18538,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
             ),
           ],
           const SizedBox(height: 12),
-          OutlinedButton.icon(
+          OutlinedButton(
             onPressed: () async {
               _dismissAmountFocus();
               final selection = await showTransactionDateTimeConfiguration(
@@ -18548,14 +18556,14 @@ class _TransactionEditorState extends State<TransactionEditor> {
                 timeRangeEnabled = selection.timeRangeEnabled;
               });
             },
-            icon: const Icon(Icons.event_rounded),
-            label: _ConfigurationButtonLabel(
+            child: _ConfigurationButtonLabel(
+              icon: Icons.event_rounded,
               title: 'Time • Date',
               summary: '${transactionDateSpanLabel(selectedDate, dateRangeEnabled ? selectedEndDate : selectedDate)} • ${transactionTimeSpanLabel(selectedDate, selectedEndDate, forceRange: timeRangeEnabled)}',
             ),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
+          OutlinedButton(
             onPressed: isLoanTransaction
                 ? null
                 : () async {
@@ -18576,8 +18584,8 @@ class _TransactionEditorState extends State<TransactionEditor> {
                       serviceChargeValue = selection.value;
                     });
                   },
-            icon: const Icon(Icons.receipt_long_rounded),
-            label: _ConfigurationButtonLabel(
+            child: _ConfigurationButtonLabel(
+              icon: Icons.receipt_long_rounded,
               title: 'Service charge',
               summary: _serviceChargeSummary(state),
             ),
