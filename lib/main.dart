@@ -17684,35 +17684,81 @@ class TransactionTile extends StatelessWidget {
         : savedTitle.isNotEmpty
             ? savedTitle
             : category?.name ?? 'Unknown';
-    final subtitleParts = <String>[
-      if (tx.type != MoneyTransactionType.transfer && savedTitle.isNotEmpty && category != null) category.name,
-      transactionDateTimeLabel(tx),
-      if (tx.notes.trim().isNotEmpty) tx.notes.trim(),
-    ];
+    final categoryLabel = tx.type != MoneyTransactionType.transfer &&
+            savedTitle.isNotEmpty && category != null && category.name != title
+        ? category.name
+        : null;
+    final detailStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: kSleekMuted,
+      fontWeight: FontWeight.w500,
+      height: 1.4,
+    );
+    final end = tx.effectiveEndOn;
+    final hasTimeRange = tx.endOn != null &&
+        (tx.createdOn.hour != end.hour || tx.createdOn.minute != end.minute);
 
     final tile = MotionTouchFeedback(
       enabled: true,
       scale: .985,
       child: ExpressiveCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         radius: 24,
         onTap: () => showTransactionEditor(context, transaction: tx),
-        child: ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: tx.type == MoneyTransactionType.transfer
-              ? iconBubble(context, 'exchange', '#38BDF8', size: 44)
-              : iconBubble(context, category?.iconName ?? 'category', category?.iconColor ?? kSleekAccentHex, size: 44),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text(
-            subtitleParts.join(' • '),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kSleekMuted, fontWeight: FontWeight.w700),
-          ),
-          trailing: Text(
-            '$amountPrefix${state.format(tx.amount)}',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900, color: amountColor),
-          ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            tx.type == MoneyTransactionType.transfer
+                ? iconBubble(context, 'exchange', '#38BDF8', size: 44)
+                : iconBubble(context, category?.iconName ?? 'category', category?.iconColor ?? kSleekAccentHex, size: 44),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        flex: 2,
+                        child: Text(
+                          '$amountPrefix${state.format(tx.amount)}',
+                          textAlign: TextAlign.end,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900, color: amountColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (categoryLabel != null)
+                    Text(categoryLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: detailStyle),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 2,
+                    children: [
+                      Text(transactionDateSpanLabel(tx.createdOn, end), style: detailStyle),
+                      Text(transactionTimeSpanLabel(tx.createdOn, end, forceRange: hasTimeRange), style: detailStyle),
+                    ],
+                  ),
+                  if (tx.notes.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(tx.notes.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: detailStyle),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

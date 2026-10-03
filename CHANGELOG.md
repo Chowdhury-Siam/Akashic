@@ -1,3 +1,17 @@
+## 1.0.1274+318
+
+- Organize shared transaction cards into a title/amount row, category row, date/time row, and optional notes row.
+- Let date and time wrap independently, keep notes from disrupting the date, and omit categories that repeat the title.
+- Align icons and amounts at the top and use lighter detail text for easier scanning in transaction, category, and budget lists.
+- Bump synchronized release metadata to `1.0.1274+318`.
+
+## 1.0.1273+317
+
+- Replace the loan editor's due-date switch and separate date/time pickers with one compact Due date button, showing Off or the selected date and time.
+- Move the enable switch and both pickers into a dedicated popup. Apply only when Done is pressed, preserve the current choice when dismissed, and allow turning the due date off.
+- Retain existing due dates when editing and reject deadlines earlier than the loan start date/time.
+- Bump synchronized release metadata to `1.0.1273+317`.
+
 ## Windows installer CI maintenance (1.0.1272+316)
 
 - Keep status/button lookup and failure diagnostics independent of synchronous install-path reads, preventing `Install location did not respond` from aborting the installation completion wait.

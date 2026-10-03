@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('loan editor uses compact Time Date and Interest configuration buttons', () {
+  test('loan editor uses compact Time Date Interest and Due date configuration buttons', () {
     final sheet = File('lib/loans/loan_sheets.dart').readAsStringSync();
     final start = sheet.indexOf('class _LoanEditorSheetState');
     final end = sheet.indexOf('Future<void> showLoanPaymentSheet', start);
@@ -20,6 +20,9 @@ void main() {
     expect(editor, isNot(contains("SectionHeader('Interest')")));
     expect(editor, isNot(contains("label: Text('Start ·")));
     expect(editor, isNot(contains("label: Text('Time ·")));
-    expect(editor, contains("title: const Text('Set a due date'"));
+    expect(editor, contains('final selection = await showLoanDueDateTimeConfiguration('));
+    expect(editor, contains("title: 'Due date'"));
+    expect(editor, contains('setState(() => dueDate = selection.dueDate)'));
+    expect(editor, isNot(contains("title: const Text('Set a due date'")));
   });
 }

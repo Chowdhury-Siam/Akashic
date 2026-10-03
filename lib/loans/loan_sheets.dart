@@ -8,6 +8,13 @@ class LoanStartDateTimeConfiguration {
 }
 
 @immutable
+class LoanDueDateTimeConfiguration {
+  const LoanDueDateTimeConfiguration({required this.dueDate});
+
+  final DateTime? dueDate;
+}
+
+@immutable
 class LoanInterestConfiguration {
   const LoanInterestConfiguration({
     required this.type,
@@ -90,6 +97,104 @@ Future<LoanStartDateTimeConfiguration?> showLoanStartDateTimeConfiguration(
                     dialogContext,
                     LoanStartDateTimeConfiguration(start: workingStart),
                   ),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+Future<LoanDueDateTimeConfiguration?> showLoanDueDateTimeConfiguration(
+  BuildContext context, {
+  required DateTime start,
+  required DateTime? dueDate,
+}) {
+  var enabled = dueDate != null;
+  var workingDueDate = dueDate ?? start.add(const Duration(days: 30));
+
+  return showYutakaPopup<LoanDueDateTimeConfiguration>(
+    context,
+    maxWidth: 470,
+    maxHeight: 520,
+    child: StatefulBuilder(
+      builder: (dialogContext, setModalState) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+          child: YutakaPopupContent(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Due date',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 18),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: enabled,
+                  onChanged: (value) => setModalState(() => enabled = value),
+                  title: const Text('Set a due date', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                if (enabled) ...[
+                  const SizedBox(height: 12),
+                  Text('Due date', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 7),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final selected = await pickDate(dialogContext, workingDueDate);
+                      if (selected == null || !dialogContext.mounted) return;
+                      setModalState(() {
+                        workingDueDate = DateTime(
+                          selected.year,
+                          selected.month,
+                          selected.day,
+                          workingDueDate.hour,
+                          workingDueDate.minute,
+                        );
+                      });
+                    },
+                    icon: const Icon(Icons.event_available_rounded),
+                    label: Text(DateFormat('MMM d, yyyy').format(workingDueDate)),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Due time', style: Theme.of(dialogContext).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 7),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final selected = await pickTime(dialogContext, TimeOfDay.fromDateTime(workingDueDate));
+                      if (selected == null || !dialogContext.mounted) return;
+                      setModalState(() {
+                        workingDueDate = DateTime(
+                          workingDueDate.year,
+                          workingDueDate.month,
+                          workingDueDate.day,
+                          selected.hour,
+                          selected.minute,
+                        );
+                      });
+                    },
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text(DateFormat('h:mm a').format(workingDueDate)),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () {
+                    if (enabled && workingDueDate.isBefore(start)) {
+                      showSnack(dialogContext, 'Due date cannot be before the start date.');
+                      return;
+                    }
+                    Navigator.pop(
+                      dialogContext,
+                      LoanDueDateTimeConfiguration(dueDate: enabled ? workingDueDate : null),
+                    );
+                  },
                   child: const Text('Done'),
                 ),
               ],
@@ -475,50 +580,26 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
             icon: const Icon(Icons.percent_rounded),
             label: const Text('Interest'),
           ),
-          const SizedBox(height: 10),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: dueDate != null,
-            onChanged: (enabled) => setState(() => dueDate = enabled ? startDate.add(const Duration(days: 30)) : null),
-            title: const Text('Set a due date', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () async {
+              FocusManager.instance.primaryFocus?.unfocus();
+              final selection = await showLoanDueDateTimeConfiguration(
+                context,
+                start: startDate,
+                dueDate: dueDate,
+              );
+              if (!mounted || selection == null) return;
+              setState(() => dueDate = selection.dueDate);
+            },
+            child: _ConfigurationButtonLabel(
+              icon: Icons.event_available_rounded,
+              title: 'Due date',
+              summary: dueDate == null
+                  ? 'Off'
+                  : '${DateFormat('MMM d, yyyy').format(dueDate!)} • ${DateFormat('h:mm a').format(dueDate!)}',
+            ),
           ),
-          if (dueDate != null) ...[
-            OutlinedButton.icon(
-              onPressed: () async {
-                final current = dueDate!;
-                final selected = await pickDate(context, current);
-                if (selected != null && mounted) {
-                  setState(() => dueDate = DateTime(
-                        selected.year,
-                        selected.month,
-                        selected.day,
-                        current.hour,
-                        current.minute,
-                      ));
-                }
-              },
-              icon: const Icon(Icons.event_available_rounded),
-              label: Text('Due · ${DateFormat('MMM d, yyyy').format(dueDate!)}'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final current = dueDate!;
-                final selected = await pickTime(context, TimeOfDay.fromDateTime(current));
-                if (selected != null && mounted) {
-                  setState(() => dueDate = DateTime(
-                        current.year,
-                        current.month,
-                        current.day,
-                        selected.hour,
-                        selected.minute,
-                      ));
-                }
-              },
-              icon: const Icon(Icons.schedule_rounded),
-              label: Text('Due time · ${DateFormat('h:mm a').format(dueDate!)}'),
-            ),
-          ],
           const SizedBox(height: 12),
           TextField(
             contextMenuBuilder: yutakaTextFieldContextMenu,
