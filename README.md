@@ -123,6 +123,16 @@ This is the easiest option and requires no Cloudflare, Turso, or GitHub setup.
 
 Everything stays on that device unless you later connect a self-hosted Worker.
 
+Desktop downloads use Yutaka's app icon, charcoal surfaces and green accent:
+
+| Platform | Installation |
+| --- | --- |
+| Windows | Run `Yutaka-v<version>-Setup.exe`; choose a folder and optional desktop shortcut, then launch Yutaka. |
+| Linux | Download the matching x64/ARM64 `Yutaka-v<version>-linux-<arch>-Setup.run`. Run `bash <downloaded-file>.run` to open the graphical installer; choose a folder and install. |
+| macOS | Open the universal `.dmg`, drag **Yutaka** onto **Applications**, then open Yutaka from Applications. |
+
+Linux setup requires GTK 3 for its graphical interface and installs for the current user without administrator access. The default app folder is `~/.local/opt/yutaka`; a menu entry and `~/.local/bin/yutaka` launcher are created. For terminal installation use `bash <downloaded-file>.run --install`, optionally with `--prefix /absolute/app/folder` and `--desktop-shortcut`. The launcher runs the AppImage without requiring FUSE. Installer upgrades replace app files and preserve your existing Yutaka data.
+
 ### 3.2 Use Yutaka on multiple devices
 
 Set up the self-hosted Worker once, then use the same Worker URL and account on your other devices.
@@ -701,7 +711,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1261
+  --dart-define=YUTAKA_APP_VERSION=1.0.1263
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -710,17 +720,19 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1261
+  --dart-define=YUTAKA_APP_VERSION=1.0.1263
 ```
 
 ## 10.4 Windows build
+
+The release workflow packages a branded dark wizard using `tools/installers/windows/yutaka.iss` and Inno Setup 6.7+. It retains the original installer ID and per-user install location for upgrades. Existing optional app/installer signing still applies.
 
 ```bash
 flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1261
+  --dart-define=YUTAKA_APP_VERSION=1.0.1263
 ```
 
 ## 10.5 Linux build
@@ -737,13 +749,16 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1261
+  --dart-define=YUTAKA_APP_VERSION=1.0.1263
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
 
 - `Yutaka-v<version>-linux-<arch>.AppImage` — the recommended broad-distro package.
 - `Yutaka-v<version>-linux-<arch>.tar.gz` — the raw Flutter portable bundle.
+- `Yutaka-v<version>-linux-<arch>-Setup.run` — the graphical per-user installer, including the AppImage and a terminal installation option.
+
+CI compiles the native GTK installer, checks its UI under Xvfb, and runs installation, upgrade/data-preservation and checksum regression tests. AppImages are already compressed, so setup packages avoid a second compression pass.
 
 The AppImage is intended for broad compatibility across mainstream **glibc-based** distributions. Distros with materially different userspaces, such as musl-only systems, may need compatibility packages or a source build.
 
@@ -756,10 +771,12 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1261
+  --dart-define=YUTAKA_APP_VERSION=1.0.1263
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.
+
+The DMG includes a branded Finder background, fixed icon positions and an Applications link. `dmgbuild==1.6.7` writes the Finder layout without opening Finder. The signed/stapled app is packaged intact, with fast DMG compression and parallel ZIP packaging retained.
 
 The GitHub release workflow reads the official version/build number from `pubspec.yaml`.
 
@@ -773,7 +790,7 @@ When a signed-in user chooses a profile photo, animated GIF, or profile video, Y
 | --- | --- |
 | `build-android-apks.yml` | Builds direct Android APKs plus the Google Play AAB and runs the Android quality, Worker-integrity, and 16 KB page-size gates |
 | `build-windows.yml` | Builds the Windows x64 app and installer EXE independently from the other platforms |
-| `build-linux.yml` | Builds Linux x64/ARM64 AppImage and portable archives independently from the other platforms |
+| `build-linux.yml` | Builds Linux x64/ARM64 graphical installers, AppImages and portable archives independently from the other platforms |
 | `build-macos.yml` | Builds the universal macOS DMG and app ZIP independently from the other platforms |
 | `publish-stable-release.yml` | Waits for successful Android, Windows, Linux, and macOS runs for the same commit, publishes their artifacts together as the stable GitHub Release, then deletes those successful platform runs and older successful publisher runs; failed/cancelled runs and the newest successful publisher run are kept |
 | `deploy-sync-worker.yml` | Deploys a fork owner's self-hosted Cloudflare Worker |

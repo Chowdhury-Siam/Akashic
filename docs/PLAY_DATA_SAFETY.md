@@ -1,6 +1,6 @@
 # Google Play Data Safety checklist for Yutaka
 
-**Release baseline:** Yutaka 1.0.1261+305
+**Release baseline:** Yutaka 1.0.1263+307
 **Reviewed:** 1 October 2026
 
 This file documents the current code paths so the Play Console Data safety form can be completed consistently with the shipped app. Re-check this document whenever dependencies, permissions, sync behavior, telemetry, or integrations change.

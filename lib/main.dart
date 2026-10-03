@@ -7384,17 +7384,13 @@ class _UpdateActivityOverlay extends StatelessWidget {
             ? state.updateDownloadProgress?.percent
             : null,
       ),
-      builder: (context, activity, _) => SafeArea(
-        child: Align(
-          alignment: Alignment.topRight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: UpdateActivityIndicator(
-              active: activity.$1 || activity.$2,
-              label: activity.$1 ? 'Updating Worker…' : 'Updating Yutaka…',
-              percent: activity.$1 ? null : activity.$3,
-            ),
-          ),
+      builder: (context, activity, _) => ValueListenableBuilder<OverlayEntry?>(
+        valueListenable: _activeYutakaSnackEntry,
+        builder: (context, feedback, _) => UpdateActivityOverlay(
+          workerUpdating: activity.$1,
+          appUpdating: activity.$2,
+          percent: activity.$3,
+          feedbackVisible: feedback != null,
         ),
       ),
     );
@@ -10526,7 +10522,7 @@ class _RangeEndpointButton extends StatelessWidget {
 
 Future<TimeOfDay?> pickTime(BuildContext context, TimeOfDay initial) => showTimePicker(context: context, initialTime: initial);
 
-OverlayEntry? _activeYutakaSnackEntry;
+final _activeYutakaSnackEntry = ValueNotifier<OverlayEntry?>(null);
 
 enum _YutakaSnackKind { success, failure, warning, info }
 
@@ -10556,8 +10552,8 @@ void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind)
     return;
   }
 
-  _activeYutakaSnackEntry?.remove();
-  _activeYutakaSnackEntry = null;
+  _activeYutakaSnackEntry.value?.remove();
+  _activeYutakaSnackEntry.value = null;
   messenger?.hideCurrentSnackBar();
   messenger?.hideCurrentMaterialBanner();
 
@@ -10582,14 +10578,14 @@ void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind)
       contentType: contentType,
       visibleDuration: duration,
       onDismissed: () {
-        if (_activeYutakaSnackEntry == entry) {
-          _activeYutakaSnackEntry = null;
+        if (_activeYutakaSnackEntry.value == entry) {
+          _activeYutakaSnackEntry.value = null;
           entry.remove();
         }
       },
     ),
   );
-  _activeYutakaSnackEntry = entry;
+  _activeYutakaSnackEntry.value = entry;
   overlay.insert(entry);
 }
 
@@ -10808,23 +10804,23 @@ void showSnack(BuildContext context, String message) {
     return;
   }
 
-  _activeYutakaSnackEntry?.remove();
-  _activeYutakaSnackEntry = null;
+  _activeYutakaSnackEntry.value?.remove();
+  _activeYutakaSnackEntry.value = null;
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
     builder: (overlayContext) => _YutakaDynamicIslandSnack(
       message: trimmedMessage,
       onDismissed: () {
-        if (_activeYutakaSnackEntry == entry) {
-          _activeYutakaSnackEntry = null;
+        if (_activeYutakaSnackEntry.value == entry) {
+          _activeYutakaSnackEntry.value = null;
           entry.remove();
         }
       },
     ),
   );
 
-  _activeYutakaSnackEntry = entry;
+  _activeYutakaSnackEntry.value = entry;
   overlay.insert(entry);
 }
 

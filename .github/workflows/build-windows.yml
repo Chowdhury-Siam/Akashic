@@ -14,6 +14,7 @@ on:
       - "macos/**"
       - "tools/linux/**"
       - "tools/android/**"
+      - "tools/installers/**"
       - "test/**"
       - "assets/**"
       - "cloud/worker/**"
@@ -348,13 +349,18 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) {
-            choco install innosetup --no-progress -y
+          $minimumVersion = [version]"6.7.0"
+          if (!(Test-Path $iscc) -or [version](Get-Item $iscc).VersionInfo.FileVersion -lt $minimumVersion) {
+            choco upgrade innosetup --version=6.7.3 --allow-downgrade --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Failed to install Inno Setup 6.7.3." }
           } else {
             Write-Host "Using preinstalled Inno Setup: $iscc"
           }
           if (!(Test-Path $iscc)) {
             throw "ISCC.exe was not found: $iscc"
+          }
+          if ([version](Get-Item $iscc).VersionInfo.FileVersion -lt $minimumVersion) {
+            throw "Inno Setup 6.7 or later is required for the Yutaka theme."
           }
           "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -375,69 +381,11 @@ jobs:
           $sourceDir = $releaseDir.Path
           $outputDir = (Resolve-Path "artifacts").Path
           $iconFile = (Resolve-Path "assets/icons/app_icon.ico").Path
-          $pubspecVersionLine = (Get-Content "pubspec.yaml" | Where-Object { $_ -match "^version:" } | Select-Object -First 1)
-          if ([string]::IsNullOrWhiteSpace($pubspecVersionLine)) {
-            throw "pubspec.yaml version was not found."
-          }
-          $fullAppVersion = ($pubspecVersionLine -replace "^version:\s*", "").Trim()
-          $appVersionName = ($fullAppVersion -split "\+")[0]
-          if ([string]::IsNullOrWhiteSpace($appVersionName)) {
-            throw "Could not parse installer version from pubspec.yaml version: $fullAppVersion"
-          }
-          Write-Host "Packaging Yutaka Windows installer version $appVersionName from pubspec version $fullAppVersion"
-          $iss = @"
-          #define SourceDir "$sourceDir"
-          #define OutputDir "$outputDir"
-          #define IconFile "$iconFile"
-          #define MyAppName "Yutaka"
-          #define MyAppVersion "$appVersionName"
-          #define MyAppExeName "Yutaka.exe"
-
-          [Setup]
-          AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}
-          AppName={#MyAppName}
-          AppVersion={#MyAppVersion}
-          AppPublisher=Yutaka
-          DefaultDirName={localappdata}\Programs\Yutaka
-          DefaultGroupName={#MyAppName}
-          DisableWelcomePage=no
-          DisableDirPage=no
-          DisableProgramGroupPage=no
-          DisableReadyPage=no
-          DisableFinishedPage=no
-          OutputDir={#OutputDir}
-          OutputBaseFilename=YutakaSetup
-          SetupIconFile={#IconFile}
-          UninstallDisplayIcon={app}\{#MyAppExeName}
-          VersionInfoDescription=Yutaka Installer
-          VersionInfoProductName=Yutaka
-          VersionInfoCompany=Yutaka
-          Compression=lzma2/fast
-          SolidCompression=yes
-          WizardStyle=modern
-          PrivilegesRequired=lowest
-          ArchitecturesAllowed=x64
-          ArchitecturesInstallIn64BitMode=x64
-
-          [Languages]
-          Name: "english"; MessagesFile: "compiler:Default.isl"
-
-          [Tasks]
-          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
-
-          [Files]
-          Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-          [Icons]
-          Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
-          Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-
-          [Run]
-          Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
-          "@
-          $iss = ($iss -split "`r?`n" | ForEach-Object { $_.TrimStart() }) -join "`r`n"
-          Set-Content -Path "artifacts/yutaka-installer.iss" -Value $iss -Encoding UTF8
-          & "$env:ISCC_PATH" "artifacts/yutaka-installer.iss"
+          $brandDir = (Resolve-Path "tools/installers/assets").Path
+          & "$env:ISCC_PATH" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" `
+            "/DIconFile=$iconFile" "/DBrandDir=$brandDir" `
+            "/DMyAppVersion=$env:YUTAKA_APP_VERSION_NAME" "tools/installers/windows/yutaka.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Windows installer compilation failed." }
           if (!(Test-Path "artifacts/YutakaSetup.exe")) {
             throw "Installer was not created: artifacts/YutakaSetup.exe"
           }
@@ -467,5 +415,4 @@ jobs:
           path: artifacts/Yutaka-v*-Setup.exe
           if-no-files-found: error
           compression-level: 0
-
 

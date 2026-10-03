@@ -25,7 +25,7 @@ jobs:
     if: github.repository == 'Chowdhury-Siam/Yutaka'
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry_1.outputs.page_url || steps.deployment_retry_2.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -39,6 +39,30 @@ jobs:
         with:
           path: docs
 
+      # GitHub's OIDC endpoint can time out despite the correct id-token
+      # permission. Retry the official action instead of weakening authentication.
       - name: Deploy GitHub Pages
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Wait before first deployment retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 10
+
+      - name: Retry GitHub Pages deployment
+        id: deployment_retry_1
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Wait before final deployment retry
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry_1.outcome == 'failure'
+        run: sleep 20
+
+      # The final attempt is deliberately fatal if GitHub remains unavailable or
+      # a persistent configuration/permission error prevents publication.
+      - name: Final GitHub Pages deployment attempt
+        id: deployment_retry_2
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry_1.outcome == 'failure'
         uses: actions/deploy-pages@v4

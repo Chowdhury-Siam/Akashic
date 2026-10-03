@@ -1,5 +1,23 @@
+## [1.0.1263] - 2026-10-03
+
+- Show automatic Worker updates in a centered, safe-area top banner matching Yutaka's existing popup layout, green icon badge, rounded card and typography.
+- Animate a small progress spinner while installation runs; retain static feedback when reduced motion is enabled and hide the banner when updating finishes.
+- Give other feedback popups priority in the shared top slot, then resume Worker progress if the update is still running.
+- Add widget checks for placement, text wrapping, touch passthrough, popup priority, reduced motion and update completion; retain the app-download percentage indicator.
+- Bump synchronized release metadata to `1.0.1263+307`.
+
+## [1.0.1262] - 2026-10-03
+
+- Add desktop installation interfaces following Yutaka's charcoal surfaces, green accent and real app icon.
+- Windows uses a dark branded setup wizard while retaining its existing installer ID, per-user upgrades and optional code signing.
+- Linux x64/ARM64 releases include a graphical `.run` installer with location/shortcut choices, animated progress, a Launch button and terminal setup support. Preserve app data and verify the embedded payload before installation.
+- macOS uses a branded drag-to-Applications DMG with a fixed Finder layout and the app's volume icon; preserve universal binaries, signing/notarization and the portable ZIP.
+- Keep fast compression and concurrent packaging; add installer regression tests and Linux UI verification to CI.
+- Bump synchronized release metadata to `1.0.1262+306`.
+
 ## [1.0.1261] - 2026-10-03
 
+- CI maintenance: retry GitHub Pages deployment after transient OIDC/token-service failures, preserve the successful page URL, and fail after three unsuccessful attempts. Keep release version unchanged.
 - Add a small animated update indicator across app screens during automatic Worker deployment and app update downloads.
 - Show real download percentage when the package size is known; hide the indicator on completion, cancellation or failure.
 - Keep routine Worker version checks quiet and respect reduced-motion settings.

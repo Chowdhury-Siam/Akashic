@@ -14,6 +14,7 @@ on:
       - "macos/**"
       - "tools/linux/**"
       - "tools/android/**"
+      - "tools/installers/**"
       - "test/**"
       - "assets/**"
       - "cloud/worker/**"
@@ -87,7 +88,7 @@ jobs:
 
   build-linux:
     needs: prepare-worker-bundle
-    name: Build Linux ${{ matrix.arch }} AppImage and portable archive
+    name: Build Linux ${{ matrix.arch }} installer, AppImage and portable archive
     if: github.repository == 'Chowdhury-Siam/Yutaka'
     strategy:
       fail-fast: false
@@ -121,7 +122,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick file \
+            clang cmake ninja-build pkg-config patchelf desktop-file-utils imagemagick file xvfb xauth \
             libgtk-3-dev liblzma-dev libsecret-1-dev libsqlite3-dev libnotify-dev libjsoncpp-dev
 
       - name: Set up Flutter on Linux x64
@@ -274,6 +275,26 @@ jobs:
           chmod +x "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage"
           ls -lh artifacts
 
+      - name: Build and verify branded Linux installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/installers/tests -p 'test_*.py'
+          SETUP_DIR="$RUNNER_TEMP/yutaka-native-setup"
+          mkdir -p "$SETUP_DIR"
+          gcc -std=c11 -O2 -Wall -Wextra -Werror \
+            tools/installers/linux/setup.c -o "$SETUP_DIR/setup" \
+            $(pkg-config --cflags --libs gtk+-3.0 gio-2.0)
+          cp assets/icons/app_icon.png "$SETUP_DIR/icon.png"
+          NO_AT_BRIDGE=1 G_DEBUG=fatal-warnings xvfb-run -a "$SETUP_DIR/setup" "$SETUP_DIR" --check-ui
+          python3 tools/installers/linux/build.py \
+            --appimage "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}.AppImage" \
+            --setup "$SETUP_DIR/setup" \
+            --icon assets/icons/app_icon.png \
+            --version "$YUTAKA_APP_VERSION_NAME" --arch "${{ matrix.arch }}" \
+            --output "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}-Setup.run"
+          bash "artifacts/Yutaka-v${YUTAKA_APP_VERSION_NAME}-linux-${{ matrix.arch }}-Setup.run" --help
+
       - name: Upload Linux release artifacts
         uses: actions/upload-artifact@v5
         with:
@@ -281,6 +302,6 @@ jobs:
           path: |
             artifacts/Yutaka-v*-linux-${{ matrix.arch }}.AppImage
             artifacts/Yutaka-v*-linux-${{ matrix.arch }}.tar.gz
+            artifacts/Yutaka-v*-linux-${{ matrix.arch }}-Setup.run
           if-no-files-found: error
           compression-level: 0
-

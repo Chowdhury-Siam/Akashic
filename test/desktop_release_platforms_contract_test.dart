@@ -162,12 +162,33 @@ void main() {
     final androidGradle = File('android/app/build.gradle').readAsStringSync();
     final readme = File('README.md').readAsStringSync();
 
-    expect(pubspec, contains('version: 1.0.1261+305'));
-    expect(config, contains("defaultValue: '1.0.1261'"));
-    expect(androidGradle, contains('versionCode = 305'));
-    expect(androidGradle, contains('versionName = "1.0.1261"'));
+    expect(pubspec, contains('version: 1.0.1263+307'));
+    expect(config, contains("defaultValue: '1.0.1263'"));
+    expect(androidGradle, contains('versionCode = 307'));
+    expect(androidGradle, contains('versionName = "1.0.1263"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
     expect(File('tools/linux/yutaka.desktop').existsSync(), isTrue);
+  });
+
+  test('branded installer sources are packaged and published for every desktop', () {
+    final windows = _workflow('build-windows.yml');
+    final linux = _workflow('build-linux.yml');
+    final macos = _workflow('build-macos.yml');
+    final installer = File('tools/installers/windows/yutaka.iss').readAsStringSync();
+
+    for (final workflow in [windows, linux, macos]) {
+      expect(workflow, contains('"tools/installers/**"'));
+    }
+    expect(windows, contains('tools/installers/windows/yutaka.iss'));
+    expect(installer, contains('AppId={{D0F34749-64D8-4B0E-BBA3-026F8B4392C8}'));
+    expect(installer, contains('WizardStyle=modern dark'));
+    expect(installer, contains('WizardBackColor=#0F1216'));
+    expect(installer, contains('SetupIconFile={#IconFile}'));
+    expect(linux, contains('tools/installers/linux/build.py'));
+    expect(linux, contains('xvfb-run -a'));
+    expect(linux, contains('artifacts/Yutaka-v*-linux-\${{ matrix.arch }}-Setup.run'));
+    expect(macos, contains('dmgbuild==1.6.7'));
+    expect(macos, contains('tools/installers/macos/settings.py'));
   });
 }
