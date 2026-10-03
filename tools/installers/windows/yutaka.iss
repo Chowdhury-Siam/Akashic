@@ -153,6 +153,37 @@ begin
   WizardForm.DirEdit.Text := FolderEdit.Text;
 end;
 
+procedure ApplyDesktopTaskArgument(Argument: String; var Selected: Boolean);
+var
+  Tasks: TArrayOfString;
+  I: Integer;
+  Task: String;
+begin
+  Tasks := StringSplit(Argument, [','], stExcludeEmpty);
+  for I := 0 to GetArrayLength(Tasks) - 1 do begin
+    Task := Lowercase(Trim(Tasks[I]));
+    if (Task = 'desktopicon') or (Task = '*desktopicon') then Selected := True
+    else if Task = '!desktopicon' then Selected := False;
+  end;
+end;
+
+function InitialDesktopShortcut: Boolean;
+var
+  Previous, Tasks: String;
+begin
+  Previous := GetPreviousData('DesktopShortcut', '');
+  if Previous = '' then
+    Result := FileExists(ExpandConstant('{autodesktop}\{#MyAppName}.lnk'))
+  else
+    Result := Previous = '1';
+  Tasks := ExpandConstant('{param:tasks|__yutaka_default__}');
+  if Tasks <> '__yutaka_default__' then begin
+    Result := False;
+    ApplyDesktopTaskArgument(Tasks, Result);
+  end;
+  ApplyDesktopTaskArgument(ExpandConstant('{param:mergetasks|}'), Result);
+end;
+
 procedure ActionClicked(Sender: TObject);
 var
   ErrorCode: Integer;
@@ -179,8 +210,6 @@ begin
     Exit;
   end;
   WizardForm.DirEdit.Text := FolderEdit.Text;
-  if ShortcutCheck.Checked then WizardSelectTasks('desktopicon')
-  else WizardSelectTasks('!desktopicon');
   WizardForm.NextButton.OnClick(WizardForm.NextButton);
 end;
 
@@ -254,7 +283,7 @@ begin
   ShortcutCheck.Parent := Shell;
   ShortcutCheck.SetBounds(ScaleX(292), ScaleY(384), ScaleX(610), ScaleY(24));
   ShortcutCheck.Caption := 'Create a desktop shortcut';
-  ShortcutCheck.Checked := WizardIsTaskSelected('desktopicon');
+  ShortcutCheck.Checked := InitialDesktopShortcut;
   PhaseLabel := LabelAt(Shell, 'READY TO INSTALL', 292, 446, 620, 24, 10, AccentColor, True);
   ProgressTrack := PanelAt(Shell, 292, 478, 621, 6, OutlineColor);
   ProgressFill := PanelAt(ProgressTrack, 0, 0, 0, 6, AccentColor);
@@ -270,6 +299,21 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := (PageID = wpSelectTasks);
+  // Inno creates TasksList immediately before asking whether to skip this
+  // page. Earlier calls from the directory page act on an empty task list.
+  if Result and not WizardSilent then begin
+    if ShortcutCheck.Checked then WizardSelectTasks('desktopicon')
+    else WizardSelectTasks('!desktopicon');
+  end;
+end;
+
+procedure RegisterPreviousData(PreviousDataKey: Integer);
+begin
+  // Store the engine's final selection, including command-line silent installs.
+  if WizardIsTaskSelected('desktopicon') then
+    SetPreviousData(PreviousDataKey, 'DesktopShortcut', '1')
+  else
+    SetPreviousData(PreviousDataKey, 'DesktopShortcut', '0');
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

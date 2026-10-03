@@ -82,14 +82,22 @@ python tools/installers/tests/check_windows_gui.py `
 
 This compiles the production installer layout around a tiny fixture app and a
 unique install ID. It checks enabled controls at startup, both custom Close and
-Cancel buttons, native window closing, invalid
-and custom paths, Browse, desktop shortcuts, install, upgrade, data preservation,
-and Launch. It uninstalls only that fixture and never opens the real app or reads
+Cancel buttons, native window closing, invalid and custom paths, Browse, desktop
+shortcut selection, deselection and saved upgrade choice, install, upgrade,
+data preservation, and Launch. The checkbox check moves the cursor into the visible control and posts
+mouse press/release events. It verifies whether the actual shortcut was created
+after installation, rather than relying on `BM_CLICK` and `BM_GETCHECK` for a
+styled checkbox. It uninstalls only that fixture and never opens the real app or reads
 its data. Windows release CI runs this check before packaging the full app.
 
 Inno's internal Next and Cancel controls remain visible to the engine, outside
 the custom window layout. Inno checks their `CanFocus` state when advancing and
 cancelling; hiding them prevents the custom buttons from reaching those paths.
+
+The custom shortcut choice is applied when Inno has populated the native task
+list, immediately before skipping its task page. Applying it on the directory
+page would act on an empty list. Save the final selection using Inno's previous
+data support so later upgrades retain it; command-line task overrides still work.
 
 Linux release CI prepares sqlite3's bundled native asset after `flutter pub get`:
 

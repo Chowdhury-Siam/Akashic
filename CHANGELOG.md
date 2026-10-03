@@ -1,3 +1,10 @@
+## 1.0.1272+316
+
+- Apply the Windows installer's shortcut choice after Inno creates its task list so the visible checkbox controls actual shortcut creation.
+- Retain the saved shortcut choice on upgrades and honor explicit task command-line options; keep silent installation on Inno's native task handling.
+- Exercise the styled checkbox through cursor movement and mouse press/release events, then verify actual shortcut creation and deselection. Check the saved choice on a later upgrade and include native styles in failure diagnostics.
+- Bump synchronized release metadata to `1.0.1272+316`.
+
 ## 1.0.1271+315
 
 - Fix Windows installer Close and Cancel actions by keeping Inno’s internal Cancel control available to its cancellation engine outside the custom layout.

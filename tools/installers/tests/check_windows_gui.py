@@ -43,6 +43,14 @@ class Windows:
                                                 W.UINT, W.UINT, C.POINTER(C.c_size_t)]
         self.api.SendMessageTimeoutW.restype = C.c_ssize_t
         self.api.PostMessageW.argtypes = [W.HWND, W.UINT, W.WPARAM, W.LPARAM]
+        self.api.GetClientRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
+        self.api.ClientToScreen.argtypes = [W.HWND, C.POINTER(W.POINT)]
+        self.api.SetCursorPos.argtypes = [C.c_int, C.c_int]
+        self.api.GetAncestor.argtypes = [W.HWND, W.UINT]
+        self.api.GetAncestor.restype = W.HWND
+        self.api.SetForegroundWindow.argtypes = [W.HWND]
+        self.api.GetWindowLongW.argtypes = [W.HWND, C.c_int]
+        self.api.GetWindowLongW.restype = C.c_long
 
     def text(self, handle):
         value = C.create_unicode_buffer(2048)
@@ -90,12 +98,31 @@ class Windows:
         # Post, rather than Send: Browse and Install run modal/synchronous code.
         assert self.api.PostMessageW(handle, 0x00F5, 0, 0), C.get_last_error()  # BM_CLICK
 
+    def click_checkbox(self, handle):
+        assert handle and self.api.IsWindowEnabled(handle), "Checkbox is missing or disabled"
+        bounds = W.RECT()
+        assert self.api.GetClientRect(handle, C.byref(bounds)), C.get_last_error()
+        width, height = bounds.right - bounds.left, bounds.bottom - bounds.top
+        assert width > 1 and height > 1, "Checkbox has no clickable area"
+        # Exercise the styled control's mouse path at the glyph, with the real
+        # cursor inside it. BM_CLICK alone is unreliable after a modal picker.
+        x, y = min(width // 2, height // 2), height // 2
+        screen = W.POINT(x, y)
+        assert self.api.ClientToScreen(handle, C.byref(screen)), C.get_last_error()
+        self.api.SetForegroundWindow(self.api.GetAncestor(handle, 2))  # GA_ROOT
+        assert self.api.SetCursorPos(screen.x, screen.y), C.get_last_error()
+        position = (y << 16) | x
+        # Post in order; the subsequent Install click uses the same UI queue.
+        for message, buttons in ((0x0200, 0), (0x0201, 1), (0x0202, 0)):
+            assert self.api.PostMessageW(handle, message, buttons, position), C.get_last_error()
+
     def set_text(self, handle, text):
         value = C.create_unicode_buffer(text)
         self.api.SendMessageW(handle, 0x000C, 0, C.cast(value, C.c_void_p).value)  # WM_SETTEXT
 
     def dump(self, parent):
-        return "\n".join(f"{self.kind(h)} enabled={bool(self.api.IsWindowEnabled(h))} {self.text(h)!r}"
+        return "\n".join(f"{self.kind(h)} enabled={bool(self.api.IsWindowEnabled(h))} "
+                         f"style=0x{self.api.GetWindowLongW(h, -16) & 0xffffffff:08x} {self.text(h)!r}"
                          for h in self.windows(parent))
 
 
@@ -150,10 +177,13 @@ def run(compiler, fixture, logs):
         process = None
         window = None
 
-        def open_setup(log_name):
+        def open_setup(log_name, desktop_selected=None):
             nonlocal process, window
-            process = subprocess.Popen([str(installer), "/SP-", "/DIR=" + str(destination),
-                                        "/LOG=" + str(root / log_name)])
+            arguments = [str(installer), "/SP-", "/DIR=" + str(destination),
+                         "/LOG=" + str(root / log_name)]
+            if desktop_selected is not None:
+                arguments.append("/TASKS=" + ("desktopicon" if desktop_selected else "!desktopicon"))
+            process = subprocess.Popen(arguments)
             window = wait_for(lambda: next((h for h in api.windows()
                                            if api.kind(h) == "TWizardForm" and name in api.text(h)), None),
                               "Setup window did not appear")
@@ -194,7 +224,11 @@ def run(compiler, fixture, logs):
                 assert not (destination / "Yutaka.exe").exists(), "Cancel installed the app"
                 assert not shortcut.exists(), "Cancel created a shortcut"
 
-            install = open_setup("install.log")
+            # Start selected, then use the visible checkbox to turn it off.
+            # Verify the resulting installation, not a styled control's raw
+            # BM_GETCHECK value. Initial /TASKS options are deliberately opposite
+            # to the expected final result, so a lost click cannot pass the test.
+            install = open_setup("install.log", desktop_selected=True)
             edit = next((h for h in api.windows(window) if api.kind(h) == "TNewPathEdit"), None)
             assert edit and api.api.IsWindowEnabled(edit), "Install location is disabled"
             api.set_text(edit, "relative-folder")
@@ -210,13 +244,11 @@ def run(compiler, fixture, logs):
             wait_for(lambda: api.api.IsWindowEnabled(window), "Folder picker did not close")
             assert api.text(edit) == str(destination), "Cancelling Browse changed the location"
             checkbox = api.control(window, "Create a desktop shortcut")
-            if api.api.SendMessageW(checkbox, 0x00F0, 0, 0) == 0:  # BM_GETCHECK
-                api.click(checkbox)
-            wait_for(lambda: api.api.SendMessageW(checkbox, 0x00F0, 0, 0) == 1, "Shortcut cannot be selected")
+            api.click_checkbox(checkbox)
             api.click(install)
             wait_for(lambda: api.control(window, "INSTALLATION COMPLETE"), "Install did not complete", 60)
             assert (destination / "Yutaka.exe").is_file(), "Custom install location was not used"
-            assert shortcut.is_file(), "Selected desktop shortcut was not created"
+            assert not shortcut.exists(), "Deselected desktop shortcut was created"
             api.click(api.control(window, "Done"))
             finish_process()
 
@@ -227,14 +259,29 @@ def run(compiler, fixture, logs):
             database.parent.mkdir()
             database.write_bytes(b"preserve-financial-data")
             install = open_setup("upgrade.log")
+            # Start deselected and turn it on; this must create the real .lnk.
+            api.click_checkbox(api.control(window, "Create a desktop shortcut"))
             api.click(install)
             wait_for(lambda: api.control(window, "Launch Yutaka"), "Upgrade did not complete", 60)
             assert backup.read_bytes() == b"preserve-financial-backup"
             assert database.read_bytes() == b"preserve-financial-data"
+            assert shortcut.is_file(), "Selecting the checkbox did not create a desktop shortcut"
             api.click(api.control(window, "Launch Yutaka"))
             wait_for(lambda: (destination / "launched.txt").is_file(), "Launch did not open the installed fixture")
             finish_process()
-            print("Windows setup UI passed: enabled controls, close/cancel, path validation, Browse, shortcut, install, upgrade, preservation and Launch.")
+
+            # An upgrade must remember the saved selection, even if the user
+            # removed the shortcut between installs. Do not pass /TASKS here.
+            shortcut.unlink()
+            install = open_setup("remembered-shortcut.log")
+            api.click(install)
+            wait_for(lambda: api.control(window, "INSTALLATION COMPLETE"), "Remembered-choice upgrade did not complete", 60)
+            assert shortcut.is_file(), "Upgrade did not restore the saved shortcut selection"
+            assert backup.read_bytes() == b"preserve-financial-backup"
+            assert database.read_bytes() == b"preserve-financial-data"
+            api.click(api.control(window, "Done"))
+            finish_process()
+            print("Windows setup UI passed: enabled controls, close/cancel, path validation, Browse, shortcut selection/deselection and saved choice, install, upgrade, preservation and Launch.")
         except BaseException:
             if window:
                 print(api.dump(window), file=sys.stderr)
