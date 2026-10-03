@@ -617,6 +617,8 @@ The Worker generates scheduled reports in the selected format from the latest sy
 
 Every enabled automatic cloud upload must be at least **5 minutes** away from every other one. This is enforced pairwise across Telegram report, Google Drive report, Telegram `.yutakabackup`, and Google Drive `.yutakabackup` schedules. For example, `03:00`, `03:05`, `03:10`, and `03:15` are valid; `03:00` and `03:04` are rejected. The same rule also handles midnight correctly.
 
+App downloads show their percentage in the top update popup, followed by an animated **Installing Yutaka** stage. Android installation results appear there when available, including after restarting the app. Desktop installers and Google Play handle the installation in their own interface; their top handoff popup can be dismissed without cancelling the update. Automatic Worker updates show a success popup after deployment health verification, or an error popup if deployment fails.
+
 > If the Worker was originally deployed through **Deploy Database** with automatic updates enabled, Yutaka handles newer Worker redeployment on the first launch of the updated app. GitHub-based deployments continue to update through the deployment workflow. If an automatic update fails, open **Settings > Account & sync** to see the error and retry or refresh the saved deployment credentials.
 
 ---
@@ -711,7 +713,7 @@ Yutaka has separate Android distribution flavors so Play Store installs never us
 flutter build appbundle --release --flavor play \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=play \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1264
+  --dart-define=YUTAKA_APP_VERSION=1.0.1265
 ```
 
 **Direct/GitHub APK** — keeps the GitHub APK updater for users who install outside Google Play:
@@ -720,7 +722,7 @@ flutter build appbundle --release --flavor play \
 flutter build apk --release --flavor direct \
   --no-tree-shake-icons \
   --dart-define=YUTAKA_ANDROID_DISTRIBUTION=direct \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1264
+  --dart-define=YUTAKA_APP_VERSION=1.0.1265
 ```
 
 ## 10.4 Windows build
@@ -732,7 +734,7 @@ flutter config --enable-windows-desktop
 flutter create --platforms=windows --project-name yutaka --no-pub .
 flutter pub get
 flutter build windows --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1264
+  --dart-define=YUTAKA_APP_VERSION=1.0.1265
 ```
 
 ## 10.5 Linux build
@@ -749,7 +751,7 @@ flutter config --enable-linux-desktop
 flutter create --platforms=linux --project-name yutaka --no-pub .
 flutter pub get
 flutter build linux --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1264
+  --dart-define=YUTAKA_APP_VERSION=1.0.1265
 ```
 
 The release workflow builds both **x64** and **ARM64** Linux packages on Ubuntu 22.04. The x64 runner uses the pinned Flutter SDK release directly; the ARM64 runner bootstraps the same pinned Flutter tag from source so it does not depend on missing prebuilt ARM64 SDK archive entries. Each architecture gets:
@@ -771,7 +773,7 @@ flutter config --enable-macos-desktop
 flutter create --platforms=macos --project-name yutaka --org com.yutaka --no-pub .
 flutter pub get
 flutter build macos --release \
-  --dart-define=YUTAKA_APP_VERSION=1.0.1264
+  --dart-define=YUTAKA_APP_VERSION=1.0.1265
 ```
 
 The release workflow builds one **universal macOS package** containing both **Apple Silicon (ARM64)** and **Intel (x64)** slices. GitHub Releases publish `Yutaka-v<version>-macos-universal.dmg` and a matching `.zip` containing `Yutaka.app`. CI runs on GitHub's Apple Silicon `macos-15` runner for faster Xcode/Flutter compilation, bootstraps the pinned Flutter `3.47.4` source tag into a reusable SDK cache, keeps Flutter's universal macOS mode enabled, verifies both architecture slices with `lipo`, and reuses CocoaPods plus incremental macOS build caches between releases. It also applies Yutaka's icon and `com.yutaka.siam` bundle identifier and enables network access plus user-selected file read/write access for sync, import, and backup workflows.

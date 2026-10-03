@@ -7,44 +7,72 @@ class UpdateActivityOverlay extends StatelessWidget {
     required this.workerUpdating,
     required this.appUpdating,
     this.percent,
+    this.appInstalling = false,
+    this.installationMessage = 'Preparing the installer…',
+    this.onDismissInstallation,
     this.feedbackVisible = false,
   });
 
   final bool workerUpdating;
   final bool appUpdating;
   final int? percent;
+  final bool appInstalling;
+  final String installationMessage;
+  final VoidCallback? onDismissInstallation;
   final bool feedbackVisible;
 
   @override
   Widget build(BuildContext context) {
     if (feedbackVisible) return const SizedBox.shrink();
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        WorkerUpdateBanner(active: workerUpdating),
-        SafeArea(
-          child: Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: UpdateActivityIndicator(
-                active: !workerUpdating && appUpdating,
-                label: 'Updating Yutaka…',
-                percent: percent,
-              ),
-            ),
-          ),
-        ),
-      ],
+    if (workerUpdating) return const WorkerUpdateBanner(active: true);
+    final title = appInstalling
+        ? 'Installing Yutaka'
+        : percent == null ? 'Updating Yutaka…' : 'Updating Yutaka… ${percent!.clamp(0, 100)}%';
+    final message = appInstalling ? installationMessage : 'Downloading the latest update…';
+    return UpdateProgressBanner(
+      active: appUpdating || appInstalling,
+      kind: appInstalling ? 'app-install' : 'app-download',
+      title: title,
+      message: message,
+      semanticLabel: '$title. $message',
+      onDismiss: appInstalling ? onDismissInstallation : null,
     );
   }
 }
 
-/// Persistent update feedback with the same placement and style as top popups.
+/// Persistent Worker feedback using the shared top popup layout.
 class WorkerUpdateBanner extends StatelessWidget {
   const WorkerUpdateBanner({super.key, required this.active});
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => UpdateProgressBanner(
+        active: active,
+        kind: 'worker',
+        title: 'Updating Worker',
+        message: 'Installing the latest update…',
+        semanticLabel: 'Updating Worker. Installing the latest update.',
+      );
+}
+
+/// One safe-area card for downloads, installation and Worker deployment.
+class UpdateProgressBanner extends StatelessWidget {
+  const UpdateProgressBanner({
+    super.key,
+    required this.active,
+    required this.kind,
+    required this.title,
+    required this.message,
+    required this.semanticLabel,
+    this.onDismiss,
+  });
 
   final bool active;
+  final String kind;
+  final String title;
+  final String message;
+  final String semanticLabel;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +91,7 @@ class WorkerUpdateBanner extends StatelessWidget {
     );
 
     return IgnorePointer(
+      ignoring: onDismiss == null,
       child: SafeArea(
         bottom: false,
         child: Align(
@@ -85,17 +114,19 @@ class WorkerUpdateBanner extends StatelessWidget {
                 );
               },
               child: !active
-                  ? const SizedBox.shrink(key: ValueKey('worker-update-idle'))
+                  ? SizedBox.shrink(key: ValueKey('$kind-update-idle'))
                   : Semantics(
-                      key: const ValueKey('worker-update-active'),
+                      key: ValueKey('$kind-update-active'),
                       container: true,
                       liveRegion: true,
-                      label: 'Updating Worker. Installing the latest update.',
+                      label: semanticLabel,
+                      onTap: onDismiss,
+                      hint: onDismiss == null ? null : 'Dismiss update progress. Installation continues.',
                       child: ExcludeSemantics(
                         child: Material(
                           color: Colors.transparent,
                           child: Container(
-                            key: const ValueKey('worker-update-card'),
+                            key: ValueKey('$kind-update-card'),
                             width: double.infinity,
                             constraints: BoxConstraints(minHeight: 68, maxWidth: desktop ? 500 : 520),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -140,7 +171,7 @@ class WorkerUpdateBanner extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Updating Worker',
+                                        title,
                                         softWrap: true,
                                         style: theme.textTheme.labelLarge?.copyWith(
                                           color: scheme.onSurface,
@@ -150,7 +181,7 @@ class WorkerUpdateBanner extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        'Installing the latest update…',
+                                        message,
                                         softWrap: true,
                                         style: theme.textTheme.bodySmall?.copyWith(
                                           color: scheme.onSurfaceVariant,
@@ -161,6 +192,15 @@ class WorkerUpdateBanner extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+                                if (onDismiss != null) ...[
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    tooltip: 'Dismiss update progress',
+                                    onPressed: onDismiss,
+                                    icon: const Icon(Icons.close_rounded),
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -170,89 +210,6 @@ class WorkerUpdateBanner extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Small, non-blocking feedback for updates running while the user uses the app.
-class UpdateActivityIndicator extends StatelessWidget {
-  const UpdateActivityIndicator({
-    super.key,
-    required this.active,
-    required this.label,
-    this.percent,
-  });
-
-  final bool active;
-  final String label;
-  final int? percent;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
-    return IgnorePointer(
-      child: AnimatedSwitcher(
-        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, -.12), end: Offset.zero).animate(animation),
-            child: child,
-          ),
-        ),
-        child: !active
-            ? const SizedBox.shrink(key: ValueKey('update-idle'))
-            : Semantics(
-                key: const ValueKey('update-active'),
-                liveRegion: true,
-                label: label,
-                child: ExcludeSemantics(
-                  child: Material(
-                    color: scheme.surfaceContainerHigh,
-                    elevation: 4,
-                    shadowColor: Colors.black26,
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 280),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: scheme.primary.withOpacity(.24)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          RepaintBoundary(
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: reduceMotion
-                                  ? Icon(Icons.sync_rounded, size: 18, color: scheme.primary)
-                                  : CircularProgressIndicator(strokeWidth: 2, color: scheme.primary),
-                            ),
-                          ),
-                          const SizedBox(width: 9),
-                          Flexible(
-                            child: Text(
-                              percent == null ? label : '$label ${percent!.clamp(0, 100)}%',
-                              softWrap: true,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: scheme.onSurface,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
       ),
     );
   }

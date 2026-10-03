@@ -5,6 +5,10 @@ import 'package:yutaka/update_activity_indicator.dart';
 Widget _frame({
   bool workerUpdating = true,
   bool appUpdating = false,
+  bool appInstalling = false,
+  int? percent = 42,
+  String installationMessage = 'Preparing the installer…',
+  VoidCallback? onDismissInstallation,
   bool feedbackVisible = false,
   bool reduceMotion = false,
   double textScale = 1,
@@ -39,7 +43,10 @@ Widget _frame({
           UpdateActivityOverlay(
             workerUpdating: workerUpdating,
             appUpdating: appUpdating,
-            percent: 42,
+            appInstalling: appInstalling,
+            percent: percent,
+            installationMessage: installationMessage,
+            onDismissInstallation: onDismissInstallation,
             feedbackVisible: feedbackVisible,
           ),
         ],
@@ -101,6 +108,69 @@ void main() {
     await tester.pumpWidget(_frame(workerUpdating: false, appUpdating: true));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Updating Yutaka… 42%'), findsOneWidget);
+  });
+
+  testWidgets('app downloads share the popup layout and transition to installation without stale percentage', (tester) async {
+    _setView(tester, const Size(320, 844));
+    await tester.pumpWidget(_frame(
+      workerUpdating: false,
+      appUpdating: true,
+      percent: 94,
+      textScale: 2,
+      size: const Size(320, 844),
+    ));
+    final download = tester.getRect(find.byKey(const ValueKey('app-download-update-card')));
+    expect(download.left, 12);
+    expect(download.width, 296);
+    expect(download.top, 34);
+    expect(download.height, greaterThan(68));
+    expect(find.text('Updating Yutaka… 94%'), findsOneWidget);
+    expect(find.text('Downloading the latest update…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(_frame(workerUpdating: false, appInstalling: true));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Installing Yutaka'), findsOneWidget);
+    expect(find.text('Preparing the installer…'), findsOneWidget);
+    expect(find.textContaining('94%'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(tester.getRect(find.byKey(const ValueKey('app-install-update-card'))).top, 34);
+
+    await tester.pumpWidget(_frame(workerUpdating: false));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Installing Yutaka'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('installer feedback respects reduced motion and offers a dismiss action', (tester) async {
+    _setView(tester, const Size(390, 844));
+    final semantics = tester.ensureSemantics();
+    var dismissed = 0;
+    try {
+      await tester.pumpWidget(_frame(
+        workerUpdating: false,
+        appInstalling: true,
+        reduceMotion: true,
+        installationMessage: 'Finish the update in the installer.',
+        onDismissInstallation: () => dismissed++,
+      ));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('app-install-update-active'))),
+        isSemantics(
+          label: 'Installing Yutaka. Finish the update in the installer.',
+          hint: 'Dismiss update progress. Installation continues.',
+          isLiveRegion: true,
+          hasTapAction: true,
+        ),
+      );
+      await tester.tap(find.byTooltip('Dismiss update progress'));
+      expect(dismissed, 1);
+      expect(find.text('Installing Yutaka'), findsOneWidget, reason: 'Dismissal is feedback only; the callback owns the state.');
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('reduced motion shows a static icon with accessible update status', (tester) async {

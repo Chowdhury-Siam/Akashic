@@ -54,6 +54,7 @@ class MainActivity: FlutterFragmentActivity() {
                 "distribution" -> result.success(BuildConfig.DISTRIBUTION)
                 "checkGooglePlayUpdate" -> checkGooglePlayUpdate(result)
                 "startGooglePlayUpdate" -> startGooglePlayUpdate(result)
+                "installationStatus" -> result.success(DirectApkInstaller.installationStatus(this, call.argument<Boolean>("resumed") == true))
                 "canInstallPackages" -> result.success(BuildConfig.DISTRIBUTION == "direct" && DirectApkInstaller.canInstallPackages(this))
                 "openInstallPermissionSettings" -> {
                     if (BuildConfig.DISTRIBUTION == "direct") DirectApkInstaller.openInstallPermissionSettings(this)

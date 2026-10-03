@@ -844,6 +844,11 @@ class MacOsUpdateInstaller {
 class AndroidUpdateInstaller {
   static const MethodChannel _channel = MethodChannel('com.yutaka.siam/updater');
 
+  static Future<Map<dynamic, dynamic>> installationStatus({bool resumed = false}) async {
+    if (!Platform.isAndroid || kIsGooglePlayBuild) return const {'state': 'idle'};
+    return await _channel.invokeMethod<Map<dynamic, dynamic>>('installationStatus', {'resumed': resumed}) ?? const {'state': 'idle'};
+  }
+
   static Future<GooglePlayUpdateInfo> checkGooglePlayUpdate() async {
     if (!Platform.isAndroid) {
       return const GooglePlayUpdateInfo(

@@ -12,6 +12,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                DirectApkInstaller.recordStatus(context, "confirmation")
                 // Android retains the final decision; show its confirmation if needed.
                 @Suppress("DEPRECATION")
                 val confirmation = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
@@ -29,13 +30,17 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                         }
                     }
                     Log.e("YutakaUpdater", "Could not open update confirmation", error)
+                    DirectApkInstaller.recordStatus(context, "failure", "Could not open update confirmation. Retry from Updates.")
                     Toast.makeText(context, "Could not open update confirmation. Retry from Updates.", Toast.LENGTH_LONG).show()
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
+                DirectApkInstaller.recordStatus(context, "success", "Yutaka updated successfully.")
                 Toast.makeText(context, "Yutaka updated.", Toast.LENGTH_SHORT).show()
             }
             else -> {
+                val cancelled = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1) == PackageInstaller.STATUS_FAILURE_ABORTED
+                DirectApkInstaller.recordStatus(context, "failure", if (cancelled) "Installation was cancelled." else "Android could not install the update. Retry from Updates.")
                 Log.w("YutakaUpdater", intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "Update failed")
                 Toast.makeText(context, "Update was cancelled or failed. Retry from Updates.", Toast.LENGTH_LONG).show()
             }

@@ -2276,6 +2276,17 @@ class AppController extends ChangeNotifier {
   bool get cloudSyncOperationBusy => _syncInProgress || cloudSyncBusy || syncAuthBusy;
   int get cloudSyncCancellationSerial => _cloudSyncCancellationSerial;
   bool updateDownloadBusy = false;
+  bool updateInstallBusy = false;
+  bool updateInstallCanDismiss = false;
+  String updateInstallationMessage = '';
+  bool _updateInstallLaunchBusy = false;
+  bool _updateInstallPollBusy = false;
+  bool _updateInstallFeedbackDismissed = false;
+  bool _updateActivityDisposed = false;
+  int _updateInstallIdlePolls = 0;
+  Timer? _updateInstallPollTimer;
+  int _updateActivityNoticeSerial = 0;
+  ({int id, String title, String message, bool error})? updateActivityNotice;
   bool _resumeAndroidInstallAfterPermission = false;
   String updateStatusMessage = 'Not checked yet.';
   DateTime? updateLastCheckedAt;
@@ -2477,6 +2488,133 @@ class AppController extends ChangeNotifier {
     await WorkerDeploymentCredentialStore().clear(workerUrl: cloudSyncApiBaseUrl);
   }
 
+  void _publishUpdateFeedback({required String title, required String message, bool error = false}) {
+    if (_updateActivityDisposed) return;
+    updateActivityNotice = (id: ++_updateActivityNoticeSerial, title: title, message: message, error: error);
+    notifyListeners();
+  }
+
+  void _beginUpdateInstallation() {
+    _updateInstallPollTimer?.cancel();
+    _updateInstallPollTimer = null;
+    _updateInstallIdlePolls = 0;
+    _updateInstallFeedbackDismissed = false;
+    updateInstallBusy = true;
+    updateInstallCanDismiss = false;
+    updateInstallationMessage = 'Preparing the installer…';
+    notifyListeners();
+  }
+
+  void _finishUpdateInstallation() {
+    _updateInstallPollTimer?.cancel();
+    _updateInstallPollTimer = null;
+    updateInstallBusy = false;
+    updateInstallCanDismiss = false;
+    updateInstallationMessage = '';
+  }
+
+  void dismissUpdateInstallationFeedback() {
+    _updateInstallFeedbackDismissed = true;
+    updateInstallBusy = false;
+    updateInstallCanDismiss = false;
+    // Android result polling continues; dismissing this card never cancels installation.
+    notifyListeners();
+  }
+
+  Future<void> refreshUpdateInstallationStatus({bool resumed = false}) async {
+    if (!Platform.isAndroid || kIsGooglePlayBuild || _updateInstallPollBusy || _updateInstallLaunchBusy || _updateActivityDisposed) return;
+    _updateInstallPollBusy = true;
+    final previous = (updateInstallBusy, updateInstallCanDismiss, updateInstallationMessage);
+    try {
+      final status = await AndroidUpdateInstaller.installationStatus(resumed: resumed);
+      if (_updateActivityDisposed) return;
+      switch (status['state']) {
+        case 'installing':
+        case 'confirmation':
+          _updateInstallIdlePolls = 0;
+          updateInstallBusy = !_updateInstallFeedbackDismissed;
+          updateInstallCanDismiss = true;
+          updateInstallationMessage = status['state'] == 'confirmation'
+              ? 'Confirm the update in Android’s installer.'
+              : 'Android is installing the update…';
+          _updateInstallPollTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+            unawaited(refreshUpdateInstallationStatus());
+          });
+          break;
+        case 'success':
+        case 'failure':
+          _finishUpdateInstallation();
+          final success = status['state'] == 'success';
+          final message = '${status['message'] ?? ''}'.trim();
+          updateStatusMessage = message.isNotEmpty ? message : success ? 'Yutaka updated successfully.' : 'Android could not install the update. Retry from Updates.';
+          _publishUpdateFeedback(title: success ? 'Yutaka updated' : 'Installation failed', message: updateStatusMessage, error: !success);
+          break;
+        case 'external':
+          _updateInstallPollTimer?.cancel();
+          _updateInstallPollTimer = null;
+          updateInstallBusy = !_updateInstallFeedbackDismissed;
+          updateInstallCanDismiss = true;
+          updateInstallationMessage = 'Finish the update in Android’s installer.';
+          break;
+        default:
+          // Allow a short gap between session removal and its result broadcast.
+          if (!resumed && _updateInstallPollTimer != null && ++_updateInstallIdlePolls < 4) return;
+          _finishUpdateInstallation();
+          break;
+      }
+    } catch (_) {
+      if (_updateActivityDisposed) return;
+      // The native installer owns the outcome. Keep a dismissible handoff if status cannot be read.
+      _updateInstallPollTimer?.cancel();
+      _updateInstallPollTimer = null;
+      if (updateInstallBusy) {
+        updateInstallCanDismiss = true;
+        updateInstallationMessage = 'Finish the update in Android’s installer.';
+      }
+    } finally {
+      _updateInstallPollBusy = false;
+      if (!_updateActivityDisposed && previous != (updateInstallBusy, updateInstallCanDismiss, updateInstallationMessage)) notifyListeners();
+    }
+  }
+
+  Future<void> resumeUpdateInstallation() async {
+    if (Platform.isAndroid && !kIsGooglePlayBuild) {
+      if (_resumeAndroidInstallAfterPermission) {
+        await resumePendingAndroidInstallIfAllowed();
+      } else {
+        await refreshUpdateInstallationStatus(resumed: true);
+      }
+    } else if (updateInstallCanDismiss) {
+      // Desktop installer windows own their result; returning does not imply success.
+      _finishUpdateInstallation();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _openDesktopUpdateInstaller(Future<bool> Function() open, {required String openedMessage, required String failedMessage}) async {
+    if (_updateInstallLaunchBusy || (updateInstallBusy && updateInstallCanDismiss)) return;
+    _updateInstallLaunchBusy = true;
+    _beginUpdateInstallation();
+    try {
+      final opened = await open();
+      updateStatusMessage = opened ? openedMessage : failedMessage;
+      if (opened) {
+        updateInstallCanDismiss = true;
+        updateInstallationMessage = 'Finish the update in the installer.';
+      } else {
+        _finishUpdateInstallation();
+        _publishUpdateFeedback(title: 'Installation failed', message: failedMessage, error: true);
+      }
+    } catch (_) {
+      _finishUpdateInstallation();
+      updateStatusMessage = failedMessage;
+      _publishUpdateFeedback(title: 'Installation failed', message: failedMessage, error: true);
+    } finally {
+      _updateInstallLaunchBusy = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> checkForAutomaticWorkerUpdate() async {
     if (workerAutoUpdateBusy || selfHostedSyncApiBaseUrl.trim().isEmpty) return;
     workerAutoUpdateBusy = true;
@@ -2501,7 +2639,13 @@ class AppController extends ChangeNotifier {
       switch (result.outcome) {
         case WorkerAutoUpdateOutcome.updated:
           workerAutoUpdateStatus = result.message;
-          await synchronizeWorkerDeploymentRecoveryProfile();
+          workerAutoUpdateInstalling = false;
+          _publishUpdateFeedback(title: 'Worker deployed successfully', message: result.message);
+          try {
+            await synchronizeWorkerDeploymentRecoveryProfile();
+          } catch (_) {
+            // An optional recovery-profile refresh cannot change a verified deployment result.
+          }
           break;
         case WorkerAutoUpdateOutcome.noSavedDeployment:
         case WorkerAutoUpdateOutcome.inactiveDeployment:
@@ -2519,6 +2663,9 @@ class AppController extends ChangeNotifier {
       updater.close();
       workerAutoUpdateBusy = false;
       workerAutoUpdateInstalling = false;
+      if (workerAutoUpdateError != null) {
+        _publishUpdateFeedback(title: 'Worker deployment failed', message: redactSyncSecrets(workerAutoUpdateError!), error: true);
+      }
       notifyListeners();
     }
   }
@@ -3585,7 +3732,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startGooglePlayUpdate() async {
-    if (!Platform.isAndroid || !kIsGooglePlayBuild) return;
+    if (!Platform.isAndroid || !kIsGooglePlayBuild || _updateInstallLaunchBusy || updateInstallBusy) return;
     final info = googlePlayUpdateInfo;
     if (info == null || !info.available) {
       updateStatusMessage = 'Check Google Play for updates first.';
@@ -3597,17 +3744,34 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _updateInstallLaunchBusy = true;
+    _beginUpdateInstallation();
     try {
       final started = await AndroidUpdateInstaller.startGooglePlayUpdate();
       updateStatusMessage = started
           ? 'Google Play update started.'
           : 'Google Play could not start the update. Try again later.';
+      if (started) {
+        updateInstallCanDismiss = true;
+        updateInstallationMessage = 'Finish the update in Google Play.';
+      } else {
+        _finishUpdateInstallation();
+        _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
+      }
     } on PlatformException catch (error) {
       updateStatusMessage = error.message?.trim().isNotEmpty == true
           ? error.message!.trim()
           : 'Google Play could not start the update.';
+      _finishUpdateInstallation();
+      _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
+    } catch (_) {
+      _finishUpdateInstallation();
+      updateStatusMessage = 'Google Play could not start the update.';
+      _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
+    } finally {
+      _updateInstallLaunchBusy = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   String _friendlyUpdateOutcome(UpdateCheckOutcome outcome) {
@@ -3630,6 +3794,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> downloadSelectedAndroidUpdate() async {
+    if (updateDownloadBusy || updateInstallBusy || _updateInstallLaunchBusy) return;
     if (kIsGooglePlayBuild) {
       updateStatusMessage = 'Google Play builds update through Google Play.';
       notifyListeners();
@@ -3717,6 +3882,7 @@ class AppController extends ChangeNotifier {
       );
       updateStatusMessage = 'Download complete. Starting update...';
       updateDownloadBusy = false;
+      _beginUpdateInstallation();
       await _savePendingAndroidUpdate(path: apkFile.path, version: release.displayVersion, kind: selectedAndroidUpdateKind);
       notifyListeners();
       await installPendingAndroidUpdate();
@@ -3726,6 +3892,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
       updateDownloadBusy = false;
       updateDownloadProgress = null;
+      _finishUpdateInstallation();
       if (!_updateDownloadCancelled) {
         updateStatusMessage = 'Download failed or was interrupted. Please try again.';
       }
@@ -3750,23 +3917,31 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> installPendingAndroidUpdate() async {
-    if (!Platform.isAndroid || kIsGooglePlayBuild) return;
+    if (!Platform.isAndroid || kIsGooglePlayBuild || _updateInstallLaunchBusy || (updateInstallBusy && updateInstallCanDismiss)) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
+      _finishUpdateInstallation();
       await _clearPendingAndroidUpdate(deleteFile: true);
       updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
     if (pendingAndroidUpdatePath.isEmpty || !await File(pendingAndroidUpdatePath).exists()) {
+      _finishUpdateInstallation();
       await _clearPendingAndroidUpdate();
       updateStatusMessage = 'Downloaded update was not found. Please download it again.';
-      notifyListeners();
+      _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
       return;
     }
+    if (_updateInstallLaunchBusy) return;
+    _updateInstallLaunchBusy = true;
+    _beginUpdateInstallation();
+    var watchInstallation = false;
     try {
       final allowed = await AndroidUpdateInstaller.canInstallPackages();
       if (!allowed) {
         _resumeAndroidInstallAfterPermission = true;
+        updateInstallCanDismiss = true;
+        updateInstallationMessage = 'Allow installation permission to continue.';
         updateStatusMessage = 'Allow Yutaka to install unknown apps, then return here to continue.';
         notifyListeners();
         await AndroidUpdateInstaller.openInstallPermissionSettings();
@@ -3775,16 +3950,31 @@ class AppController extends ChangeNotifier {
       _resumeAndroidInstallAfterPermission = false;
       final opened = await AndroidUpdateInstaller.installApk(pendingAndroidUpdatePath);
       updateStatusMessage = opened ? 'Update submitted to Android. Confirm only if Android asks.' : 'Could not start Android update.';
-      notifyListeners();
+      if (opened) {
+        watchInstallation = true;
+        updateInstallCanDismiss = true;
+        updateInstallationMessage = 'Android is installing the update…';
+      } else {
+        _finishUpdateInstallation();
+        _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
+      }
     } catch (_) {
+      _finishUpdateInstallation();
+      _resumeAndroidInstallAfterPermission = false;
       updateStatusMessage = 'Could not start Android update. Please try again.';
+      _publishUpdateFeedback(title: 'Installation failed', message: updateStatusMessage, error: true);
+    } finally {
+      _updateInstallLaunchBusy = false;
       notifyListeners();
     }
+    if (watchInstallation) await refreshUpdateInstallationStatus();
   }
 
   Future<void> resumePendingAndroidInstallIfAllowed() async {
     if (!Platform.isAndroid || kIsGooglePlayBuild || pendingAndroidUpdatePath.isEmpty || updateDownloadBusy) return;
     if (_isPendingAndroidUpdateAlreadyInstalled()) {
+      _finishUpdateInstallation();
+      _resumeAndroidInstallAfterPermission = false;
       await _clearPendingAndroidUpdate(deleteFile: true);
       updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
@@ -3792,15 +3982,23 @@ class AppController extends ChangeNotifier {
     }
     if (!_resumeAndroidInstallAfterPermission) return;
     try {
+      _finishUpdateInstallation();
+      _resumeAndroidInstallAfterPermission = false;
       if (await AndroidUpdateInstaller.canInstallPackages()) {
         await installPendingAndroidUpdate();
+      } else {
+        updateStatusMessage = 'Installation permission was not granted. Retry from Updates.';
+        _publishUpdateFeedback(title: 'Installation not started', message: updateStatusMessage, error: true);
       }
     } catch (_) {
+      _finishUpdateInstallation();
+      notifyListeners();
       // Keep the pending APK so the user can retry from Settings > Updates.
     }
   }
 
   Future<void> downloadWindowsUpdate({bool force = false}) async {
+    if (updateDownloadBusy || updateInstallBusy || _updateInstallLaunchBusy) return;
     if (!Platform.isWindows) {
       updateStatusMessage = 'In-app Windows installer download is available on Windows only.';
       notifyListeners();
@@ -3894,6 +4092,7 @@ class AppController extends ChangeNotifier {
         status: 'Complete',
       );
       updateDownloadBusy = false;
+      _beginUpdateInstallation();
       updateStatusMessage = 'Download complete. Opening Windows installer...';
       await _savePendingWindowsUpdate(path: installerFile.path, version: release.displayVersion);
       notifyListeners();
@@ -3904,6 +4103,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
       updateDownloadBusy = false;
       updateDownloadProgress = null;
+      _finishUpdateInstallation();
       if (!_updateDownloadCancelled) {
         updateStatusMessage = 'Windows update download failed or was interrupted. Please try again.';
       }
@@ -3919,22 +4119,24 @@ class AppController extends ChangeNotifier {
   Future<void> installPendingWindowsUpdate() async {
     if (!Platform.isWindows) return;
     if (_isPendingWindowsUpdateAlreadyInstalled()) {
+      _finishUpdateInstallation();
       await _clearPendingWindowsUpdate(deleteFile: true);
       updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
     if (pendingWindowsUpdatePath.isEmpty || !await File(pendingWindowsUpdatePath).exists()) {
+      _finishUpdateInstallation();
       await _clearPendingWindowsUpdate();
       updateStatusMessage = 'Downloaded Windows installer was not found. Please download it again.';
       notifyListeners();
       return;
     }
-    final opened = await WindowsUpdateInstaller.install(pendingWindowsUpdatePath);
-    updateStatusMessage = opened
-        ? 'Windows installer opened. Complete installation to update Yutaka.'
-        : 'Could not open the downloaded Windows installer. Please try again.';
-    notifyListeners();
+    await _openDesktopUpdateInstaller(
+      () => WindowsUpdateInstaller.install(pendingWindowsUpdatePath),
+      openedMessage: 'Windows installer opened. Complete installation to update Yutaka.',
+      failedMessage: 'Could not open the downloaded Windows installer. Please try again.',
+    );
   }
 
   Future<void> _savePendingWindowsUpdate({required String path, required String version}) async {
@@ -3969,6 +4171,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> downloadLinuxUpdate({bool force = false}) async {
+    if (updateDownloadBusy || updateInstallBusy || _updateInstallLaunchBusy) return;
     if (!Platform.isLinux) {
       updateStatusMessage = 'In-app Linux update download is available on Linux only.';
       notifyListeners();
@@ -4062,6 +4265,7 @@ class AppController extends ChangeNotifier {
         status: 'Complete',
       );
       updateDownloadBusy = false;
+      _beginUpdateInstallation();
       updateStatusMessage = 'Download complete. Opening Linux update package...';
       await _savePendingLinuxUpdate(path: packageFile.path, version: release.displayVersion);
       notifyListeners();
@@ -4072,6 +4276,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
       updateDownloadBusy = false;
       updateDownloadProgress = null;
+      _finishUpdateInstallation();
       if (!_updateDownloadCancelled) {
         updateStatusMessage = 'Linux update download failed or was interrupted. Please try again.';
       }
@@ -4087,22 +4292,24 @@ class AppController extends ChangeNotifier {
   Future<void> installPendingLinuxUpdate() async {
     if (!Platform.isLinux) return;
     if (_isPendingLinuxUpdateAlreadyInstalled()) {
+      _finishUpdateInstallation();
       await _clearPendingLinuxUpdate(deleteFile: true);
       updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
     if (pendingLinuxUpdatePath.isEmpty || !await File(pendingLinuxUpdatePath).exists()) {
+      _finishUpdateInstallation();
       await _clearPendingLinuxUpdate();
       updateStatusMessage = 'Downloaded Linux update package was not found. Please download it again.';
       notifyListeners();
       return;
     }
-    final opened = await LinuxUpdateInstaller.install(pendingLinuxUpdatePath);
-    updateStatusMessage = opened
-        ? 'Linux update package opened. Complete the update to use the latest Yutaka build.'
-        : 'Could not open the downloaded Linux update package. Please try again.';
-    notifyListeners();
+    await _openDesktopUpdateInstaller(
+      () => LinuxUpdateInstaller.install(pendingLinuxUpdatePath),
+      openedMessage: 'Linux update package opened. Complete the update to use the latest Yutaka build.',
+      failedMessage: 'Could not open the downloaded Linux update package. Please try again.',
+    );
   }
 
   Future<void> _savePendingLinuxUpdate({required String path, required String version}) async {
@@ -4137,6 +4344,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> downloadMacOsUpdate({bool force = false}) async {
+    if (updateDownloadBusy || updateInstallBusy || _updateInstallLaunchBusy) return;
     if (!Platform.isMacOS) {
       updateStatusMessage = 'In-app macOS update download is available on macOS only.';
       notifyListeners();
@@ -4230,6 +4438,7 @@ class AppController extends ChangeNotifier {
         status: 'Complete',
       );
       updateDownloadBusy = false;
+      _beginUpdateInstallation();
       updateStatusMessage = 'Download complete. Opening macOS installer...';
       await _savePendingMacOsUpdate(path: packageFile.path, version: release.displayVersion);
       notifyListeners();
@@ -4240,6 +4449,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
       updateDownloadBusy = false;
       updateDownloadProgress = null;
+      _finishUpdateInstallation();
       if (!_updateDownloadCancelled) {
         updateStatusMessage = 'macOS update download failed or was interrupted. Please try again.';
       }
@@ -4255,22 +4465,24 @@ class AppController extends ChangeNotifier {
   Future<void> installPendingMacOsUpdate() async {
     if (!Platform.isMacOS) return;
     if (_isPendingMacOsUpdateAlreadyInstalled()) {
+      _finishUpdateInstallation();
       await _clearPendingMacOsUpdate(deleteFile: true);
       updateStatusMessage = 'Yutaka is already updated.';
       notifyListeners();
       return;
     }
     if (pendingMacOsUpdatePath.isEmpty || !await File(pendingMacOsUpdatePath).exists()) {
+      _finishUpdateInstallation();
       await _clearPendingMacOsUpdate();
       updateStatusMessage = 'Downloaded macOS installer was not found. Please download it again.';
       notifyListeners();
       return;
     }
-    final opened = await MacOsUpdateInstaller.install(pendingMacOsUpdatePath);
-    updateStatusMessage = opened
-        ? 'macOS installer opened. Complete installation to update Yutaka.'
-        : 'Could not open the downloaded macOS installer. Please try again.';
-    notifyListeners();
+    await _openDesktopUpdateInstaller(
+      () => MacOsUpdateInstaller.install(pendingMacOsUpdatePath),
+      openedMessage: 'macOS installer opened. Complete installation to update Yutaka.',
+      failedMessage: 'Could not open the downloaded macOS installer. Please try again.',
+    );
   }
 
   Future<void> _savePendingMacOsUpdate({required String path, required String version}) async {
@@ -6138,6 +6350,8 @@ class AppController extends ChangeNotifier {
     _cloudSyncAutoPullTimer?.cancel();
     _stopCloudLiveConnection();
     _autoBackupTimer?.cancel();
+    _updateActivityDisposed = true;
+    _updateInstallPollTimer?.cancel();
     _updateDownloadClient?.close();
     updateService.close();
     super.dispose();
@@ -7371,28 +7585,62 @@ class AppController extends ChangeNotifier {
 // -----------------------------------------------------------------------------
 
 
-class _UpdateActivityOverlay extends StatelessWidget {
-  const _UpdateActivityOverlay();
+final _yutakaNavigatorKey = GlobalKey<NavigatorState>();
+
+class YutakaUpdateActivityOverlay extends StatefulWidget {
+  const YutakaUpdateActivityOverlay({super.key, required this.navigatorKey});
+
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  @override
+  State<YutakaUpdateActivityOverlay> createState() => _YutakaUpdateActivityOverlayState();
+}
+
+class _YutakaUpdateActivityOverlayState extends State<YutakaUpdateActivityOverlay> {
+  int _lastFeedbackId = 0;
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppController, (bool, bool, int?)>(
+    return Selector<AppController, (bool, bool, bool, bool, String, int?, ({int id, String title, String message, bool error})?)>(
       selector: (_, state) => (
         state.workerAutoUpdateInstalling,
         state.updateDownloadBusy,
+        state.updateInstallBusy,
+        state.updateInstallCanDismiss,
+        state.updateInstallationMessage,
         state.updateDownloadBusy && (state.updateDownloadProgress?.totalBytes ?? 0) > 0
             ? state.updateDownloadProgress?.percent
             : null,
+        state.updateActivityNotice,
       ),
-      builder: (context, activity, _) => ValueListenableBuilder<OverlayEntry?>(
-        valueListenable: _activeYutakaSnackEntry,
-        builder: (context, feedback, _) => UpdateActivityOverlay(
-          workerUpdating: activity.$1,
-          appUpdating: activity.$2,
-          percent: activity.$3,
-          feedbackVisible: feedback != null,
-        ),
-      ),
+      builder: (context, activity, _) {
+        final notice = activity.$7;
+        if (notice != null && notice.id != _lastFeedbackId) {
+          _lastFeedbackId = notice.id;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || notice.id != _lastFeedbackId) return;
+            _showRichSnack(
+              context,
+              notice.message,
+              notice.error ? _YutakaSnackKind.failure : _YutakaSnackKind.success,
+              titleOverride: notice.title,
+              overlayOverride: widget.navigatorKey.currentState?.overlay,
+            );
+          });
+        }
+        return ValueListenableBuilder<OverlayEntry?>(
+          valueListenable: _activeYutakaSnackEntry,
+          builder: (context, feedback, _) => UpdateActivityOverlay(
+            workerUpdating: activity.$1,
+            appUpdating: activity.$2,
+            appInstalling: activity.$3,
+            installationMessage: activity.$5,
+            percent: activity.$6,
+            onDismissInstallation: activity.$4 ? context.read<AppController>().dismissUpdateInstallationFeedback : null,
+            feedbackVisible: feedback != null,
+          ),
+        );
+      },
     );
   }
 }
@@ -7404,6 +7652,7 @@ class YutakaApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeMode = context.select<AppController, ThemeMode>((state) => state.themeMode);
     return MaterialApp(
+      navigatorKey: _yutakaNavigatorKey,
       debugShowCheckedModeBanner: false,
       scrollBehavior: const YutakaScrollBehavior(),
       title: appTitle,
@@ -7424,7 +7673,7 @@ class YutakaApp extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               child ?? const SizedBox.shrink(),
-              const _UpdateActivityOverlay(),
+              YutakaUpdateActivityOverlay(navigatorKey: _yutakaNavigatorKey),
             ],
           ),
         );
@@ -8072,7 +8321,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver, Sing
     );
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _scheduleAutomaticUpdateCheck(delay: _startupUpdateCheckDelay);
+      unawaited(context.read<AppController>().refreshUpdateInstallationStatus());
       unawaited(context.read<AppController>().processDueSubscriptions());
     });
     _subscriptionSweepTimer = Timer.periodic(const Duration(seconds: 12), (_) {
@@ -8094,7 +8345,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver, Sing
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       final controller = context.read<AppController>();
-      unawaited(controller.resumePendingAndroidInstallIfAllowed());
+      unawaited(controller.resumeUpdateInstallation());
       unawaited(controller.syncCloudChangesIfIdle(force: true));
       unawaited(controller.refreshLoanReminders());
       if (Platform.isAndroid) {
@@ -10537,8 +10788,8 @@ _YutakaSnackKind _snackKindFor(String message) {
   return _YutakaSnackKind.info;
 }
 
-void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind) {
-  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind, {String? titleOverride, OverlayState? overlayOverride}) {
+  final overlay = overlayOverride ?? Overlay.maybeOf(context, rootOverlay: true);
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (overlay == null) {
     messenger?.hideCurrentSnackBar();
@@ -10572,7 +10823,7 @@ void _showRichSnack(BuildContext context, String message, _YutakaSnackKind kind)
   late final OverlayEntry entry;
   entry = OverlayEntry(
     builder: (overlayContext) => _YutakaTopFeedbackBanner(
-      title: title,
+      title: titleOverride ?? title,
       message: message,
       color: color,
       contentType: contentType,

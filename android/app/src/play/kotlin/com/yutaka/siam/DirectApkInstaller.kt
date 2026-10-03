@@ -7,4 +7,5 @@ internal object DirectApkInstaller {
     fun canInstallPackages(activity: FlutterFragmentActivity): Boolean = false
     fun openInstallPermissionSettings(activity: FlutterFragmentActivity) = Unit
     fun installApk(activity: FlutterFragmentActivity, path: String): Boolean = false
+    fun installationStatus(activity: FlutterFragmentActivity, resumed: Boolean): Map<String, String> = mapOf("state" to "idle")
 }

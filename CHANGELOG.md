@@ -1,3 +1,12 @@
+## [1.0.1265] - 2026-10-03
+
+- Show app download percentages in the same full top popup used for automatic Worker updates.
+- Transition to an animated “Installing Yutaka” popup while preparing and opening the platform installer; dismissing progress leaves installation running.
+- Report Android installation success, cancellation and failure through the top popup, including results recovered after the app restarts.
+- Show “Worker deployed successfully” after deployment health verification, or a red error popup when automatic deployment fails.
+- Keep progress below system status bars, wrap long text, respect reduced motion, and let outcome messages temporarily take priority over ongoing updates.
+- Bump synchronized release metadata to `1.0.1265+309`.
+
 ## [1.0.1264] - 2026-10-03
 
 - Test maintenance: dispose the Worker banner test's semantics handle in `finally` before Flutter's end-of-test verification, including when assertions fail. Keep release version unchanged.

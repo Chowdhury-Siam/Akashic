@@ -2,6 +2,7 @@ package com.yutaka.siam
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
@@ -12,6 +13,31 @@ import java.io.File
 
 /** APK installer used only by the direct/GitHub Android flavor. */
 internal object DirectApkInstaller {
+    private const val statusStore = "yutaka_update_install_status"
+
+    fun recordStatus(context: Context, state: String, message: String = "") {
+        // Persist results so Flutter can read them after Android replaces the app.
+        context.getSharedPreferences(statusStore, Context.MODE_PRIVATE).edit()
+            .putString("state", state).putString("message", message).commit()
+    }
+
+    fun installationStatus(activity: FlutterFragmentActivity, resumed: Boolean): Map<String, String> {
+        val prefs = activity.getSharedPreferences(statusStore, Context.MODE_PRIVATE)
+        val state = prefs.getString("state", "idle") ?: "idle"
+        val message = prefs.getString("message", "") ?: ""
+        if (state == "success" || state == "failure") {
+            prefs.edit().clear().apply()
+            return mapOf("state" to state, "message" to message)
+        }
+        if (activity.packageManager.packageInstaller.mySessions.any { it.appPackageName == activity.packageName }) {
+            return mapOf("state" to if (state == "confirmation") "confirmation" else "installing")
+        }
+        if (state == "external" && !resumed) return mapOf("state" to "external")
+        // No active session remains. Do not infer success from an installer handoff.
+        if (state == "external" && resumed) prefs.edit().clear().apply()
+        return mapOf("state" to "idle")
+    }
+
     fun canInstallPackages(activity: FlutterFragmentActivity): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.packageManager.canRequestPackageInstalls()
@@ -45,6 +71,7 @@ internal object DirectApkInstaller {
         }
         activity.grantUriPermission(activity.packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         activity.startActivity(intent)
+        recordStatus(activity, "external")
         return true
     }
 
@@ -53,7 +80,10 @@ internal object DirectApkInstaller {
     private fun installSession(activity: FlutterFragmentActivity, apkFile: File): Boolean {
         val installer = activity.packageManager.packageInstaller
         // Avoid duplicate sessions if the app resumes or the user taps again.
-        if (installer.mySessions.any { it.appPackageName == activity.packageName }) return true
+        if (installer.mySessions.any { it.appPackageName == activity.packageName }) {
+            recordStatus(activity, "installing")
+            return true
+        }
         val archive = activity.packageManager.getPackageArchiveInfo(apkFile.path, 0)
             ?: throw IllegalArgumentException("The download is not a valid APK.")
         require(archive.packageName == activity.packageName) { "The APK belongs to another app." }
@@ -63,6 +93,7 @@ internal object DirectApkInstaller {
             setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         }
         val sessionId = installer.createSession(params)
+        recordStatus(activity, "installing")
         try {
             installer.openSession(sessionId).use { session ->
                 apkFile.inputStream().use { input ->
