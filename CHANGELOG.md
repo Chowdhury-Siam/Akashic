@@ -1,11 +1,14 @@
-## [1.0.1265] - 2026-10-03
+## 1.0.1268+312
 
-- Show app download percentages in the same full top popup used for automatic Worker updates.
-- Transition to an animated “Installing Yutaka” popup while preparing and opening the platform installer; dismissing progress leaves installation running.
-- Report Android installation success, cancellation and failure through the top popup, including results recovered after the app restarts.
-- Show “Worker deployed successfully” after deployment health verification, or a red error popup when automatic deployment fails.
-- Keep progress below system status bars, wrap long text, respect reduced motion, and let outcome messages temporarily take priority over ongoing updates.
-- Bump synchronized release metadata to `1.0.1265+309`.
+- Request automatic reopening after Android confirms a successful direct/GitHub APK update. Keep the success message for the updated app’s top popup.
+- Provide a quiet Open Yutaka completion notification when Android blocks the background launch, and remove it when the app opens. No extra permissions are requested.
+- Handle recent self-updates through both session results and the package-replacement broadcast, matching the expected app version and session and deduplicating completion so it opens only once. Failed or cancelled installs do not trigger reopening; unrelated external app updates do not use the replacement path.
+
+## 1.0.1267+311
+
+- Show the chosen date, time and optional ranges directly in the transaction editor’s Time • Date button after closing its configuration popup. Existing transactions show their saved selection immediately.
+- Show the selected fixed service charge or percentage on the main form. Percentage charges include the calculated currency amount when a base amount is entered and refresh as that amount changes; disabled charges show Off.
+- Show the selected start date and time on the loan editor’s matching control, using the same compact, wrapping summary style.
 
 ## 1.0.1266+310
 
@@ -14,6 +17,15 @@
 - Add a small universal macOS AppKit setup app inside the DMG. Verify the embedded payload and app signature before staged installation, preserve financial data, and restore the previous app when the final move fails.
 - Open the custom Linux and macOS installers from in-app updates, while retaining older release package fallbacks and the shared top update popup.
 - Exercise the Linux setup buttons and failure/retry flow under Xvfb, and run signed macOS backend tests plus a mounted-DMG UI check on the macOS runner.
+
+## [1.0.1265] - 2026-10-03
+
+- Show app download percentages in the same full top popup used for automatic Worker updates.
+- Transition to an animated “Installing Yutaka” popup while preparing and opening the platform installer; dismissing progress leaves installation running.
+- Report Android installation success, cancellation and failure through the top popup, including results recovered after the app restarts.
+- Show “Worker deployed successfully” after deployment health verification, or a red error popup when automatic deployment fails.
+- Keep progress below system status bars, wrap long text, respect reduced motion, and let outcome messages temporarily take priority over ongoing updates.
+- Bump synchronized release metadata to `1.0.1265+309`.
 
 ## [1.0.1264] - 2026-10-03
 

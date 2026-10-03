@@ -446,7 +446,10 @@ class _LoanEditorSheetState extends State<_LoanEditorSheet> {
               setState(() => startDate = selection.start);
             },
             icon: const Icon(Icons.event_rounded),
-            label: const Text('Time • Date'),
+            label: _ConfigurationButtonLabel(
+              title: 'Time • Date',
+              summary: '${DateFormat('MMM d, yyyy').format(startDate)} • ${DateFormat('h:mm a').format(startDate)}',
+            ),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(

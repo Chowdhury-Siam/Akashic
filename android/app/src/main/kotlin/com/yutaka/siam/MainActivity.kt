@@ -154,6 +154,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        DirectApkInstaller.onAppResumed(this)
         if (BuildConfig.DISTRIBUTION != "play") return
         playUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
             when {
@@ -168,6 +169,11 @@ class MainActivity: FlutterFragmentActivity() {
                 info.installStatus() == InstallStatus.DOWNLOADED -> playUpdateManager.completeUpdate()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        DirectApkInstaller.onAppResumed(this)
     }
 
     override fun onDestroy() {

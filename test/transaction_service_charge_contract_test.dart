@@ -62,8 +62,8 @@ void main() {
   test('transaction editor combines time/date and exposes service charge configuration', () {
     final source = File('lib/main.dart').readAsStringSync();
 
-    expect(source, contains("label: const Text('Time • Date')"));
-    expect(source, contains("label: const Text('Service charge')"));
+    expect(source, contains("title: 'Time • Date'"));
+    expect(source, contains("title: 'Service charge'"));
     expect(source, contains("'Enable service charge'"));
     expect(source, contains("label: 'Number'"));
     expect(source, contains("label: 'Percentage'"));

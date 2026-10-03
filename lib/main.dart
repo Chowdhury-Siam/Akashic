@@ -18157,6 +18157,32 @@ class _ServiceChargePreviewRow extends StatelessWidget {
   }
 }
 
+class _ConfigurationButtonLabel extends StatelessWidget {
+  const _ConfigurationButtonLabel({required this.title, required this.summary});
+
+  final String title;
+  final String summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, textAlign: TextAlign.center),
+        const SizedBox(height: 3),
+        Text(
+          summary,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
 Future<void> showTransactionEditor(BuildContext context, {MoneyTransaction? transaction, Category? lockedCategory}) async {
   await showYutakaPopup<void>(
     context,
@@ -18232,6 +18258,29 @@ class _TransactionEditorState extends State<TransactionEditor> {
   void _dismissAmountFocus() {
     amountFocus.unfocus();
     FocusScope.of(context).unfocus();
+  }
+
+  String _serviceChargeSummary(AppController state) {
+    if (!serviceChargeEnabled) {
+      return 'Off';
+    }
+    if (serviceChargeMode == ServiceChargeMode.number) {
+      return state.format(serviceChargeValue);
+    }
+    final percentage = serviceChargeValue == serviceChargeValue.roundToDouble()
+        ? serviceChargeValue.toStringAsFixed(0)
+        : serviceChargeValue.toString();
+    final baseValue = double.tryParse(amount.text.trim()) ?? 0;
+    if (baseValue <= 0) {
+      return '$percentage%';
+    }
+    final charge = _serviceChargeAmount(
+      baseAmount: baseValue,
+      enabled: true,
+      mode: serviceChargeMode,
+      value: serviceChargeValue,
+    );
+    return '$percentage% • ${state.format(charge)}';
   }
 
   @override
@@ -18327,6 +18376,11 @@ class _TransactionEditorState extends State<TransactionEditor> {
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             controller: amount,
             focusNode: amountFocus,
+            onChanged: (_) {
+              if (serviceChargeEnabled && serviceChargeMode == ServiceChargeMode.percentage) {
+                setState(() {});
+              }
+            },
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textInputAction: TextInputAction.next,
             textAlign: TextAlign.end,
@@ -18495,7 +18549,10 @@ class _TransactionEditorState extends State<TransactionEditor> {
               });
             },
             icon: const Icon(Icons.event_rounded),
-            label: const Text('Time • Date'),
+            label: _ConfigurationButtonLabel(
+              title: 'Time • Date',
+              summary: '${transactionDateSpanLabel(selectedDate, dateRangeEnabled ? selectedEndDate : selectedDate)} • ${transactionTimeSpanLabel(selectedDate, selectedEndDate, forceRange: timeRangeEnabled)}',
+            ),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -18520,7 +18577,10 @@ class _TransactionEditorState extends State<TransactionEditor> {
                     });
                   },
             icon: const Icon(Icons.receipt_long_rounded),
-            label: const Text('Service charge'),
+            label: _ConfigurationButtonLabel(
+              title: 'Service charge',
+              summary: _serviceChargeSummary(state),
+            ),
           ),
           const SizedBox(height: 12),
           TextField(

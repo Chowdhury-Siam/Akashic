@@ -10,6 +10,8 @@ import android.widget.Toast
 /** Receives results even if Android closes Yutaka while replacing its APK. */
 class UpdateInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
+        if (!DirectApkInstaller.acceptsSessionResult(context, sessionId)) return
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 DirectApkInstaller.recordStatus(context, "confirmation")
@@ -21,7 +23,6 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                     confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(confirmation)
                 } catch (error: Exception) {
-                    val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
                     if (sessionId >= 0) {
                         try {
                             context.packageManager.packageInstaller.abandonSession(sessionId)
@@ -35,8 +36,12 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
-                DirectApkInstaller.recordStatus(context, "success", "Yutaka updated successfully.")
-                Toast.makeText(context, "Yutaka updated.", Toast.LENGTH_SHORT).show()
+                // A preapproval success is not an installed update.
+                if (intent.getBooleanExtra(PackageInstaller.EXTRA_PRE_APPROVAL, false)) return
+                if (intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME) != context.packageName) return
+                DirectApkInstaller.finishUpdateAndReopen(
+                    context, verifiedSession = true, sessionId = sessionId
+                )
             }
             else -> {
                 val cancelled = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1) == PackageInstaller.STATUS_FAILURE_ABORTED
@@ -44,6 +49,15 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 Log.w("YutakaUpdater", intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "Update failed")
                 Toast.makeText(context, "Update was cancelled or failed. Retry from Updates.", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+}
+
+/** Covers older external installers and devices that deliver replacement first. */
+class UpdateReplacedReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            DirectApkInstaller.finishUpdateAndReopen(context)
         }
     }
 }
