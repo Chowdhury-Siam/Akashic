@@ -1,3 +1,11 @@
+## [1.0.1264] - 2026-10-03
+
+- Isolate the Worker update live region so assistive technology receives its status independently of surrounding content.
+- Wait for the platform/theme transition before asserting desktop banner geometry in widget tests.
+- Hash Linux installer payloads in bounded chunks, supporting the Python 3.10 CI runner while preserving corruption checks.
+- Install the signed official Inno Setup 6.7.3 release when the Windows runner has an older compiler; retain the branded installer theme.
+- Bump synchronized release metadata to `1.0.1264+308`.
+
 ## [1.0.1263] - 2026-10-03
 
 - Show automatic Worker updates in a centered, safe-area top banner matching Yutaka's existing popup layout, green icon badge, rounded card and typography.

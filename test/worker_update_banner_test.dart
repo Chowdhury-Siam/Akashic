@@ -111,7 +111,13 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
-    expect(find.bySemanticsLabel('Updating Worker. Installing the latest update.'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('worker-update-active'))),
+      matchesSemantics(
+        label: 'Updating Worker. Installing the latest update.',
+        isLiveRegion: true,
+      ),
+    );
     final switcher = tester.widget<AnimatedSwitcher>(find.descendant(
       of: find.byType(WorkerUpdateBanner),
       matching: find.byType(AnimatedSwitcher),
@@ -133,6 +139,8 @@ void main() {
       platform: TargetPlatform.windows,
       textScale: 2,
     ));
+    // MaterialApp animates the platform/theme change; the spinner never settles.
+    await tester.pump(const Duration(milliseconds: 300));
     final desktopCard = tester.getRect(find.byKey(const ValueKey('worker-update-card')));
     expect(desktopCard.width, 500);
     expect(desktopCard.center.dx, 720);

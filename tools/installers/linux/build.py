@@ -68,8 +68,11 @@ def build(appimage, setup, icon, backend, output, version, arch):
                 info.mode = 0o755 if name in ("setup", "install.sh", "Yutaka.AppImage") else 0o644
                 with path.open("rb") as stream:
                     tar.addfile(info, stream)
+        digest = hashlib.sha256()
         with archive.open("rb") as stream:
-            checksum = hashlib.file_digest(stream, "sha256").hexdigest()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        checksum = digest.hexdigest()
         header = (HEADER.replace("@VERSION@", version).replace("@ARCH@", arch)
                   .replace("@MACHINE@", "x86_64" if arch == "x64" else "aarch64|arm64")
                   .replace("@SHA@", checksum))

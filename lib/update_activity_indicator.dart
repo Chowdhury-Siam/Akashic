@@ -88,6 +88,7 @@ class WorkerUpdateBanner extends StatelessWidget {
                   ? const SizedBox.shrink(key: ValueKey('worker-update-idle'))
                   : Semantics(
                       key: const ValueKey('worker-update-active'),
+                      container: true,
                       liveRegion: true,
                       label: 'Updating Worker. Installing the latest update.',
                       child: ExcludeSemantics(

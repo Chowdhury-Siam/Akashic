@@ -351,8 +351,19 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           $minimumVersion = [version]"6.7.0"
           if (!(Test-Path $iscc) -or [version](Get-Item $iscc).VersionInfo.FileVersion -lt $minimumVersion) {
-            choco upgrade innosetup --version=6.7.3 --allow-downgrade --no-progress -y
-            if ($LASTEXITCODE -ne 0) { throw "Failed to install Inno Setup 6.7.3." }
+            # Use the official release: Chocolatey's catalog can lag behind.
+            $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
+            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 `
+              --output "$installer" `
+              "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download Inno Setup 6.7.3." }
+            if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') {
+              throw "Inno Setup installer signature verification failed."
+            }
+            $setup = Start-Process -FilePath $installer -ArgumentList `
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' `
+              -Wait -PassThru
+            if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed: $($setup.ExitCode)" }
           } else {
             Write-Host "Using preinstalled Inno Setup: $iscc"
           }
@@ -415,4 +426,3 @@ jobs:
           path: artifacts/Yutaka-v*-Setup.exe
           if-no-files-found: error
           compression-level: 0
-
