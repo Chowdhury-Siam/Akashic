@@ -1,3 +1,9 @@
+## Android Gradle download CI maintenance (1.0.1274+318)
+
+- Start the generated Gradle wrapper before dependency checks and compilation, retrying temporary download/startup failures up to four attempts with bounded timeouts and backoff.
+- Exercise immediate success, transient failure recovery, and retry exhaustion using the workflow's actual shell block.
+- Keep app and Worker versions unchanged for this workflow-only fix.
+
 ## Release metadata test maintenance (1.0.1274+318)
 
 - Correct the desktop release contract's Android build-code expectation from 317 to 318, matching the delivered release metadata.

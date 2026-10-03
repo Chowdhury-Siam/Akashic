@@ -356,6 +356,24 @@ jobs:
           distributionUrl=https\://services.gradle.org/distributions/gradle-9.1.0-bin.zip
           EOF_GRADLE
 
+      - name: Download Gradle with bounded retries
+        shell: bash
+        working-directory: android
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4; do
+            if timeout --kill-after=10s 180s ./gradlew --version; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Gradle could not start after four download attempts."
+              exit 1
+            fi
+            echo "::warning::Gradle download/startup failed; retrying (attempt $((attempt + 1))/4)."
+            sleep "$((attempt * 5))"
+          done
+
       - name: Read app version
         run: |
           FULL_VERSION="$(awk '/^version:/ { sub(/\r$/, "", $2); print $2; exit }' pubspec.yaml)"
