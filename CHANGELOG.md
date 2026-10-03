@@ -1,3 +1,8 @@
+## Release metadata test maintenance (1.0.1274+318)
+
+- Correct the desktop release contract's Android build-code expectation from 317 to 318, matching the delivered release metadata.
+- Keep app and Worker versions unchanged for this test-only correction.
+
 ## 1.0.1274+318
 
 - Organize shared transaction cards into a title/amount row, category row, date/time row, and optional notes row.

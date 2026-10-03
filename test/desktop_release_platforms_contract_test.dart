@@ -164,7 +164,7 @@ void main() {
 
     expect(pubspec, contains('version: 1.0.1274+318'));
     expect(config, contains("defaultValue: '1.0.1274'"));
-    expect(androidGradle, contains('versionCode = 317'));
+    expect(androidGradle, contains('versionCode = 318'));
     expect(androidGradle, contains('versionName = "1.0.1274"'));
     expect(readme, contains('Android, Windows, Linux, and macOS'));
     expect(readme, contains('universal macOS package'));
